@@ -17,7 +17,7 @@ quantum numbers.
 The total spin quantum number is implicitly assumed to be :math:`1 / 2` (cf.
 `NoHyperfineOneElectronSpecies`).
 """
-immutable NoHyperfineNumberSpec <: LevelSpec
+struct NoHyperfineNumberSpec <: LevelSpec
     "Orbital angular momentum quantum number."
     l::Integer
 
@@ -25,20 +25,22 @@ immutable NoHyperfineNumberSpec <: LevelSpec
     j::Rational
 end
 
+NoHyperfineNumberSpec(s::String) = convert(NoHyperfineNumberSpec, s)
+
 """
 Specifies a particular electronic state using spectroscopic notation.
 """
-immutable SpectroscopicSpec <: LevelSpec
+struct SpectroscopicSpec <: LevelSpec
     val::String
 end
 
-convert{T<:LevelSpec}(::Type{T}, s::String) = convert(T, SpectroscopicSpec(s))
+convert(::Type{T}, s::String) where {T<:LevelSpec} = convert(T, SpectroscopicSpec(s))
 
 function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
     val = s.val
 
     l_sym = val[1]
-    l = findfirst(['S', 'P', 'D', 'F', 'G'], l_sym) - 1
+    l = findfirst(isequal(l_sym), ['S', 'P', 'D', 'F', 'G']) - 1
     if l == -1
         throw(ArgumentError("Unknown symbol '$(s[1])' for orbital angular momentum quantum number: $(s.val)"))
     end
@@ -53,7 +55,7 @@ function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
     end
 
     # Parse numerator.
-    fraction_idx = findfirst(val, '/')
+    fraction_idx = findfirst(isequal('/'), val)
     if fraction_idx < 2
         throw(ArgumentError("Expected fractional total angular momentum quantum number, not '$val': $(s.val)"))
     end
@@ -85,7 +87,7 @@ function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
     NoHyperfineNumberSpec(l, j_num // j_den)
 end
 
-immutable StateSpec
+struct StateSpec
     level::LevelSpec
 
     """

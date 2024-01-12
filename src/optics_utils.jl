@@ -1,6 +1,6 @@
 using Unitful
 
-type GaussBeamParams
+struct GaussBeamParams
     waist_radius
     waist_pos
     wavelength
