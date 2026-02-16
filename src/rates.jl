@@ -11,8 +11,8 @@ end
 function rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity)
     i0 = saturation_intensity(species, lower.level, upper.level)
     cg = clebsch_gordan(lower, upper)
-    a = einstein_a(species, lower.level, upper.level) |> get
-    τ = lifetime(species, upper.level) |> get
+    a = einstein_a(species, lower.level, upper.level)
+    τ = lifetime(species, upper.level)
     uconvert(kHz, sqrt(intensity / i0 * cg^2 * a / τ))
 end
 
