@@ -1,9 +1,9 @@
 using Unitful
 
 struct GaussBeamParams
-    waist_radius
-    waist_pos
-    wavelength
+    waist_radius::Any
+    waist_pos::Any
+    wavelength::Any
 end
 
 """
@@ -30,14 +30,27 @@ z_offset
     If given, the distance of the point from the focus along the direction of
     propagation.
 """
-function gauss_intensity(power, waist, wavelength; r_offset=zero_like(waist),
-        z_offset=zero_like(waist))
-    gauss_intensity(power, GaussBeamParams(waist, zero_like(waist), wavelength),
-        r_offset=r_offset, z_pos=z_offset)
+function gauss_intensity(
+    power,
+    waist,
+    wavelength;
+    r_offset = zero_like(waist),
+    z_offset = zero_like(waist),
+)
+    gauss_intensity(
+        power,
+        GaussBeamParams(waist, zero_like(waist), wavelength),
+        r_offset = r_offset,
+        z_pos = z_offset,
+    )
 end
 
-function gauss_intensity(power, beam::GaussBeamParams; r_offset=zero_like(waist),
-        z_pos=zero_like(waist))
+function gauss_intensity(
+    power,
+    beam::GaussBeamParams;
+    r_offset = zero_like(waist),
+    z_pos = zero_like(waist),
+)
     raleigh_range = π * beam.waist_radius^2 / beam.wavelength
     radius = beam.waist_radius * sqrt(1 + ((z_pos - beam.waist_pos) / raleigh_range)^2)
     2 * power / (π * radius^2) * exp(-2 * (r_offset / radius)^2)

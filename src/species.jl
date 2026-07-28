@@ -15,7 +15,7 @@ struct NoHyperfineOneElectronSpecies <: Species
 
     The point of reference is chosen arbitrarily.
     """
-    energies::Dict{NoHyperfineNumberSpec, Quantity}
+    energies::Dict{NoHyperfineNumberSpec,Quantity}
 
     """
     Einstein A coefficients for (lower, upper) pair of levels.
@@ -23,8 +23,7 @@ struct NoHyperfineOneElectronSpecies <: Species
     The sum of all A coefficients for a given upper level is the reciprocal
     level lifetime, so this is the linewidth contribution in angular units.
     """
-    einstein_as::Dict{Tuple{NoHyperfineNumberSpec,
-        NoHyperfineNumberSpec}, Quantity}
+    einstein_as::Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Quantity}
 end
 
 """
@@ -53,8 +52,16 @@ level lifetime, so this is the linewidth contribution in angular units.
 
 Returns null if there is no decay from upper to lower.
 """
-function einstein_a(species::NoHyperfineOneElectronSpecies, lower, upper)::Union{Quantity, Nothing}
-    get(species.einstein_as, (convert(NoHyperfineNumberSpec, lower), convert(NoHyperfineNumberSpec, upper)), nothing)
+function einstein_a(
+    species::NoHyperfineOneElectronSpecies,
+    lower,
+    upper,
+)::Union{Quantity,Nothing}
+    get(
+        species.einstein_as,
+        (convert(NoHyperfineNumberSpec, lower), convert(NoHyperfineNumberSpec, upper)),
+        nothing,
+    )
 end
 
 
@@ -65,7 +72,7 @@ This is the reciprocal of the sum for all the decay rates from the level.
 
 Returns null if there are no decay channels defined from the given level.
 """
-function lifetime(species::NoHyperfineOneElectronSpecies, level)::Union{Quantity, Nothing}
+function lifetime(species::NoHyperfineOneElectronSpecies, level)::Union{Quantity,Nothing}
     nhns = convert(NoHyperfineNumberSpec, level)
     @show species.einstein_as
     as = values(filter(((l, v),) -> l[2] == nhns, species.einstein_as))

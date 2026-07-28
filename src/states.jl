@@ -42,35 +42,55 @@ function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
     l_sym = val[1]
     l = findfirst(isequal(l_sym), ['S', 'P', 'D', 'F', 'G']) - 1
     if l == -1
-        throw(ArgumentError("Unknown symbol '$(s[1])' for orbital angular momentum quantum number: $(s.val)"))
+        throw(
+            ArgumentError(
+                "Unknown symbol '$(s[1])' for orbital angular momentum quantum number: $(s.val)",
+            ),
+        )
     end
 
-    val = lstrip(val[2 : end], '_')
+    val = lstrip(val[2:end], '_')
 
     if val[1] == '{'
         if val[end] != '}'
-            throw(ArgumentError("Invalid total angular momentum quantum number specification '$val': $(s.val)"))
+            throw(
+                ArgumentError(
+                    "Invalid total angular momentum quantum number specification '$val': $(s.val)",
+                ),
+            )
         end
-        val = val[2 : end - 1]
+        val = val[2:(end-1)]
     end
 
     # Parse numerator.
     fraction_idx = findfirst(isequal('/'), val)
     if isnothing(fraction_idx) || fraction_idx < 2
-        throw(ArgumentError("Expected fractional total angular momentum quantum number, not '$val': $(s.val)"))
+        throw(
+            ArgumentError(
+                "Expected fractional total angular momentum quantum number, not '$val': $(s.val)",
+            ),
+        )
     end
 
-    j_num_str = val[1 : fraction_idx - 1]
+    j_num_str = val[1:(fraction_idx-1)]
     j_num = try
         parse(Int64, j_num_str)
     catch
-        throw(ArgumentError("Invalid numerator '$j_num_str' for total angular momentum quantum number: $(s.val)"))
+        throw(
+            ArgumentError(
+                "Invalid numerator '$j_num_str' for total angular momentum quantum number: $(s.val)",
+            ),
+        )
     end
 
     # Skip fraction slash.
-    val = val[fraction_idx + 1 : end]
+    val = val[(fraction_idx+1):end]
     if length(val) == 0
-        throw(ArgumentError("Expected denominator for total angular momentum quantum number: $(s.val)"))
+        throw(
+            ArgumentError(
+                "Expected denominator for total angular momentum quantum number: $(s.val)",
+            ),
+        )
     end
 
     # Skip optional second slash (Julia's fraction notation).
@@ -80,7 +100,11 @@ function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
     j_den = try
         parse(Int64, val)
     catch
-        throw(ArgumentError("Invalid denominator '$val' for total angular momentum quantum number: $(s.val)"))
+        throw(
+            ArgumentError(
+                "Invalid denominator '$val' for total angular momentum quantum number: $(s.val)",
+            ),
+        )
     end
 
     NoHyperfineNumberSpec(l, j_num // j_den)
