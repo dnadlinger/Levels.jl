@@ -1,0 +1,18 @@
+name = "Levels"
+uuid = "055aa6da-9798-5fc9-bbfd-d3a3424316fe"
+version = "0.1.0"
+authors = ["David Nadlinger <code@klickverbot.at>"]
+
+[workspace]
+projects = ["test", "docs"]
+
+[deps]
+Match = "7eb4fadd-790c-5f42-8a69-bfa0b872bfbf"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+WignerSymbols = "9f57e263-0b3d-5e2e-b1be-24f2bb48858b"
+
+[compat]
+Match = "2.4.1"
+Unitful = "1.28.0"
+WignerSymbols = "2.0.0"
+julia = "1.12"

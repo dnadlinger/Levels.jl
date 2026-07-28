@@ -1,0 +1,42 @@
+# Changes here will be overwritten by Copier
+AddAllcontributors: false
+AddChangelog: true
+AddCitationCFF: true
+AddCodeOfConduct: false
+AddContributionDocs: true
+AddCopierCI: false
+AddDocs: true
+AddDocsCI: true
+AddFormatterAndLinterConfigFiles: true
+AddGitHubPRTemplate: false
+AddGitHubTemplates: false
+AddLintCI: true
+AddLychee: true
+AddMacToCI: false
+AddPrecommit: true
+AddPrecommitUpdateCI: false
+AddTagBotCI: true
+AddTestCI: true
+AddWinToCI: false
+Authors: David Nadlinger <code@klickverbot.at>
+CheckExplicitImports: true
+ConfigIndentation: 2
+ExplicitImportsChecklist: all
+GitHubActionVersionAutoUpdate: dependabot
+JuliaCompatAutoUpdate: dependabot
+JuliaIndentation: 4
+JuliaMinCIVersion: '1.12'
+JuliaMinVersion: '1.12'
+License: GPL-3.0
+LicenseCopyrightHolders: David Nadlinger
+MarkdownIndentation: 2
+PackageName: Levels
+PackageOwner: dnadlinger
+PackageUUID: 055aa6da-9798-5fc9-bbfd-d3a3424316fe
+RunJuliaNightlyOnCI: true
+StrategyConfirmIncluded: true
+StrategyLevel: 3
+StrategyReviewExcluded: true
+TestingStrategy: testitem_basic
+UseCirrusCI: false
+_src_path: /Users/dpn/.julia/packages/BestieTemplate/6QVd6
