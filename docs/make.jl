@@ -1,7 +1,7 @@
 using Levels
 using Documenter
 
-DocMeta.setdocmeta!(Levels, :DocTestSetup, :(using Levels); recursive = true)
+DocMeta.setdocmeta!(Levels, :DocTestSetup, :(using Levels); recursive=true)
 
 # Add titles of sections and overrides page titles
 const titles = Dict(
@@ -28,10 +28,10 @@ function recursively_list_pages(folder; path_prefix="")
             # Ignore empty folders
             if length(subsection) > 0
                 title = if haskey(titles, relpath)
-                titles[relpath]
+                    titles[relpath]
                 else
-                @error "Bad usage: '$relpath' does not have a title set. Fix in 'docs/make.jl'"
-                relpath
+                    @error "Bad usage: '$relpath' does not have a title set. Fix in 'docs/make.jl'"
+                    relpath
                 end
                 push!(pages_list, title => subsection)
             end
@@ -59,12 +59,12 @@ function list_pages()
 end
 
 makedocs(;
-    modules = [Levels],
-    authors = "David Nadlinger <code@klickverbot.at>",
-    repo = "https://github.com/dnadlinger/Levels.jl/blob/{commit}{path}#{line}",
-    sitename = "Levels.jl",
-    format = Documenter.HTML(; canonical = "https://dnadlinger.github.io/Levels.jl"),
-    pages = list_pages(),
+    modules=[Levels],
+    authors="David Nadlinger <code@klickverbot.at>",
+    repo="https://github.com/dnadlinger/Levels.jl/blob/{commit}{path}#{line}",
+    sitename="Levels.jl",
+    format=Documenter.HTML(; canonical="https://dnadlinger.github.io/Levels.jl"),
+    pages=list_pages(),
 )
 
-deploydocs(; repo = "github.com/dnadlinger/Levels.jl")
+deploydocs(; repo="github.com/dnadlinger/Levels.jl")
