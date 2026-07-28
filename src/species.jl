@@ -72,9 +72,11 @@ This is the reciprocal of the sum for all the decay rates from the level.
 
 Returns null if there are no decay channels defined from the given level.
 """
-function lifetime(species::NoHyperfineOneElectronSpecies, level)::Union{Quantity,Nothing}
+function lifetime(
+    species::NoHyperfineOneElectronSpecies,
+    level,
+)::Union{Quantity,Nothing}
     nhns = convert(NoHyperfineNumberSpec, level)
-    @show species.einstein_as
     as = values(filter(((l, v),) -> l[2] == nhns, species.einstein_as))
     if isempty(as)
         return nothing
@@ -93,4 +95,5 @@ function saturation_intensity(species::NoHyperfineOneElectronSpecies, lower, upp
     uconvert(W / m^2, u"ħ" * ω^3 / (6 * π * τ * u"c"^2))
 end
 
-export Species, NoHyperfineOneElectronSpecies, einstein_a, lifetime, saturation_intensity
+export Species,
+    NoHyperfineOneElectronSpecies, einstein_a, lifetime, saturation_intensity

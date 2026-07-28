@@ -34,22 +34,39 @@ function gauss_intensity(
     power,
     waist,
     wavelength;
-    r_offset = zero_like(waist),
-    z_offset = zero_like(waist),
+    r_offset=zero_like(waist),
+    z_offset=zero_like(waist),
 )
     gauss_intensity(
         power,
-        GaussBeamParams(waist, zero_like(waist), wavelength),
-        r_offset = r_offset,
-        z_pos = z_offset,
+        GaussBeamParams(waist, zero_like(waist), wavelength);
+        r_offset=r_offset,
+        z_pos=z_offset,
     )
 end
 
+"""
+Returns the intensity at the given point of the given Gaussian beam with the
+specified total power.
+
+Parameters
+----------
+power
+    The optical power integrated over the whole beam profile.
+beam
+    The beam parameters, including the position of the waist along the direction
+    of propagation.
+r_offset
+    If given, the distance of the point from the beam axis. Defaults to on-axis.
+z_pos
+    If given, the position of the point along the direction of propagation, in
+    the same frame of reference as `beam.waist_pos`. Defaults to the waist.
+"""
 function gauss_intensity(
     power,
     beam::GaussBeamParams;
-    r_offset = zero_like(waist),
-    z_pos = zero_like(waist),
+    r_offset=zero_like(beam.waist_radius),
+    z_pos=beam.waist_pos,
 )
     raleigh_range = π * beam.waist_radius^2 / beam.wavelength
     radius = beam.waist_radius * sqrt(1 + ((z_pos - beam.waist_pos) / raleigh_range)^2)
