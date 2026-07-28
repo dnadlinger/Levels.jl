@@ -56,7 +56,7 @@ function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
 
     # Parse numerator.
     fraction_idx = findfirst(isequal('/'), val)
-    if fraction_idx < 2
+    if isnothing(fraction_idx) || fraction_idx < 2
         throw(ArgumentError("Expected fractional total angular momentum quantum number, not '$val': $(s.val)"))
     end
 
@@ -69,7 +69,6 @@ function convert(::Type{NoHyperfineNumberSpec}, s::SpectroscopicSpec)
 
     # Skip fraction slash.
     val = val[fraction_idx + 1 : end]
-
     if length(val) == 0
         throw(ArgumentError("Expected denominator for total angular momentum quantum number: $(s.val)"))
     end
