@@ -37,11 +37,10 @@ pkg> activate
 pkg> add JuliaFormatter
 ```
 
-To install `pre-commit`, we recommend using [pipx](https://pipx.pypa.io) as follows:
+To install `pre-commit`, we recommend using [uv](https://uv.astral.sh) as follows:
 
 ```bash
-# Install pipx following the link
-pipx install pre-commit
+uv tool install pre-commit
 ```
 
 With `pre-commit` installed, activate it as a pre-commit hook:
