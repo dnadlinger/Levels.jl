@@ -19,8 +19,13 @@ photon energy.
   "Precision measurement of the branching fractions of the 5p ²P₁/₂ state in ⁸⁸Sr⁺
   with a single ion in a microfabricated surface trap", Phys. Rev. A **93**, 052507
   (2016), [doi:10.1103/PhysRevA.93.052507](https://doi.org/10.1103/PhysRevA.93.052507).
+- `[AME2020]`: M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi, "The
+  AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
+  C **45**, 030003 (2021),
+  [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
 """
 const sr88 = NoHyperfineOneElectronSpecies(
+    87.905612253u"u", # …(6), neutral atom [AME2020]
     Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
             "S_1/2" => 0J,

@@ -9,7 +9,16 @@ abstract type Species end
 Atomic species with only one (relevant) electron – all configurations spin-1/2 –
 and no hyperfine structure.
 """
-struct NoHyperfineOneElectronSpecies{E<:Quantity,A<:Quantity} <: Species
+struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <: Species
+    """
+    The atomic mass.
+
+    Conventionally that of the neutral atom; the difference to the bare ion mass
+    is negligible for the current uses (e.g. the reduced-mass correction in
+    [`lande_g`](@ref) is only affected at the ``10^{-10}`` level).
+    """
+    mass::M
+
     """
     Energies for different levels.
 
