@@ -134,5 +134,54 @@ struct StateSpec{L<:LevelSpec}
     m::Rational{Int}
 end
 
-export LevelSpec, NoHyperfineNumberSpec, StateSpec, SpectroscopicSpec
+"""
+    StateSpec(level, m)
+
+Creates a state specification from any level specification and the total angular
+momentum projection `m`.
+
+Strings are parsed as spectroscopic notation into the canonical
+[`NoHyperfineNumberSpec`](@ref) form.
+"""
+StateSpec(level::LevelSpec, m::Union{Integer,Rational}) =
+    StateSpec{typeof(level)}(level, m)
+StateSpec(level::AbstractString, m::Union{Integer,Rational}) =
+    StateSpec(convert(NoHyperfineNumberSpec, level), m)
+
+"""
+    convert(::Type{StateSpec{L}}, s::StateSpec)
+
+Converts the level part of a state specification, e.g. into its canonical
+`StateSpec{NoHyperfineNumberSpec}` form from one given in spectroscopic notation.
+"""
+Base.convert(::Type{StateSpec{L}}, s::StateSpec) where {L<:LevelSpec} =
+    StateSpec(convert(L, s.level), s.m)
+
+"""
+    state_pairs(lower_level, upper_level; Δm)
+
+Enumerates the transitions between the Zeeman states of the two given levels, as
+`lower => upper` pairs of [`StateSpec`](@ref)s.
+
+`Δm` is a collection giving the allowed values of the signed projection difference
+`upper.m - lower.m`. There is no default, as the appropriate choice depends on the
+multipole order of the transition and the field geometry; e.g. `Δm = -1:1` covers
+electric-dipole transitions, and `Δm = [-2, -1, 1, 2]` the eight ⁸⁸Sr⁺
+S``_{1/2}`` ↔ D``_{5/2}`` components observed with the ``Δm = 0`` quadrupole
+amplitude suppressed by geometry.
+
+The pairs are ordered by increasing lower-state `m`, then upper-state `m`; re-sort
+as needed, e.g. by magnetic-field sensitivity using [`zeeman_sensitivity`](@ref).
+"""
+function state_pairs(lower_level, upper_level; Δm)
+    lower = convert(NoHyperfineNumberSpec, lower_level)
+    upper = convert(NoHyperfineNumberSpec, upper_level)
+    [
+        StateSpec(lower, m_lower) => StateSpec(upper, m_upper) for
+        m_lower in (-lower.j):(lower.j) for
+        m_upper in (-upper.j):(upper.j) if m_upper - m_lower in Δm
+    ]
+end
+
+export LevelSpec, NoHyperfineNumberSpec, StateSpec, SpectroscopicSpec, state_pairs
 public ORBITAL_SYMBOLS

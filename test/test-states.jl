@@ -21,3 +21,36 @@
     @test_throws ArgumentError NoHyperfineNumberSpec("D_1/2}")
     @test_throws ArgumentError NoHyperfineNumberSpec("D_{1/2")
 end
+
+@testitem "StateSpec construction" tags=[:unit, :fast] begin
+    @test StateSpec("D_5/2", 3//2) == StateSpec(NoHyperfineNumberSpec(2, 5//2), 3//2)
+    @test StateSpec("P_1/2", 1//2).m == 1//2
+
+    # Integer projections convert to the rational field type.
+    @test StateSpec("P_1/2", 0).m == 0//1
+
+    # Spectroscopic level parts canonicalise via convert.
+    spectro = StateSpec(SpectroscopicSpec("D_5/2"), 3//2)
+    @test convert(StateSpec{NoHyperfineNumberSpec}, spectro) == StateSpec("D_5/2", 3//2)
+end
+
+@testitem "state_pairs" tags=[:unit, :fast] begin
+    # The eight quadrupole components observable with Δm = 0 suppressed.
+    e2 = state_pairs("S_1/2", "D_5/2"; Δm=[-2, -1, 1, 2])
+    @test length(e2) == 8
+    @test all(p -> abs(p.second.m - p.first.m) in 1:2, e2)
+    @test (StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -5//2)) in e2
+    @test !((StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -1//2)) in e2)
+
+    @test length(state_pairs("S_1/2", "D_5/2"; Δm=-2:2)) == 10
+
+    # E1-type enumeration, and a Δm = 0 (π-transition) singleton collection.
+    @test length(state_pairs("S_1/2", "P_1/2"; Δm=-1:1)) == 4
+    @test state_pairs("S_1/2", "P_1/2"; Δm=0) == [
+        StateSpec("S_1/2", -1//2) => StateSpec("P_1/2", -1//2),
+        StateSpec("S_1/2", 1//2) => StateSpec("P_1/2", 1//2),
+    ]
+
+    # Δm is deliberately without default.
+    @test_throws UndefKeywordError state_pairs("S_1/2", "D_5/2")
+end
