@@ -7,6 +7,7 @@ DocMeta.setdocmeta!(Levels, :DocTestSetup, :(using Levels); recursive=true)
 const titles = Dict(
     # "10-tutorials" => "Tutorials", # example folder title
     "91-developer.md" => "Developer docs",
+    "95-reference" => "API reference",
 )
 
 function recursively_list_pages(folder; path_prefix="")
