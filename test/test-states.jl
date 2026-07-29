@@ -10,6 +10,11 @@
     @test is_lj("D5/2", 2, 5//2)
     @test is_lj("D5//2", 2, 5//2)
 
+    # Not just `String`s; any `AbstractString` will do.
+    @test is_lj(split("D_5/2 (metastable)")[1], 2, 5//2)
+
+    @test_throws ArgumentError NoHyperfineNumberSpec("X_1/2")
+    @test_throws ArgumentError NoHyperfineNumberSpec("")
     @test_throws ArgumentError NoHyperfineNumberSpec("D_5//2a")
     @test_throws ArgumentError NoHyperfineNumberSpec("D_52")
     @test_throws ArgumentError NoHyperfineNumberSpec("D_a")
