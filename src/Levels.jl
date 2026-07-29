@@ -3,6 +3,7 @@ module Levels
 include("optics_utils.jl")
 
 include("states.jl")
+include("basis.jl")
 
 include("species.jl")
 include("species_data.jl")
