@@ -6,7 +6,7 @@ The state for a given index is available by direct indexing, and iteration yield
 the states in index order. The reverse lookups are [`stateindex`](@ref) for a
 single state and [`staterange`](@ref) for the index block of a whole level.
 """
-struct StateBasis{L<:LevelSpec}
+Base.@kwdef struct StateBasis{L<:LevelSpec}
     "The states in index order."
     states::Vector{StateSpec{L}}
 
@@ -33,10 +33,10 @@ function StateBasis(states::AbstractVector{<:StateSpec})
     if isempty(states)
         throw(ArgumentError("At least one state is required to make up a basis"))
     end
-    canonical = [convert(StateSpec{NoHyperfineNumberSpec}, s) for s in states]
+    states = [convert(StateSpec{NoHyperfineNumberSpec}, s) for s in states]
 
     indices = Dict{StateSpec{NoHyperfineNumberSpec},Int}()
-    for (i, state) in enumerate(canonical)
+    for (i, state) in enumerate(states)
         j = state.level.j
         if abs(state.m) > j || !isinteger(j - state.m)
             throw(
@@ -51,16 +51,16 @@ function StateBasis(states::AbstractVector{<:StateSpec})
         indices[state] = i
     end
 
-    levels = unique!([s.level for s in canonical])
+    levels = unique!([s.level for s in states])
     level_ranges = Dict{NoHyperfineNumberSpec,UnitRange{Int}}()
     for level in levels
-        idxs = [i for (i, s) in enumerate(canonical) if s.level == level]
+        idxs = [i for (i, s) in enumerate(states) if s.level == level]
         if maximum(idxs) - minimum(idxs) + 1 == length(idxs)
             level_ranges[level] = minimum(idxs):maximum(idxs)
         end
     end
 
-    StateBasis(canonical, indices, levels, level_ranges)
+    StateBasis(; states, indices, levels, level_ranges)
 end
 
 """

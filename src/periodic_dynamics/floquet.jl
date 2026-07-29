@@ -73,7 +73,7 @@ A [`DrivenTransition`](@ref) with both manifolds dressed by its harmonic drives
 The quasienergies `ε_lower`/`ε_upper` and periodic Floquet modes
 `u_lower`/`u_upper` follow the conventions of [`dress_manifold`](@ref).
 """
-struct DressedTransition{DT<:DrivenTransition,E<:Quantity}
+Base.@kwdef struct DressedTransition{DT<:DrivenTransition,E<:Quantity}
     dt::DT
     ε_lower::Vector{E}
     u_lower::Array{ComplexF64,3}
@@ -104,7 +104,7 @@ function dress(dt::DrivenTransition; nharm::Int=8, ngrid::Int=256)
         nharm,
         ngrid,
     )
-    DressedTransition(dt, ε_lower, u_lower, ε_upper, u_upper)
+    DressedTransition(; dt, ε_lower, u_lower, ε_upper, u_upper)
 end
 
 """

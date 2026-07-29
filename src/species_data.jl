@@ -24,9 +24,9 @@ photon energy.
   C **45**, 030003 (2021),
   [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
 """
-const sr88 = NoHyperfineOneElectronSpecies(
-    87.905612253u"u", # …(6), neutral atom [AME2020]
-    Dict(
+const sr88 = NoHyperfineOneElectronSpecies(;
+    mass=87.905612253u"u", # …(6), neutral atom [AME2020]
+    energies=Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
             "S_1/2" => 0u"J",
             "D_3/2" => σ_to_energy(14555.90 / u"cm"), # [Sansonetti2012]
@@ -35,7 +35,7 @@ const sr88 = NoHyperfineOneElectronSpecies(
             "P_3/2" => σ_to_energy(24516.65 / u"cm"), # [Sansonetti2012]
         ]
     ),
-    Dict(
+    einstein_as=Dict(
         convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
         (k, v) in [
             ("S_1/2", "P_3/2") => 141u"µs^-1", # …(2) [Sansonetti2012]

@@ -6,7 +6,7 @@ Parameters of a Gaussian beam propagating along the ``z`` axis.
 Generic over the type; the code supports both unitful quantities and symbolic
 expressions.
 """
-struct GaussBeamParams{T}
+Base.@kwdef struct GaussBeamParams{T}
     "The ``1/e^2``-radius of the beam at its waist."
     waist_radius::T
 
@@ -52,7 +52,7 @@ function gauss_intensity(
 )
     gauss_intensity(
         power,
-        GaussBeamParams(waist, zero_like(waist), wavelength);
+        GaussBeamParams(; waist_radius=waist, waist_pos=zero_like(waist), wavelength);
         r_offset,
         z_pos=z_offset,
     )

@@ -31,12 +31,10 @@ frequency.
 For excess micromotion at the trap rf frequency, ``β_\\cos`` is the in-phase and
 ``β_\\sin`` the quadrature modulation index.
 """
-struct HarmonicPhaseModulation
-    β_cos::Float64
-    β_sin::Float64
+Base.@kwdef struct HarmonicPhaseModulation
+    β_cos::Float64 = 0.0
+    β_sin::Float64 = 0.0
 end
-
-HarmonicPhaseModulation() = HarmonicPhaseModulation(0.0, 0.0)
 
 """
 Returns a plain function mapping the time in seconds (`Float64`) to the laser
@@ -69,7 +67,7 @@ can serve e.g. a whole modulation-index scan.
 Constructed via the `DrivenTransition(species, basis, probe; ...)` method; all
 fields are in angular frequency units.
 """
-struct DrivenTransition{
+Base.@kwdef struct DrivenTransition{
     B<:StateBasis,
     F<:Quantity,
     E<:Quantity,
@@ -186,20 +184,20 @@ function DrivenTransition(
 
     # Store all matrices in one common unit; the concrete element type also keeps
     # the drive vector typed when it is empty.
-    coupling_common = uconvert.(u"µs^-1", complex.(coupling))
-    drives_common = HarmonicDrive{typeof(coupling_common)}[
+    coupling = uconvert.(u"µs^-1", complex.(coupling))
+    drives = HarmonicDrive{typeof(coupling)}[
         HarmonicDrive(uconvert.(u"µs^-1", complex.(d.amplitude)), d.phase) for
         d in drives
     ]
 
-    DrivenTransition(
+    DrivenTransition(;
         basis,
         drive_frequency,
         frame,
-        drives_common,
-        coupling_common,
-        stateindex(basis, lower_state),
-        stateindex(basis, upper_state),
+        drives,
+        coupling,
+        lower=stateindex(basis, lower_state),
+        upper=stateindex(basis, upper_state),
         lower_range,
         upper_range,
     )

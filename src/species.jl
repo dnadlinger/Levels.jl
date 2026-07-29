@@ -9,7 +9,8 @@ abstract type Species end
 Atomic species with only one (relevant) electron – all configurations spin-1/2 –
 and no hyperfine structure.
 """
-struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <: Species
+Base.@kwdef struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
+                   Species
     """
     The atomic mass.
 
