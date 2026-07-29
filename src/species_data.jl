@@ -7,7 +7,7 @@ photon energy.
 σ_to_energy(σ) = u"ħ" * 2π * u"c" * σ
 
 """
-88Sr+ ion.
+⁸⁸Sr⁺ ion.
 """
 const sr88 = NoHyperfineOneElectronSpecies(
     Dict(
