@@ -12,5 +12,6 @@ include("zeeman.jl")
 include("species_data.jl")
 
 include("rates.jl")
+include("multipole.jl")
 
 end # module
