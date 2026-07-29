@@ -3,7 +3,7 @@ name: Test
 on:
   push:
     branches:
-      - main
+      - master
     tags: ["*"]
   workflow_dispatch:
 
@@ -26,8 +26,7 @@ jobs:
           - "1"
         os:
           - ubuntu-latest
-          
-          
+
         arch:
           - x64
         allow_failure: [false]
@@ -36,4 +35,3 @@ jobs:
             os: ubuntu-latest
             arch: x64
             allow_failure: true
-          
