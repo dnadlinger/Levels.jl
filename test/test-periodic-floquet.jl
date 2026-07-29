@@ -88,7 +88,7 @@ end
     path1 = (-3//2, 1//2, C1)    # laser Δm = −2, then rf photon within D
     path2 = (-5//2, -1//2, C2)   # rf photon within S, then laser Δm = −2
     function coupling_for(paths...)
-        L = zeros(ComplexF64, length(BASIS), length(BASIS)) .* u"kHz"
+        L = zeros(ComplexF64, length(BASIS), length(BASIS)) .* u"ms^-1"
         for (m_upper, m_lower, c) in paths
             L[
                 stateindex(BASIS, "D_5/2", m_upper),
@@ -117,8 +117,8 @@ end
     Ω_b1 = lande_g(sr88, "D_5/2") * μ_B * B_perp / u"ħ" * sqrt(5) / 2  # ⟨−5/2|J₋|−3/2⟩ = √5
     Ω_b2 = lande_g(sr88, "S_1/2") * μ_B * B_perp / u"ħ" / 2            # ⟨−1/2|J₋|+1/2⟩ = 1
     for (sb, s) in ((-1, +1), (+1, -1))   # RSB: mediator detuning Ω_rf + ω_z; BSB: −
-        t1 = uconvert(u"kHz", C1 * Ω_probe * Ω_b1 / (2 * (Ω_rf + s * ω_zD)))
-        t2 = uconvert(u"kHz", C2 * Ω_probe * Ω_b2 / (2 * (Ω_rf + s * ω_zS)))
+        t1 = uconvert(u"ms^-1", C1 * Ω_probe * Ω_b1 / (2 * (Ω_rf + s * ω_zD)))
+        t2 = uconvert(u"ms^-1", C2 * Ω_probe * Ω_b2 / (2 * (Ω_rf + s * ω_zS)))
         @test twophoton(coupling_for(path1), sb) ≈ t1 rtol = 1e-3
         @test twophoton(coupling_for(path2), sb) ≈ t2 rtol = 1e-3
         both = twophoton(coupling_for(path1, path2), sb)

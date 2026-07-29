@@ -56,9 +56,9 @@
     δ = 2π * 1.0u"kHz"
     Hδ = full_hamiltonian(dt, t; δ, modulation)
     for k in 1:length(basis)
-        expected = k in staterange(basis, "D_5/2") ? -δ : 0.0u"kHz"
-        # (atol set by float cancellation against the MHz-scale diagonal)
-        @test Hδ[k, k] - H0[k, k] ≈ expected atol = 1e-9u"kHz"
+        expected = k in staterange(basis, "D_5/2") ? -δ : 0.0u"ms^-1"
+        # (atol set by float cancellation against the µs^-1-scale diagonal)
+        @test Hδ[k, k] - H0[k, k] ≈ expected atol = 1e-9u"ms^-1"
     end
 
     # A callable phase modulation reproduces the harmonic one.
@@ -73,7 +73,7 @@
 
     # At t = 0 with φ = π/2 the harmonic drive contributes nothing.
     Hstart = full_hamiltonian(dt, 0.0u"s")
-    @test Hstart[il, il] ≈ 0.0u"MHz" atol = 1e-12u"MHz"
+    @test Hstart[il, il] ≈ 0.0u"µs^-1" atol = 1e-12u"µs^-1"
     @test Hstart[iu, il] ≈ L[iu, il] / 2
 end
 
@@ -119,7 +119,7 @@ end
 
     # Couplings outside the upper⟨row|lower⟩⟨col| block are rejected.
     bad = copy(L)
-    bad[stateindex(basis, probe.first), stateindex(basis, probe.second)] = 1.0u"kHz"
+    bad[stateindex(basis, probe.first), stateindex(basis, probe.second)] = 1.0u"ms^-1"
     @test_throws ArgumentError DrivenTransition(
         sr88,
         basis,
@@ -129,8 +129,8 @@ end
     )
 
     # Harmonic drives must be block-diagonal in the levels.
-    amplitude = zeros(ComplexF64, 8, 8) * u"MHz"
-    amplitude[3, 1] = amplitude[1, 3] = 1.0u"MHz"
+    amplitude = zeros(ComplexF64, 8, 8) * u"µs^-1"
+    amplitude[3, 1] = amplitude[1, 3] = 1.0u"µs^-1"
     @test_throws ArgumentError DrivenTransition(
         sr88,
         basis,

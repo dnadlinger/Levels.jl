@@ -18,7 +18,7 @@ end
     d_up = StateSpec("D_5/2", 5//2)
 
     shift = zeeman_shift(sr88, s_up, 0.5u"mT")
-    @test shift ≈ uconvert(u"MHz", lande_g(sr88, "S_1/2") / 2 * μ_B * 0.5u"mT" / u"ħ")
+    @test shift ≈ uconvert(u"µs^-1", lande_g(sr88, "S_1/2") / 2 * μ_B * 0.5u"mT" / u"ħ")
     @test zeeman_shift(sr88, StateSpec("S_1/2", -1//2), 0.5u"mT") ≈ -shift
 
     # χ of the strongest S ↔ D transition, in the (non-angular) units of thesis
@@ -66,7 +66,7 @@ end
     μ_B = Unitful.q * u"ħ" / (2 * Unitful.me)
     for (level, j, r) in (("S_1/2", 1//2, s_range), ("D_5/2", 5//2, d_range))
         bj = B[1] * jx_matrix(j) + B[2] * jy_matrix(j) + B[3] * Matrix(jz_matrix(j))
-        expected = uconvert.(u"MHz", lande_g(sr88, level) * μ_B / u"ħ" * bj)
+        expected = uconvert.(u"µs^-1", lande_g(sr88, level) * μ_B / u"ħ" * bj)
         @test H[r, r] ≈ expected
     end
 

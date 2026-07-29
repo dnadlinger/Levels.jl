@@ -178,7 +178,7 @@ function DrivenTransition(
     frame = map(collect(basis)) do state
         reference = state.level == lower_state.level ? lower_state : upper_state
         uconvert(
-            u"MHz",
+            u"µs^-1",
             zeeman_shift(species, state, static_field) -
             zeeman_shift(species, reference, static_field),
         )
@@ -186,17 +186,18 @@ function DrivenTransition(
 
     # Store all matrices in one common unit; the concrete element type also keeps
     # the drive vector typed when it is empty.
-    coupling_mhz = uconvert.(u"MHz", complex.(coupling))
-    drives_mhz = HarmonicDrive{typeof(coupling_mhz)}[
-        HarmonicDrive(uconvert.(u"MHz", complex.(d.amplitude)), d.phase) for d in drives
+    coupling_common = uconvert.(u"µs^-1", complex.(coupling))
+    drives_common = HarmonicDrive{typeof(coupling_common)}[
+        HarmonicDrive(uconvert.(u"µs^-1", complex.(d.amplitude)), d.phase) for
+        d in drives
     ]
 
     DrivenTransition(
         basis,
         drive_frequency,
         frame,
-        drives_mhz,
-        coupling_mhz,
+        drives_common,
+        coupling_common,
         stateindex(basis, lower_state),
         stateindex(basis, upper_state),
         lower_range,

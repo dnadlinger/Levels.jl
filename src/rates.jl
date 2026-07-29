@@ -28,7 +28,7 @@ function rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity)
     cg = clebsch_gordan(lower, upper)
     a = einstein_a(species, lower.level, upper.level)
     τ = lifetime(species, upper.level)
-    uconvert(u"kHz", sqrt(intensity / i0 * cg^2 * a / τ))
+    uconvert(u"ms^-1", sqrt(intensity / i0 * cg^2 * a / τ))
 end
 
 export rabi_frequency

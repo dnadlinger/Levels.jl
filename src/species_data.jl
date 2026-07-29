@@ -1,4 +1,4 @@
-using Unitful.DefaultSymbols
+using Unitful
 
 """
 Converts a spectroscopic wavenumber (inverse wavelength) to the transition
@@ -28,23 +28,23 @@ const sr88 = NoHyperfineOneElectronSpecies(
     87.905612253u"u", # …(6), neutral atom [AME2020]
     Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
-            "S_1/2" => 0J,
-            "D_3/2" => σ_to_energy(14555.90 / cm), # [Sansonetti2012]
-            "D_5/2" => σ_to_energy(14836.24 / cm), # [Sansonetti2012]
-            "P_1/2" => σ_to_energy(23715.19 / cm), # [Sansonetti2012]
-            "P_3/2" => σ_to_energy(24516.65 / cm), # [Sansonetti2012]
+            "S_1/2" => 0u"J",
+            "D_3/2" => σ_to_energy(14555.90 / u"cm"), # [Sansonetti2012]
+            "D_5/2" => σ_to_energy(14836.24 / u"cm"), # [Sansonetti2012]
+            "P_1/2" => σ_to_energy(23715.19 / u"cm"), # [Sansonetti2012]
+            "P_3/2" => σ_to_energy(24516.65 / u"cm"), # [Sansonetti2012]
         ]
     ),
     Dict(
         convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
         (k, v) in [
-            ("S_1/2", "P_3/2") => 141MHz, # …(2) [Sansonetti2012]
-            ("S_1/2", "P_1/2") => 127.9MHz, # …(1.3) [Likforman2016]
-            ("S_1/2", "D_5/2") => 2.559Hz, # …(10) [Sansonetti2012]
-            ("S_1/2", "D_3/2") => 2.299Hz, # …(21) [Sansonetti2012]
-            ("D_3/2", "P_1/2") => 7.46MHz, # …(14) [Likforman2016]
-            ("D_3/2", "P_3/2") => 1.0MHz, # …(2) [Sansonetti2012]
-            ("D_5/2", "P_3/2") => 8.7MHz, # …(15) [Sansonetti2012]
+            ("S_1/2", "P_3/2") => 141u"µs^-1", # …(2) [Sansonetti2012]
+            ("S_1/2", "P_1/2") => 127.9u"µs^-1", # …(1.3) [Likforman2016]
+            ("S_1/2", "D_5/2") => 2.559u"s^-1", # …(10) [Sansonetti2012]
+            ("S_1/2", "D_3/2") => 2.299u"s^-1", # …(21) [Sansonetti2012]
+            ("D_3/2", "P_1/2") => 7.46u"µs^-1", # …(14) [Likforman2016]
+            ("D_3/2", "P_3/2") => 1.0u"µs^-1", # …(2) [Sansonetti2012]
+            ("D_5/2", "P_3/2") => 8.7u"µs^-1", # …(15) [Sansonetti2012]
         ]
     ),
 )

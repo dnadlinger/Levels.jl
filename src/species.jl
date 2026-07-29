@@ -52,7 +52,7 @@ function transition_frequency(species::NoHyperfineOneElectronSpecies, lower, upp
         throw(ArgumentError("'$lower' is of higher energy than '$upper'"))
     end
 
-    uconvert(u"THz", (e2 - e1) / u"ħ")
+    uconvert(u"ps^-1", (e2 - e1) / u"ħ")
 end
 
 """

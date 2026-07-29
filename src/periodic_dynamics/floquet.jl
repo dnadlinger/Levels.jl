@@ -15,10 +15,10 @@ quasienergy (in angular frequency units, like `H0`), and `U[:, it, α]` the
 periodic part ``u_α(t)`` sampled on `ngrid` uniform times over one drive period.
 """
 function dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid)
-    # Strip to a common frequency unit for the eigensolver.
-    h0 = ustrip.(u"MHz", H0.diag)
-    h1 = ustrip.(u"MHz", H1)
-    Ω_MHz = ustrip(u"MHz", Ω)
+    # Strip to a common inverse-time unit for the eigensolver.
+    h0 = ustrip.(u"µs^-1", H0.diag)
+    h1 = ustrip.(u"µs^-1", H1)
+    Ω_common = ustrip(u"µs^-1", Ω)
 
     d = length(h0)
     dim = (2 * nharm + 1) * d
@@ -26,7 +26,7 @@ function dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid)
     for k in (-nharm):nharm
         i0 = (k + nharm) * d
         for α in 1:d
-            F[i0+α, i0+α] = h0[α] + k * Ω_MHz
+            F[i0+α, i0+α] = h0[α] + k * Ω_common
         end
         if k < nharm
             i1 = i0 + d   # row block k + 1, column block k: coefficient of e^{+iΩt}
@@ -48,7 +48,7 @@ function dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid)
             U[:, it, α] .+= v[:, k+nharm+1] .* cis(k * θ)
         end
     end
-    ε .* u"MHz", U
+    ε .* u"µs^-1", U
 end
 
 """
@@ -58,7 +58,7 @@ Fourier components (harmonics 0 and +1) of the laser-free Hamiltonian of a
 """
 function manifold_blocks(dt::DrivenTransition, r::UnitRange{Int})
     H0 = Diagonal(dt.frame[r])
-    H1 = zeros(ComplexF64, length(r), length(r)) .* u"MHz"
+    H1 = zeros(ComplexF64, length(r), length(r)) .* u"µs^-1"
     for drive in dt.drives
         H1 .+= (0.5 * cis(drive.phase)) .* drive.amplitude[r, r]
     end
@@ -143,13 +143,13 @@ function sideband_amplitude(
 
     a = gn(sideband)
     (
-        Ω=uconvert(u"kHz", 2 * abs(a)),
+        Ω=uconvert(u"ms^-1", 2 * abs(a)),
         δ_res=uconvert(
-            u"MHz",
+            u"µs^-1",
             d.ε_upper[α_upper] - d.ε_lower[α_lower] + sideband * dt.drive_frequency,
         ),
-        amp=uconvert(u"kHz", a),
-        carrier=uconvert(u"kHz", 2 * abs(gn(0))),
+        amp=uconvert(u"ms^-1", a),
+        carrier=uconvert(u"ms^-1", 2 * abs(gn(0))),
     )
 end
 

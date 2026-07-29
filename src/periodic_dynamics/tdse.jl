@@ -138,8 +138,8 @@ function exact_sideband(
     )
 
     (
-        Ω=uconvert(u"kHz", Optim.minimum(result) * u"s^-1"),
-        δ_res=uconvert(u"MHz", Optim.minimizer(result) * u"s^-1"),
+        Ω=uconvert(u"ms^-1", Optim.minimum(result) * u"s^-1"),
+        δ_res=uconvert(u"µs^-1", Optim.minimizer(result) * u"s^-1"),
     )
 end
 
