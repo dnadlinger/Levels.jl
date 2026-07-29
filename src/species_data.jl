@@ -8,6 +8,17 @@ photon energy.
 
 """
 ⁸⁸Sr⁺ ion.
+
+# References
+
+- `[Sansonetti2012]`: J. E. Sansonetti, "Wavelengths, Transition Probabilities, and
+  Energy Levels for the Spectra of Strontium Ions (Sr II through Sr XXXVIII)",
+  J. Phys. Chem. Ref. Data **41**, 013102 (2012),
+  [doi:10.1063/1.3659413](https://doi.org/10.1063/1.3659413).
+- `[Likforman2016]`: J.-P. Likforman, V. Tugayé, S. Guibal, and L. Guidoni,
+  "Precision measurement of the branching fractions of the 5p ²P₁/₂ state in ⁸⁸Sr⁺
+  with a single ion in a microfabricated surface trap", Phys. Rev. A **93**, 052507
+  (2016), [doi:10.1103/PhysRevA.93.052507](https://doi.org/10.1103/PhysRevA.93.052507).
 """
 const sr88 = NoHyperfineOneElectronSpecies(
     Dict(
