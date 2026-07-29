@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning].
 ## [Unreleased]
 
 - Initial release
+- `StateBasis` for ordered Zeeman-state index bookkeeping, plus the generic
+  `state_pairs` transition enumeration between two levels
+- Zeeman structure: `lande_g` (LS coupling with reduced-mass correction, using
+  the new species `mass` field), `zeeman_shift`, `zeeman_sensitivity`, and
+  `zeeman_hamiltonian` for arbitrary field directions
+- Electric-quadrupole coupling geometry: `beam_vectors`, `quadrupole_geometry`,
+  `quadrupole_couplings`, and `rabi_normalised`
+- `Levels.PeriodicDynamics` submodule for transitions under periodic driving
+  (trap rf): the `DrivenTransition` rotating-frame model with ac Zeeman drives
+  and laser phase modulation, a dressed-state Floquet engine
+  (`dress`/`sideband_amplitude`), and an exact monodromy-matrix engine
+  (`exact_sideband`/`stroboscopic_populations`) as nonperturbative cross-check
 
 <!-- Links -->
 
