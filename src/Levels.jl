@@ -14,4 +14,6 @@ include("species_data.jl")
 include("rates.jl")
 include("multipole.jl")
 
+include("periodic_dynamics/PeriodicDynamics.jl")
+
 end # module

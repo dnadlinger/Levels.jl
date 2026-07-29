@@ -1,6 +1,7 @@
 [deps]
 Levels = "055aa6da-9798-5fc9-bbfd-d3a3424316fe"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
