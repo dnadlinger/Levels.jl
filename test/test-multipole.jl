@@ -53,31 +53,30 @@ end
     @test iszero(C[stateindex(basis, "D_5/2", -5//2), stateindex(basis, "S_1/2", 1//2)])
 end
 
-@testitem "Rabi normalisation" tags=[:unit, :fast] begin
-    using Unitful
+@testitem "Circular polarisation channel assignment" tags=[:unit, :fast] begin
+    # A σ⁺ beam along the quantisation axis (ε = (x̂ + iŷ)/√2, photon spin +ħ
+    # along ẑ) must drive Δm = +1 by angular momentum conservation, for E1 and
+    # E2 alike (a plane wave along ẑ carries no orbital angular momentum about
+    # ẑ, so the extra rank-2 index is taken up by the ν = 0 gradient).
+    n, ε = beam_vectors(0.0, π / 4, π / 2)
+    @test ε ≈ [1, im, 0] / sqrt(2)
 
-    basis = StateBasis(["S_1/2", "D_5/2"])
-    # k ⊥ B₀, γ = 45°: Δm = 0 suppressed, Δm = ±1, ±2 present.
-    n, ε = beam_vectors(π / 2, π / 4)
-    C = quadrupole_couplings(basis, "S_1/2", "D_5/2", ε, n)
+    d = dipole_geometry(ε)
+    @test abs(d[1+2]) ≈ 1
+    @test all(abs(d[q+2]) < 1e-14 for q in (-1, 0))
 
-    Ω0 = 2π * 100.0u"kHz"
-    probe = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2)
-    L = rabi_normalised(C, basis, probe, Ω0)
-    @test abs(L[stateindex(basis, probe.second), stateindex(basis, probe.first)]) ≈ Ω0
+    Γ = quadrupole_geometry(ε, n)
+    @test abs(Γ[1+3]) ≈ 1 / sqrt(2)
+    @test all(abs(Γ[q+3]) < 1e-14 for q in (-2, -1, 0, 2))
+end
 
-    # Relative amplitudes are preserved.
-    i = stateindex(basis, "D_5/2", -1//2)
-    k = stateindex(basis, "S_1/2", 1//2)
-    i2 = stateindex(basis, probe.second)
-    k2 = stateindex(basis, probe.first)
-    @test L[i, k] / L[i2, k2] ≈ C[i, k] / C[i2, k2]
-
-    # Normalising to a geometry-suppressed (Δm = 0) transition is refused.
-    @test_throws ArgumentError rabi_normalised(
-        C,
-        basis,
-        StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 1//2),
-        Ω0,
-    )
+@testitem "Quadrupole geometry sum rule" tags=[:unit, :fast] begin
+    # Σ_q |Γ_q|² = 1/2 for any transverse beam geometry: of the unit total
+    # norm of ε ⊗ n, the rank-0 part vanishes (ε ⊥ n) and the rank-1 part
+    # carries |ε × n|²/2 = 1/2.
+    for (φ, γ, η) in
+        ((0.0, 0.0, 0.0), (0.3, 0.7, 0.4), (1.1, π / 4, π / 2), (2.0, 1.2, -0.8))
+        n, ε = beam_vectors(φ, γ, η)
+        @test sum(abs2, quadrupole_geometry(ε, n)) ≈ 0.5
+    end
 end

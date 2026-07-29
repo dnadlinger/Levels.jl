@@ -24,9 +24,9 @@ zeeman_drive(species, basis, B; phase=0.0) =
     HarmonicDrive(zeeman_hamiltonian(species, basis, B), Float64(phase))
 
 """
-Sinusoidal phase modulation ``φ(t) = β_\\cos \\cos(Ω t) + β_\\sin \\sin(Ω t)`` of
-the laser coupling of a [`DrivenTransition`](@ref) at its fundamental drive
-frequency.
+Sinusoidal phase modulation
+``φ(t) = β_\\mathrm{cos} \\cos(Ω t) + β_\\mathrm{sin} \\sin(Ω t)`` of the laser coupling
+of a [`DrivenTransition`](@ref) at its fundamental drive frequency.
 
 For excess micromotion at the trap rf frequency, ``β_\\cos`` is the in-phase and
 ``β_\\sin`` the quadrature modulation index.
@@ -55,8 +55,10 @@ phase_function(modulation, _) = t -> float(modulation(t * u"s"))
 Rotating-frame (optical RWA) model of a laser-probed transition between the
 Zeeman states of two levels under periodic driving:
 
-``H(t) = \\mathrm{diag}(\\texttt{frame}) - δ P_\\mathrm{upper}
-+ \\sum_i X_i \\cos(Ω t + φ_i) + f(t) L + f(t)^* L^†``,
+```math
+H(t) = \\mathrm{diag}(\\texttt{frame}) - δ P_\\mathrm{upper}
++ \\sum_i X_i \\cos(Ω t + φ_i) + f(t) L + f(t)^* L^†,
+```
 
 with ``f(t) = e^{-i φ_\\mathrm{mod}(t)} / 2`` the laser phase-modulation factor.
 The laser detuning ``δ`` from the probed transition and the phase modulation

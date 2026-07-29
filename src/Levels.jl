@@ -11,8 +11,8 @@ include("species.jl")
 include("zeeman.jl")
 include("species_data.jl")
 
-include("rates.jl")
 include("multipole.jl")
+include("rates.jl")
 
 include("periodic_dynamics/PeriodicDynamics.jl")
 
