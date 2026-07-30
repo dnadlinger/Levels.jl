@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning].
   `zeeman_hamiltonian` for arbitrary field directions
 - Electric-quadrupole coupling geometry: `beam_vectors`, `quadrupole_geometry`,
   `quadrupole_couplings`, and `rabi_normalised`
+- ac Stark (light) shifts of states and transitions: `light_shift`, with the
+  atomic structure hoisted into a reusable `LightShiftCoefficients`, plus the
+  `scalar_polarisability`/`vector_polarisability`/`tensor_polarisability`
+  decomposition; driven by the new species `polarisabilities` field, populated
+  for the ⁸⁸Sr⁺ S``_{1/2}`` and D``_{5/2}`` clock levels
 - `Levels.PeriodicDynamics` submodule for transitions under periodic driving
   (trap rf): the `DrivenTransition` rotating-frame model with ac Zeeman drives
   and laser phase modulation, a dressed-state Floquet engine

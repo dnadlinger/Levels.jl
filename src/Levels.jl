@@ -13,6 +13,7 @@ include("species_data.jl")
 
 include("multipole.jl")
 include("rates.jl")
+include("polarisability.jl")
 
 include("periodic_dynamics/PeriodicDynamics.jl")
 
