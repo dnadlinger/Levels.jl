@@ -21,7 +21,7 @@ If this is the first time you work with this repository, follow the instructions
    ```
 
 This will ensure that you have two remotes in your git: `origin` and `upstream`.
-You will create branches and push to `origin`, and you will fetch and update your local `main` branch from `upstream`.
+You will create branches and push to `origin`, and you will fetch and update your local `master` branch from `upstream`.
 
 ## Linting and formatting
 
@@ -79,15 +79,15 @@ pkg> test
 
 We try to keep a linear history in this repo, so it is important to keep your branches up-to-date.
 
-1. Fetch from the remote and fast-forward your local main
+1. Fetch from the remote and fast-forward your local master
 
    ```bash
    git fetch upstream
-   git switch main
-   git merge --ff-only upstream/main
+   git switch master
+   git merge --ff-only upstream/master
    ```
 
-2. Branch from `main` to address the issue (see below for naming)
+2. Branch from `master` to address the issue (see below for naming)
 
    ```bash
    git switch -c 42-add-answer-universe
@@ -99,7 +99,7 @@ We try to keep a linear history in this repo, so it is important to keep your br
    git push -u origin 42-add-answer-universe
    ```
 
-4. Create a pull request to merge your remote branch into the org main.
+4. Create a pull request to merge your remote branch into the org master.
 
 ### Branch naming
 
@@ -122,11 +122,11 @@ We try to keep a linear history in this repo, so it is important to keep your br
 
 - Make sure the tests pass.
 - Make sure the pre-commit tests pass.
-- Fetch any `main` updates from upstream and rebase your branch, if necessary:
+- Fetch any `master` updates from upstream and rebase your branch, if necessary:
 
   ```bash
   git fetch upstream
-  git rebase upstream/main BRANCH_NAME
+  git rebase upstream/master BRANCH_NAME
   ```
 
 - Then you can open a pull request and work with the reviewer to address any issues.
@@ -156,7 +156,7 @@ To create a new release, you can follow these simple steps:
   - Add a new link in the bottom for version "x.y.z"
   - Change the "[unreleased]" link to use the latest version - end of line, `vx.y.z ... HEAD`.
 - Create a commit "Release vx.y.z", push, create a PR, wait for it to pass, merge the PR.
-- Go back to main screen and click on the latest commit (link: <https://github.com/dnadlinger/Levels.jl/commit/main>)
+- Go back to main screen and click on the latest commit (link: <https://github.com/dnadlinger/Levels.jl/commit/master>)
 - At the bottom, write `@JuliaRegistrator register`
 
 After that, you only need to wait and verify:
