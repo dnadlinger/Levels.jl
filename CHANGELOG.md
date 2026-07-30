@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning].
   `scalar_polarisability`/`vector_polarisability`/`tensor_polarisability`
   decomposition; driven by the new species `polarisabilities` field, populated
   for the ⁸⁸Sr⁺ S``_{1/2}`` and D``_{5/2}`` clock levels
+- Near-resonant electric-quadrupole light shifts — the shift a probed
+  quadrupole Zeeman component receives from the components sharing one of its
+  states, the "E2 ac Stark shift" of optical-clock evaluations:
+  `quadrupole_light_shift`, also folded into `light_shift` via the `n`/`B`
+  keyword arguments, with the per-channel geometry weights exposed as
+  `Levels.quadrupole_weights`
 - `Levels.PeriodicDynamics` submodule for transitions under periodic driving
   (trap rf): the `DrivenTransition` rotating-frame model with ac Zeeman drives
   and laser phase modulation, a dressed-state Floquet engine

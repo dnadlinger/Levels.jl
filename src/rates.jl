@@ -54,6 +54,9 @@ for electric-quadrupole transitions, with ``d_q`` and ``Γ_q`` the geometric
 channel amplitudes from [`dipole_geometry`](@ref) and
 [`quadrupole_geometry`](@ref).
 
+Only the directions of `ε` and `n` matter — both are normalised internally, as
+the field amplitude is fixed by the intensity.
+
 # References
 
 - `[James1998]`: D. F. V. James, "Quantum dynamics of cold trapped ions with
@@ -70,12 +73,17 @@ function rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, 
     ω = transition_frequency(species, lo, hi)
     rank = multipole_rank(lo, hi)
     Δm = upper.m - lower.m
+    ε_scale = sqrt(sum(abs2, ε))
+    n_scale = sqrt(sum(abs2, n))
+    if iszero(ε_scale) || (rank == 2 && iszero(n_scale))
+        throw(ArgumentError("Polarisation and beam direction must be non-zero"))
+    end
     prefactor, geometry = if abs(Δm) > rank
         0.0, 0.0im
     elseif rank == 1
-        6.0, dipole_geometry(ε)[Int(Δm)+2]
+        6.0, dipole_geometry(ε)[Int(Δm)+2] / ε_scale
     else
-        20.0, quadrupole_geometry(ε, n)[Int(Δm)+3]
+        20.0, quadrupole_geometry(ε, n)[Int(Δm)+3] / (ε_scale * n_scale)
     end
     scale = prefactor * π * u"c"^2 * intensity * a / (u"ħ" * ω^3)
     uconvert(u"µs^-1", sqrt(scale) * abs(clebsch_gordan(lower, upper) * geometry))

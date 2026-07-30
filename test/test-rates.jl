@@ -97,6 +97,10 @@ end
     # Clebsch–Gordan factor Λ = 1 [Roos, PhD thesis, Innsbruck (2000)].
     λ = 2π * u"c" / ω
     @test Ω ≈ sqrt(15 * a * λ^3 * intensity / (2π * u"h" * u"c")) / sqrt(12) rtol = 1e-9
+
+    # Only the directions of ε and n matter; the field amplitude is fixed by
+    # the intensity, so any scale (and an overall phase) must drop out.
+    @test rabi_frequency(sr88, lower, upper, intensity, cis(0.3) * 5ε, 3n) ≈ Ω
 end
 
 @testitem "Rabi frequencies vs coupling-matrix pipeline" tags=[:unit, :fast] begin

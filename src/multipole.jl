@@ -37,6 +37,20 @@ phases between the ``Δm`` channels are preserved.
 dipole_geometry(ε) = [(-1.0)^q * spherical_component(ε, -q) for q in -1:1]
 
 """
+The Clebsch–Gordan coefficients ``⟨1 μ; 1 ν | 2 (μ + ν)⟩`` coupling two rank-1
+tensors to rank two, indexed by `[μ + 2, ν + 2]`.
+
+These nine fixed numbers are tabulated rather than requested from WignerSymbols
+on each use, as [`quadrupole_geometry`](@ref) sits in the hot path of
+Rabi-frequency and light-shift evaluations.
+"""
+const RANK2_CG = [
+    1.0 sqrt(1 / 2) sqrt(1 / 6)
+    sqrt(1 / 2) sqrt(2 / 3) sqrt(1 / 2)
+    sqrt(1 / 6) sqrt(1 / 2) 1.0
+]
+
+"""
     quadrupole_geometry(ε, n)
 
 Returns the geometric amplitudes ``Γ_q`` of the electric-quadrupole coupling for
@@ -57,7 +71,7 @@ function quadrupole_geometry(ε, n)
         abs(ν) <= 1 || continue
         Γ[q+3] +=
             (-1.0)^q *
-            clebschgordan(1, μ, 1, ν, 2, -q) *
+            RANK2_CG[μ+2, ν+2] *
             spherical_component(ε, μ) *
             spherical_component(n, ν)
     end

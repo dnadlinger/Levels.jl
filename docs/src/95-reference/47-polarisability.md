@@ -16,6 +16,30 @@ Note that, unlike the electric-quadrupole Rabi frequency, an E1 light shift does
 not depend on the beam direction — only on the polarisation. The two therefore
 constrain different combinations of the beam parameters.
 
+## Near-resonant quadrupole shifts
+
+Those far-detuned dipole channels are not the whole story for a laser sitting on
+a narrow quadrupole line. Driving one Zeeman component also couples both of its
+states, off resonantly, to every other component sharing one of them, and the
+detunings involved are mere Zeeman splittings. Passing the beam direction and
+the magnetic flux density to [`light_shift`](@ref) as the `n` and `B` keyword
+arguments adds this contribution; [`quadrupole_light_shift`](@ref) returns it on
+its own, and — needing only the Einstein A coefficient rather than the
+[`LevelPolarisability`](@ref) data — also covers the S``_{1/2}`` → D``_{3/2}``
+line.
+
+Being second order in the coupling, the shift scales as the intensity over the
+field, so its size relative to the dipole shift is set by the field alone: for
+⁸⁸Sr⁺ at 674 nm it is of the same order at 0.5 mT, but up to two orders of
+magnitude larger at the 4.8 µT of an optical-clock field. What saves the clock
+is a symmetry rather than a small size — with a linear polarisation the two
+components of a ``±m`` Zeeman pair shift equally and oppositely, so the shift
+cancels in the pair average the servo is steered to, and only the ellipticity
+leaks through (`[Lindvall2025]`, Sec. III F 2).
+
+The perturbative treatment requires every Rabi frequency to be small against the
+Zeeman splittings, which is what breaks down as the field goes to zero.
+
 ```@autodocs
 Modules = [Levels]
 Pages = ["polarisability.jl"]

@@ -70,6 +70,15 @@ end
     @test all(abs(Γ[q+3]) < 1e-14 for q in (-2, -1, 0, 2))
 end
 
+@testitem "Rank-2 Clebsch–Gordan table" tags=[:unit, :fast] begin
+    using WignerSymbols: clebschgordan
+
+    # The tabulated ⟨1 μ; 1 ν | 2 (μ + ν)⟩ must match WignerSymbols exactly.
+    for μ in -1:1, ν in -1:1
+        @test Levels.RANK2_CG[μ+2, ν+2] ≈ clebschgordan(1, μ, 1, ν, 2, μ + ν)
+    end
+end
+
 @testitem "Quadrupole geometry sum rule" tags=[:unit, :fast] begin
     # Σ_q |Γ_q|² = 1/2 for any transverse beam geometry: of the unit total
     # norm of ε ⊗ n, the rank-0 part vanishes (ε ⊥ n) and the rank-1 part
