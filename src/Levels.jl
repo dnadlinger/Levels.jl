@@ -9,6 +9,7 @@ include("basis.jl")
 
 include("species.jl")
 include("zeeman.jl")
+include("hyperfine.jl")
 include("species_data.jl")
 
 include("multipole.jl")

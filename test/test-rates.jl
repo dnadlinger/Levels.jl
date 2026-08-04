@@ -151,3 +151,158 @@ end
         Ω0,
     )
 end
+
+@testitem "Hyperfine reduction factor" tags=[:unit, :fast] begin
+    using Unitful
+    using WignerSymbols
+    using Levels: clebsch_gordan, coupling_transform, hyperfine_reduction, jz_matrix
+
+    # Definitive convention check: conjugating the product-basis electronic
+    # Wigner–Eckart amplitudes ⟨J' m_J + q|T^k_q|J m_J⟩ = ⟨J m_J; k q|J' m_J'⟩
+    # (identity on the nuclear factor) with the Clebsch–Gordan unitaries must
+    # reproduce ⟨F m; k q|F' m'⟩ β^(k)(F → F') for every component — pinning
+    # both the 6-j expression and its phase to the coupling_transform basis
+    # convention.
+    i_nuc = ca43.nuclear_spin
+    n_i = Int(2 * i_nuc + 1)
+    for (lo_str, hi_str, k) in (
+        ("S_1/2", "P_1/2", 1),
+        ("S_1/2", "P_3/2", 1),
+        ("S_1/2", "D_5/2", 2),
+        ("D_3/2", "P_1/2", 1),
+    )
+        j_lo = NoHyperfineNumberSpec(lo_str).j
+        j_hi = NoHyperfineNumberSpec(hi_str).j
+        d_lo = Int(2j_lo + 1)
+        d_hi = Int(2j_hi + 1)
+        u_lo = coupling_transform(ca43, lo_str)
+        u_hi = coupling_transform(ca43, hi_str)
+        lo_states = collect(StateBasis(ca43, lo_str))
+        hi_states = collect(StateBasis(ca43, hi_str))
+
+        maxdev = 0.0
+        for q in (-k):k
+            m = zeros(n_i * d_hi, n_i * d_lo)
+            for i_i in 1:n_i
+                for (a, m_j) in enumerate((-j_lo):j_lo),
+                    (b, m_jp) in enumerate((-j_hi):j_hi)
+
+                    m_jp == m_j + q || continue
+                    m[(i_i-1)*d_hi+b, (i_i-1)*d_lo+a] =
+                        Float64(clebschgordan(j_lo, m_j, k, q, j_hi, m_jp))
+                end
+            end
+            amplitudes = u_hi' * m * u_lo
+            for (ci, ls) in enumerate(lo_states), (ck, us) in enumerate(hi_states)
+                expected = if us.m == ls.m + q
+                    Float64(clebschgordan(ls.level.f, ls.m, k, q, us.level.f, us.m)) * hyperfine_reduction(ca43, ls.level, us.level; rank=k)
+                else
+                    0.0
+                end
+                maxdev = max(maxdev, abs(amplitudes[ck, ci] - expected))
+            end
+        end
+        @test maxdev < 1e-12
+    end
+
+    # Line-strength sum rule: Σ_F β² = 1 for every upper F' — each hyperfine
+    # sublevel decays at the full fine-structure rate, β² being the branching
+    # fractions (which is why einstein_as must never hold F-resolved entries).
+    for (lo_str, hi_str, k) in (("S_1/2", "P_3/2", 1), ("S_1/2", "D_5/2", 2))
+        for hi in hyperfine_levels(ca43, hi_str)
+            total = sum(
+                hyperfine_reduction(ca43, lo, hi; rank=k)^2 for
+                lo in hyperfine_levels(ca43, lo_str)
+            )
+            @test total ≈ 1.0 rtol = 1e-12
+        end
+    end
+
+    # Stretched-to-stretched E2 goes through a single path, and the F = F'
+    # amplitude has a simple closed form.
+    @test hyperfine_reduction(ca43, "S_1/2 F=4", "D_5/2 F=6") ≈ 1.0 rtol = 1e-12
+    @test hyperfine_reduction(ca43, "S_1/2 F=4", "D_5/2 F=4") ≈ 3 / (2 * sqrt(5)) rtol =
+        1e-12
+    # Triangle-forbidden pairs vanish.
+    @test iszero(hyperfine_reduction(ca43, "S_1/2 F=4", "D_5/2 F=1"))
+
+    # I → 0 limit: β ≡ +1 exactly, so the hyperfine amplitude degenerates —
+    # including its sign — to the plain fine-structure Clebsch–Gordan form.
+    toy = HyperfineOneElectronSpecies(;
+        mass=1.0u"u",
+        nuclear_spin=0//1,
+        nuclear_g=0.0,
+        energies=Dict(
+            convert(NoHyperfineNumberSpec, k) => v for
+            (k, v) in ["S_1/2" => 0.0u"J", "D_5/2" => u"h" * 411_000_000.0u"MHz"]
+        ),
+        hyperfine=Dict(
+            convert(NoHyperfineNumberSpec, k) => HyperfineConstants(; a=0.0u"J") for
+            k in ["S_1/2", "D_5/2"]
+        ),
+        einstein_as=Dict(
+            convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
+            (k, v) in [("S_1/2", "D_5/2") => 1.0u"s^-1"]
+        ),
+    )
+    @test hyperfine_reduction(toy, "S_1/2 F=1/2", "D_5/2 F=5/2") ≈ 1.0 atol = 1e-14
+    for m_l in (-1//2):(1//2), m_u in (-5//2):(5//2)
+        @test clebsch_gordan(
+            toy,
+            StateSpec("S_1/2 F=1/2", m_l),
+            StateSpec("D_5/2 F=5/2", m_u),
+        ) ≈ clebsch_gordan(StateSpec("S_1/2", m_l), StateSpec("D_5/2", m_u)) atol =
+            1e-14
+    end
+
+    # Kind guards.
+    @test_throws ArgumentError clebsch_gordan(
+        ca43,
+        StateSpec("S_1/2", 1//2),
+        StateSpec("D_5/2", 3//2),
+    )
+    @test_throws ArgumentError hyperfine_reduction(ca43, "S_1/2", "D_5/2")
+end
+
+@testitem "Hyperfine Rabi frequency" tags=[:unit, :fast] begin
+    using Unitful
+    using Levels: clebsch_gordan
+
+    s = StateSpec("S_1/2 F=4", 4)
+    d = StateSpec("D_5/2 F=4", 3)
+    n, ε = beam_vectors(π / 2, π / 4)
+    intensity = 250.0u"W/m^2"
+
+    # Independent reconstruction of the James form with the F-basis angular
+    # factor and the hyperfine-resolved transition frequency.
+    a = einstein_a(ca43, "S_1/2", "D_5/2")
+    ω = Levels.transition_frequency(ca43, s.level, d.level)
+    geometry = quadrupole_geometry(ε, n)[Int(d.m-s.m)+3]
+    expected = uconvert(
+        u"µs^-1",
+        sqrt(20π * u"c"^2 * intensity * a / (u"ħ" * ω^3)) *
+        abs(clebsch_gordan(ca43, s, d) * geometry),
+    )
+    @test rabi_frequency(ca43, s, d, intensity, ε, n) ≈ expected rtol = 1e-12
+
+    # An undrivable |Δm| > 2 component vanishes identically, and
+    # fine-structure states are rejected for a hyperfine species.
+    @test iszero(
+        rabi_frequency(
+            ca43,
+            StateSpec("S_1/2 F=4", -4),
+            StateSpec("D_5/2 F=4", -1),
+            intensity,
+            ε,
+            n,
+        ),
+    )
+    @test_throws ArgumentError rabi_frequency(
+        ca43,
+        StateSpec("S_1/2", 1//2),
+        StateSpec("D_5/2", 3//2),
+        intensity,
+        ε,
+        n,
+    )
+end

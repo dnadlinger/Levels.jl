@@ -80,6 +80,21 @@ end
 """
 Returns the polarisability of `state` for each of the three ``Δm`` channels
 separately, as a length-3 vector indexed by `q + 2`.
+
+For hyperfine states of a [`HyperfineOneElectronSpecies`](@ref), the explicit
+channels are summed over the hyperfine levels of each intermediate
+fine-structure level, with the ``F``-basis angular factors
+(``\\mathrm{CG} × β``, cf. [`Levels.hyperfine_reduction`](@ref)) and the
+intermediate-state hyperfine splittings resolved in the detunings (levels
+without known hyperfine constants keep degenerate ``F`` levels at their
+centroid). The hyperfine-resolved detunings are what gives e.g. the ⁴³Ca⁺
+S``_{1/2}`` ``F`` levels their small tensor polarisability (``∝ A_P/Δ``),
+which the fine-structure ``J = 1/2`` level lacks; with the splittings zeroed,
+the result collapses exactly to the standard 6-j re-projection of the
+fine-structure polarisability. The tensor part of the lumped static remainder
+is re-projected with the expectation value of the ``J``-basis tensor operator
+in the coupled state (diagonal-in-``F`` approximation; the ``F``-off-diagonal
+elements are second order in the hyperfine mixing).
 """
 function state_polarisabilities(species, state::StateSpec, ħω)
     level = convert(NoHyperfineNumberSpec, state.level)
@@ -108,6 +123,72 @@ function state_polarisabilities(species, state::StateSpec, ħω)
     # The tensor part of the lumped remainder scales with the same angular factors
     # as an explicit channel would; the scalar part is channel-independent.
     tensor = j > 1//2 ? (3m^2 - j * (j + 1)) / (j * (2j - 1)) : 0//1
+    for q in -1:1
+        α[q+2] +=
+            data.static_scalar + data.static_tensor * ((3 * (q == 0) - 1) / 2) * tensor
+    end
+    α
+end
+
+function state_polarisabilities(
+    species::HyperfineOneElectronSpecies,
+    state::StateSpec{HyperfineNumberSpec},
+    ħω,
+)
+    spec = validate_hyperfine(species, state.level)
+    fs = fine_structure(spec)
+    data = level_polarisability(species, fs)
+    if isnothing(data)
+        throw(ArgumentError("No light-shift data known for level '$(state.level)'"))
+    end
+    f, m = spec.f, state.m
+    if abs(m) > f || !isinteger(f - m)
+        throw(ArgumentError("Invalid projection m = $m for level with F = $f"))
+    end
+    e_level = level_energy(species, spec)
+
+    # Zero-field hyperfine shift where constants are known; intermediate levels
+    # without them keep their F levels degenerate at the centroid.
+    shift_of(level) =
+        haskey(species.hyperfine, fine_structure(level)) ?
+        u"ħ" * hyperfine_shift(species, level) : zero(1.0u"J")
+
+    α = fill(0.0u"C*m^2/V", 3)
+    for (upper, d) in data.reduced_dipoles
+        r = d^2 / (2 * upper.j + 1)
+        for upper_f in hyperfine_levels(species, upper)
+            β = hyperfine_reduction(species.nuclear_spin, spec, upper_f; rank=1)
+            iszero(β) && continue
+            Δ = species.energies[upper] + shift_of(upper_f) - e_level
+            for q in -1:1
+                rotating = dipole_cg(f, m, q, upper_f.f)^2
+                counter = dipole_cg(f, m, -q, upper_f.f)^2
+                α[q+2] += uconvert(
+                    u"C*m^2/V",
+                    r * β^2 * (rotating / (Δ - ħω) + counter / (Δ + ħω)),
+                )
+            end
+        end
+    end
+
+    # The J-basis tensor operator of the lumped remainder, evaluated in the
+    # coupled state (diagonal-in-F approximation): its angular factor is the
+    # CG-weighted average of (3m_J² − J(J+1))/(J(2J−1)) over the state's
+    # |m_I, m_J⟩ decomposition. Zero for J = 1/2, where the operator vanishes
+    # identically — the genuinely-new hyperfine tensor term of such levels
+    # comes from the resolved detunings above instead.
+    j = fs.j
+    i_nuc = species.nuclear_spin
+    tensor = if j > 1//2
+        sum(
+            Float64(clebschgordan(i_nuc, m - m_j, j, m_j, f, m))^2 *
+            (3m_j^2 - j * (j + 1)) / (j * (2j - 1)) for
+            m_j in (-j):j if abs(m - m_j) <= i_nuc;
+            init=0.0,
+        )
+    else
+        0.0
+    end
     for q in -1:1
         α[q+2] +=
             data.static_scalar + data.static_tensor * ((3 * (q == 0) - 1) / 2) * tensor
@@ -167,6 +248,126 @@ function quadrupole_shift_coefficients(species, lower::StateSpec, upper::StateSp
 end
 
 """
+Raises an error unless `B` is a sensible signed scalar flux density for the
+near-resonant quadrupole shift.
+"""
+function validate_shift_field(B)
+    if !(B isa Unitful.BField)
+        throw(
+            ArgumentError(
+                "B must be the signed scalar magnetic flux density along the " *
+                "quantisation axis, not e.g. the Cartesian field vector " *
+                "zeeman_hamiltonian() accepts",
+            ),
+        )
+    end
+    if iszero(B)
+        throw(
+            ArgumentError(
+                "The near-resonant quadrupole shift is undefined at zero magnetic " *
+                "field, where the Zeeman components are degenerate",
+            ),
+        )
+    end
+end
+
+# Relative quadrupole amplitudes between the adiabatically-labelled eigenstates
+# of two solved manifolds: the coupled-basis CG × β amplitudes conjugated with
+# the eigenvector matrices ([upper eigenstate, lower eigenstate], real).
+function rotated_quadrupole_amplitudes(
+    species::HyperfineOneElectronSpecies,
+    m_lower::HyperfineManifold,
+    m_upper::HyperfineManifold,
+)
+    c = zeros(length(m_upper.basis), length(m_lower.basis))
+    for (i, ls) in enumerate(m_lower.basis), (k, us) in enumerate(m_upper.basis)
+        q = us.m - ls.m
+        abs(q) <= 2 || continue
+        β = hyperfine_reduction(species.nuclear_spin, ls.level, us.level; rank=2)
+        iszero(β) && continue
+        c[k, i] = Float64(clebschgordan(ls.level.f, ls.m, 2, q, us.level.f, us.m)) * β
+    end
+    m_upper.states' * c * m_lower.states
+end
+
+# The near-resonant shift coefficients of the probed eigen-pair (il, iu) from
+# the rotated amplitudes and the exact eigen-energy detunings. As m_F is exact,
+# every spectator pair belongs to a well-defined Δm channel; unlike the
+# fine-structure case, spectators sharing the probed state's m_F (but a
+# different F label) contribute too, at hyperfine-interval detunings.
+function kappa_from_rotated(rotated, m_lower, m_upper, il, iu, rabi_scale)
+    w = fill(0.0u"µs", 5)
+    lower_m = m_lower.basis[il].m
+    upper_m = m_upper.basis[iu].m
+    for idx in eachindex(m_lower.energies)
+        idx == il && continue
+        q = upper_m - m_lower.basis[idx].m
+        abs(q) <= 2 || continue
+        w[Int(q)+3] +=
+            abs2(rotated[iu, idx]) / (m_lower.energies[idx] - m_lower.energies[il])
+    end
+    for idx in eachindex(m_upper.energies)
+        idx == iu && continue
+        q = m_upper.basis[idx].m - lower_m
+        abs(q) <= 2 || continue
+        w[Int(q)+3] +=
+            abs2(rotated[idx, il]) / (m_upper.energies[iu] - m_upper.energies[idx])
+    end
+    ntuple(i -> uconvert(u"µs^-1*m^2/W", -rabi_scale * w[i] / 4), 5)
+end
+
+"""
+    quadrupole_shift_coefficients(species::HyperfineOneElectronSpecies,
+                                  lower::StateSpec, upper::StateSpec, B)
+
+Hyperfine form of the near-resonant shift coefficients: in the Breit–Rabi
+regime the spectator detunings are the exact eigen-energy differences of the
+manifolds at the static field `B` (neither linear in ``m`` nor sharing a
+common ``1/B`` factor), so the field enters the *construction*, and the
+coefficients directly scale the intensity (`shift = intensity × Σ w_q κ_q`),
+with no ``1/B`` at evaluation time. The amplitudes are the eigenbasis-rotated
+``F``-basis amplitudes, accounting exactly for the ``F`` mixing.
+"""
+function quadrupole_shift_coefficients(
+    species::HyperfineOneElectronSpecies,
+    lower::StateSpec,
+    upper::StateSpec,
+    B,
+)
+    validate_shift_field(B)
+    lo = parse_level(lower.level)
+    hi = parse_level(upper.level)
+    if !(lo isa HyperfineNumberSpec && hi isa HyperfineNumberSpec)
+        throw(
+            ArgumentError(
+                "States must specify hyperfine (F) levels for a hyperfine species",
+            ),
+        )
+    end
+    fs_lo = fine_structure(lo)
+    fs_hi = fine_structure(hi)
+    multipole_rank(fs_lo, fs_hi) == 2 || return nothing
+    abs(fs_lo.j - fs_hi.j) <= 2 <= fs_lo.j + fs_hi.j || return nothing
+    abs(upper.m - lower.m) <= 2 || return nothing
+    a = einstein_a(species, fs_lo, fs_hi)
+    isnothing(a) && return nothing
+    ω = transition_frequency(species, fs_lo, fs_hi)
+    rabi_scale = 20π * u"c"^2 * a / (u"ħ" * ω^3)
+
+    m_lower = hyperfine_manifold(species, fs_lo, B)
+    m_upper = hyperfine_manifold(species, fs_hi, B)
+    rotated = rotated_quadrupole_amplitudes(species, m_lower, m_upper)
+    kappa_from_rotated(
+        rotated,
+        m_lower,
+        m_upper,
+        stateindex(m_lower.basis, StateSpec(lo, lower.m)),
+        stateindex(m_upper.basis, StateSpec(hi, upper.m)),
+        rabi_scale,
+    )
+end
+
+"""
 Entry of [`LightShiftCoefficients`](@ref)`.quadrupole_shifts`: the near-resonant
 shift coefficients `κ` of one transition (cf.
 [`quadrupole_shift_coefficients`](@ref)) and the photon energy `ħω` of its
@@ -176,13 +377,24 @@ const QuadrupoleShiftEntry =
     @NamedTuple{ħω::typeof(1.0u"J"), κ::NTuple{5,typeof(1.0u"m^2*T/J")}}
 
 """
+Hyperfine counterpart of [`Levels.QuadrupoleShiftEntry`](@ref): the
+coefficients are field-resolved (computed at the stored flux density `B`, which
+evaluation checks) and scale the intensity directly, with no ``1/B``.
+"""
+const HyperfineQuadrupoleShiftEntry = @NamedTuple{
+    ħω::typeof(1.0u"J"),
+    B::typeof(1.0u"mT"),
+    κ::NTuple{5,typeof(1.0u"µs^-1*m^2/W")},
+}
+
+"""
 Light-shift data for a set of states, precomputed for one laser frequency.
 
 Construct with [`LightShiftCoefficients`](@ref)`(species, basis, laser)` and
 evaluate with [`light_shift`](@ref); see there for the sign and unit
 conventions.
 """
-struct LightShiftCoefficients{L<:LevelSpec,E<:Quantity,T<:Quantity}
+struct LightShiftCoefficients{L<:LevelSpec,E<:Quantity,T<:Quantity,Q}
     "The states the coefficients refer to, fixing the row order."
     basis::StateBasis{L}
 
@@ -209,9 +421,12 @@ struct LightShiftCoefficients{L<:LevelSpec,E<:Quantity,T<:Quantity}
     not depend on the laser frequency, which the model instead fixes to
     resonance with the probed transition; the photon energy of that resonance
     is stored alongside them so that evaluation can check the premise against
-    the frequency the coefficients were computed for.
+    the frequency the coefficients were computed for. The entries are
+    [`Levels.QuadrupoleShiftEntry`](@ref)s for a no-hyperfine basis, or
+    field-resolved [`Levels.HyperfineQuadrupoleShiftEntry`](@ref)s for a
+    hyperfine one.
     """
-    quadrupole_shifts::Dict{Tuple{Int,Int},QuadrupoleShiftEntry}
+    quadrupole_shifts::Dict{Tuple{Int,Int},Q}
 end
 
 """
@@ -231,8 +446,19 @@ without it are still admitted, but evaluating any shift involving their
 polarisability raises an error. The near-resonant electric-quadrupole
 coefficients only need the Einstein A coefficient; they are computed for
 whichever pairs of basis states support them, and simply left out for the rest.
+
+For a hyperfine basis (of a [`HyperfineOneElectronSpecies`](@ref)), the
+quadrupole coefficients are field-resolved (cf. the four-argument
+[`Levels.quadrupole_shift_coefficients`](@ref)), so the static flux density
+must be supplied via the `B` keyword if they are wanted; without it only the
+electric-dipole part is precomputed. Evaluation then checks that the `B` it is
+given matches the one the coefficients were built for.
 """
-function LightShiftCoefficients(species, basis::StateBasis, laser)
+function LightShiftCoefficients(
+    species,
+    basis::StateBasis{NoHyperfineNumberSpec},
+    laser,
+)
     ħω = photon_energy(laser)
     rows = [
         isnothing(level_polarisability(species, state.level)) ?
@@ -252,8 +478,61 @@ function LightShiftCoefficients(species, basis::StateBasis, laser)
     LightShiftCoefficients(basis, ħω, permutedims(reduce(hcat, rows)), quadrupole)
 end
 
-LightShiftCoefficients(species, levels_or_states::AbstractVector, laser) =
-    LightShiftCoefficients(species, StateBasis(levels_or_states), laser)
+function LightShiftCoefficients(
+    species::HyperfineOneElectronSpecies,
+    basis::StateBasis{HyperfineNumberSpec},
+    laser;
+    B=nothing,
+)
+    ħω = photon_energy(laser)
+    rows = [
+        isnothing(level_polarisability(species, state.level)) ?
+        fill(NaN * u"C*m^2/V", 3) : state_polarisabilities(species, state, ħω) for
+        state in basis
+    ]
+    quadrupole = Dict{Tuple{Int,Int},HyperfineQuadrupoleShiftEntry}()
+    if !isnothing(B)
+        validate_shift_field(B)
+        # Hoist the manifold solutions and rotated amplitude matrices out of
+        # the pair loop; per pair only the O(n) spectator sums remain.
+        manifolds = Dict(
+            fs => hyperfine_manifold(species, fs, B) for
+            fs in unique!(fine_structure.(basis.levels))
+        )
+        for (fs_lo, m_lower) in manifolds, (fs_hi, m_upper) in manifolds
+            fs_lo == fs_hi && continue
+            multipole_rank(fs_lo, fs_hi) == 2 || continue
+            abs(fs_lo.j - fs_hi.j) <= 2 <= fs_lo.j + fs_hi.j || continue
+            a = einstein_a(species, fs_lo, fs_hi)
+            isnothing(a) && continue
+            ω = transition_frequency(species, fs_lo, fs_hi)
+            rabi_scale = 20π * u"c"^2 * a / (u"ħ" * ω^3)
+            rotated = rotated_quadrupole_amplitudes(species, m_lower, m_upper)
+            for (i, lower) in enumerate(basis), (k, upper) in enumerate(basis)
+                fine_structure(lower.level) == fs_lo || continue
+                fine_structure(upper.level) == fs_hi || continue
+                abs(upper.m - lower.m) <= 2 || continue
+                κ = kappa_from_rotated(
+                    rotated,
+                    m_lower,
+                    m_upper,
+                    stateindex(m_lower.basis, lower),
+                    stateindex(m_upper.basis, upper),
+                    rabi_scale,
+                )
+                resonance = uconvert(
+                    u"J",
+                    u"ħ" * transition_frequency(species, lower.level, upper.level),
+                )
+                quadrupole[(i, k)] = (ħω=resonance, B=uconvert(u"mT", B), κ=κ)
+            end
+        end
+    end
+    LightShiftCoefficients(basis, ħω, permutedims(reduce(hcat, rows)), quadrupole)
+end
+
+LightShiftCoefficients(species, levels_or_states::AbstractVector, laser; kwargs...) =
+    LightShiftCoefficients(species, StateBasis(levels_or_states), laser; kwargs...)
 
 """
 Returns the polarisability of the basis state with the given index for the
@@ -284,24 +563,31 @@ Contracts near-resonant quadrupole shift coefficients with the
 density.
 """
 function quadrupole_shift_at(κ, intensity, w, B)
-    if !(B isa Unitful.BField)
-        throw(
-            ArgumentError(
-                "B must be the signed scalar magnetic flux density along the " *
-                "quantisation axis, not e.g. the Cartesian field vector " *
-                "zeeman_hamiltonian() accepts",
-            ),
-        )
-    end
-    if iszero(B)
-        throw(
-            ArgumentError(
-                "The near-resonant quadrupole shift is undefined at zero magnetic " *
-                "field, where the Zeeman components are degenerate",
-            ),
-        )
-    end
+    validate_shift_field(B)
     uconvert(u"µs^-1", (intensity / B) * sum(w .* κ))
+end
+
+"""
+Evaluates a stored quadrupole-shift entry: the fine-structure form scales the
+coefficients by intensity over `B`; the field-resolved hyperfine form scales by
+the intensity alone, after checking `B` against the field the coefficients were
+computed for.
+"""
+entry_shift(entry::QuadrupoleShiftEntry, intensity, w, B) =
+    quadrupole_shift_at(entry.κ, intensity, w, B)
+
+function entry_shift(entry::HyperfineQuadrupoleShiftEntry, intensity, w, B)
+    validate_shift_field(B)
+    if !isapprox(B, entry.B; rtol=1e-6)
+        throw(
+            ArgumentError(
+                "The near-resonant quadrupole shift coefficients were computed " *
+                "for B = $(entry.B), not $B; rebuild the LightShiftCoefficients " *
+                "for the new field",
+            ),
+        )
+    end
+    uconvert(u"µs^-1", intensity * sum(w .* entry.κ))
 end
 
 """
@@ -376,7 +662,7 @@ function quadrupole_transition_shift(
             ),
         )
     end
-    quadrupole_shift_at(entry.κ, intensity, w, B)
+    entry_shift(entry, intensity, w, B)
 end
 
 """
@@ -539,6 +825,64 @@ function quadrupole_light_shift(
     )
 end
 
+# For a hyperfine species, the coefficients are only defined at a given static
+# field; direct the caller to the four-argument form.
+function quadrupole_shift_coefficients(
+    species::HyperfineOneElectronSpecies,
+    lower::StateSpec,
+    upper::StateSpec,
+)
+    throw(
+        ArgumentError(
+            "The near-resonant quadrupole shift of a hyperfine species requires " *
+            "the static field: pass B (cf. quadrupole_shift_coefficients(species, " *
+            "lower, upper, B))",
+        ),
+    )
+end
+
+function quadrupole_light_shift(
+    species::HyperfineOneElectronSpecies,
+    lower::StateSpec,
+    upper::StateSpec,
+    intensity,
+    ε;
+    n,
+    B,
+)
+    κ = quadrupole_shift_coefficients(species, lower, upper, B)
+    if isnothing(κ)
+        lo = fine_structure(parse_level(lower.level))
+        hi = fine_structure(parse_level(upper.level))
+        e2 = multipole_rank(lo, hi) == 2 && abs(lo.j - hi.j) <= 2 <= lo.j + hi.j
+        if e2 && !isnothing(einstein_a(species, lo, hi))
+            Δm = upper.m - lower.m
+            Δm = isinteger(Δm) ? Int(Δm) : Δm
+            throw(
+                ArgumentError(
+                    "The Δm = $Δm component '$lower' => '$upper' of an " *
+                    "electric-quadrupole transition cannot be driven (|Δm| ≤ 2), " *
+                    "so there is no resonance whose shift could be observed",
+                ),
+            )
+        elseif e2 && !isnothing(einstein_a(species, hi, lo))
+            throw(
+                ArgumentError(
+                    "'$lower' is of higher energy than '$upper'; give the " *
+                    "transition as lower => upper",
+                ),
+            )
+        end
+        throw(
+            ArgumentError(
+                "'$lower' and '$upper' are not connected by an electric-quadrupole " *
+                "transition with a known Einstein A coefficient",
+            ),
+        )
+    end
+    uconvert(u"µs^-1", intensity * sum(quadrupole_weights(ε, n) .* κ))
+end
+
 function quadrupole_light_shift(
     species,
     lower::StateSpec,
@@ -596,6 +940,27 @@ function polarisability_data(species, level)
 end
 
 """
+Returns the per-channel polarisabilities of the stretched state ``m = F`` of a
+hyperfine level, from which the ``α_0``/``α_1``/``α_2`` decomposition is
+extracted (``α_{σ^-} = α_0 - α_1/2 - α_2/2``, ``α_π = α_0 + α_2``,
+``α_{σ^+} = α_0 + α_1/2 - α_2/2`` there, as the tensor angular factor is unity
+at ``m = F``).
+"""
+stretched_channels(
+    species::HyperfineOneElectronSpecies,
+    spec::HyperfineNumberSpec,
+    ħω,
+) = state_polarisabilities(species, StateSpec(spec, spec.f), ħω)
+
+function stretched_channels(species, spec, ħω)
+    throw(
+        ArgumentError(
+            "Level '$spec' carries hyperfine structure, but the species has none",
+        ),
+    )
+end
+
+"""
     scalar_polarisability(species, level, laser)
 
 Returns the dynamic scalar polarisability ``α_0(ω)`` of the given level at the
@@ -611,9 +976,19 @@ sublevel ``m`` for polarisation `ε` as
 where ``𝒜 = |ε_{-1}|^2 - |ε_{+1}|^2`` is the degree of circular polarisation
 about the quantisation axis and ``ε_0 = ε · ẑ``. [`light_shift`](@ref) evaluates
 the equivalent sum directly, without going through this decomposition.
+
+For a hyperfine ``F`` level (with ``j`` replaced by ``F`` in the decomposition),
+the components are extracted from the per-channel polarisabilities of the
+stretched state; cf. [`Levels.state_polarisabilities`](@ref) for the
+approximations involved.
 """
 function scalar_polarisability(species, level, laser)
     ħω = photon_energy(laser)
+    parsed = parse_level(level)
+    if parsed isa HyperfineNumberSpec
+        α = stretched_channels(species, parsed, ħω)
+        return (α[1] + α[2] + α[3]) / 3
+    end
     spec, data = polarisability_data(species, level)
     e_level = species.energies[spec]
     α = data.static_scalar
@@ -637,6 +1012,12 @@ nothing to it.
 """
 function vector_polarisability(species, level, laser)
     ħω = photon_energy(laser)
+    parsed = parse_level(level)
+    if parsed isa HyperfineNumberSpec
+        parsed.f > 0 || return 0.0u"C*m^2/V"
+        α = stretched_channels(species, parsed, ħω)
+        return α[3] - α[1]
+    end
     spec, data = polarisability_data(species, level)
     e_level = species.energies[spec]
     j = spec.j
@@ -660,6 +1041,12 @@ Zero for ``j ≤ 1/2``, which has no oriented sublevels to distinguish.
 """
 function tensor_polarisability(species, level, laser)
     ħω = photon_energy(laser)
+    parsed = parse_level(level)
+    if parsed isa HyperfineNumberSpec
+        parsed.f >= 1 || return 0.0u"C*m^2/V"
+        α = stretched_channels(species, parsed, ħω)
+        return (2α[2] - α[1] - α[3]) / 3
+    end
     spec, data = polarisability_data(species, level)
     j = spec.j
     j > 1//2 || return 0.0u"C*m^2/V"

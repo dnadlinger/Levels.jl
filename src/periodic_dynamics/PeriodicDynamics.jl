@@ -15,6 +15,11 @@ monodromy-matrix propagation of the time-dependent Schrödinger equation
 ([`exact_sideband`](@ref), [`stroboscopic_populations`](@ref)) as a
 nonperturbative cross-check.
 
+For hyperfine species, the [`DrivenTransition`](@ref) model is built on the
+exact [`Levels.hyperfine_manifold`](@ref) eigenstates, accounting for the ``F``
+mixing at the working field by rotating couplings and drives into the field
+eigenbasis.
+
 Cf. Joshi et al., "Characterization of ion-trap-induced ac magnetic fields",
 Phys. Rev. A **110**, 063101 (2024),
 [doi:10.1103/PhysRevA.110.063101](https://doi.org/10.1103/PhysRevA.110.063101).
@@ -26,10 +31,15 @@ using Unitful
 
 using ..Levels:
     Levels,
+    HyperfineNumberSpec,
+    HyperfineOneElectronSpecies,
     NoHyperfineNumberSpec,
     NoHyperfineOneElectronSpecies,
     StateBasis,
     StateSpec,
+    fine_structure,
+    hyperfine_manifold,
+    parse_level,
     stateindex,
     staterange,
     zeeman_hamiltonian,

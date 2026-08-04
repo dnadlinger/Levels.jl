@@ -89,3 +89,45 @@ end
         @test sum(abs2, quadrupole_geometry(ε, n)) ≈ 0.5
     end
 end
+
+@testitem "Hyperfine quadrupole couplings" tags=[:unit, :fast] begin
+    using Unitful
+    using Levels: clebsch_gordan, fine_structure
+
+    basis = StateBasis(ca43, "S_1/2", "D_5/2")
+    n, ε = beam_vectors(0.3, 0.7, 0.2)
+    Γ = quadrupole_geometry(ε, n)
+    C = quadrupole_couplings(ca43, basis, "S_1/2", "D_5/2", ε, n)
+
+    # Element-wise agreement with the species-first Clebsch–Gordan amplitudes
+    # in the upper⟨row|lower⟩⟨col| block, zero elsewhere.
+    s_manifold = NoHyperfineNumberSpec("S_1/2")
+    d_manifold = NoHyperfineNumberSpec("D_5/2")
+    function expected_coupling(ls, us)
+        if fine_structure(ls.level) == s_manifold &&
+           fine_structure(us.level) == d_manifold
+            q = us.m - ls.m
+            abs(q) <= 2 ? clebsch_gordan(ca43, ls, us) * Γ[Int(q)+3] : 0.0im
+        else
+            0.0im
+        end
+    end
+    @test maximum(
+        abs(C[k, i] - expected_coupling(basis[i], basis[k])) for
+        i in 1:length(basis), k in 1:length(basis)
+    ) < 1e-14
+
+    # Restricting to a single F pair picks the corresponding block of the full
+    # matrix and leaves everything else zero.
+    C46 = quadrupole_couplings(ca43, basis, "S_1/2 F=4", "D_5/2 F=6", ε, n)
+    r4 = staterange(basis, "S_1/2 F=4")
+    r6 = staterange(basis, "D_5/2 F=6")
+    @test C46[r6, r4] == C[r6, r4]
+    C46[r6, r4] .= 0
+    @test iszero(C46)
+
+    # The no-hyperfine species-first form is a passthrough.
+    nh_basis = StateBasis("S_1/2", "D_5/2")
+    @test quadrupole_couplings(sr88, nh_basis, "S_1/2", "D_5/2", ε, n) ==
+          quadrupole_couplings(nh_basis, "S_1/2", "D_5/2", ε, n)
+end

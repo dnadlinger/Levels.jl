@@ -40,6 +40,21 @@ leaks through (`[Lindvall2025]`, Sec. III F 2).
 The perturbative treatment requires every Rabi frequency to be small against the
 Zeeman splittings, which is what breaks down as the field goes to zero.
 
+## Hyperfine species
+
+For hyperfine states, the electric-dipole channels are summed over the
+hyperfine levels of each intermediate fine-structure level with the ``F``-basis
+angular factors, and the intermediate splittings are resolved in the detunings
+— which is what gives e.g. the ⁴³Ca⁺ S``_{1/2}`` ``F`` levels a small tensor
+polarisability their ``J = 1/2`` parent lacks. The near-resonant quadrupole
+shift becomes field-resolved: in the Breit–Rabi regime the spectator detunings
+are exact eigen-energy differences rather than a common ``1/B`` scaling, so the
+static field enters at [`LightShiftCoefficients`](@ref) construction (`B`
+keyword). Note that the ``±m`` pair cancellation quoted above then survives
+only approximately: spectators in *other* ``F`` levels sit at
+hyperfine-interval detunings that are even under ``m → -m``, so their
+contribution — often the dominant one — does not average out.
+
 ```@autodocs
 Modules = [Levels]
 Pages = ["polarisability.jl"]

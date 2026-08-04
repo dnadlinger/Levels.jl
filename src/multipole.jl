@@ -110,4 +110,61 @@ function quadrupole_couplings(basis::StateBasis, lower_level, upper_level, ε, n
     C
 end
 
+"""
+    quadrupole_couplings(species, basis::StateBasis, lower, upper, ε, n)
+
+Species-first form: for a [`HyperfineOneElectronSpecies`](@ref), returns the
+relative ``F``-resolved coupling amplitudes
+``c = ⟨F m; 2 Δm | F' m'⟩ β^{(2)}(F → F') Γ_{Δm}`` (cf.
+[`Levels.hyperfine_reduction`](@ref)) over a hyperfine basis. `lower` and
+`upper` may each be a single hyperfine ``F`` level or a fine-structure
+manifold, in which case all its ``F`` levels present in the basis contribute.
+
+These are zero-field amplitudes; at finite field the ``F`` mixing within the
+manifolds modifies them (the eigenbasis rotation inside the hyperfine
+`Levels.PeriodicDynamics.DrivenTransition` is the exact treatment).
+
+For a [`NoHyperfineOneElectronSpecies`](@ref) this simply forwards to the
+species-less form.
+"""
+function quadrupole_couplings(
+    species::HyperfineOneElectronSpecies,
+    basis::StateBasis{HyperfineNumberSpec},
+    lower_level,
+    upper_level,
+    ε,
+    n,
+)
+    lower = hyperfine_level_list(species, lower_level)
+    upper = hyperfine_level_list(species, upper_level)
+    Γ = quadrupole_geometry(ε, n)
+    C = zeros(ComplexF64, length(basis), length(basis))
+    for lo in lower, hi in upper
+        β = hyperfine_reduction(species.nuclear_spin, lo, hi; rank=2)
+        iszero(β) && continue
+        for (i, lower_state) in enumerate(basis)
+            lower_state.level == lo || continue
+            for (k, upper_state) in enumerate(basis)
+                upper_state.level == hi || continue
+                q = upper_state.m - lower_state.m
+                abs(q) <= 2 || continue
+                C[k, i] =
+                    clebschgordan(lo.f, lower_state.m, 2, q, hi.f, upper_state.m) *
+                    β *
+                    Γ[Int(q)+3]
+            end
+        end
+    end
+    C
+end
+
+quadrupole_couplings(
+    species::NoHyperfineOneElectronSpecies,
+    basis::StateBasis{NoHyperfineNumberSpec},
+    lower_level,
+    upper_level,
+    ε,
+    n,
+) = quadrupole_couplings(basis, lower_level, upper_level, ε, n)
+
 export beam_vectors, dipole_geometry, quadrupole_geometry, quadrupole_couplings

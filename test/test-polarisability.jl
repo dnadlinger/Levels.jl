@@ -634,3 +634,207 @@ end
         @test uconvert(u"µs^-1", a) ≈ einstein_a(sr88, lower, upper) rtol = tolerance
     end
 end
+
+@testitem "F-basis light shifts" tags=[:unit] begin
+    using Unitful
+    using Levels: photon_energy, state_polarisabilities
+
+    # Toy hyperfine twins of ⁸⁸Sr⁺ — identical fine-structure data, fictitious
+    # nuclear spin — so the F-basis machinery can be validated against the
+    # exactly-known J-basis results. Only the levels whose states are queried
+    # need hyperfine constants; intermediate levels without them keep their F
+    # levels degenerate at the centroid.
+    toy(i_nuc, consts) = HyperfineOneElectronSpecies(;
+        mass=sr88.mass,
+        nuclear_spin=i_nuc,
+        nuclear_g=2e-4,
+        energies=sr88.energies,
+        hyperfine=Dict(convert(NoHyperfineNumberSpec, k) => v for (k, v) in consts),
+        einstein_as=sr88.einstein_as,
+        polarisabilities=sr88.polarisabilities,
+    )
+    zero_consts = [
+        "S_1/2" => HyperfineConstants(; a=0.0u"J"),
+        "D_5/2" => HyperfineConstants(; a=0.0u"J"),
+    ]
+    ħω = photon_energy(674.0u"nm")
+
+    # I → 0: the single-F states reproduce the fine-structure channel
+    # polarisabilities exactly.
+    toy0 = toy(0//1, zero_consts)
+    for (level, hf_level, j) in
+        (("S_1/2", "S_1/2 F=1/2", 1//2), ("D_5/2", "D_5/2 F=5/2", 5//2))
+        for m in (-j):j
+            @test state_polarisabilities(toy0, StateSpec(hf_level, m), ħω) ≈
+                  state_polarisabilities(sr88, StateSpec(level, m), ħω) rtol = 1e-12
+        end
+    end
+
+    # With degenerate intermediate levels (zeroed constants), the F-basis
+    # result is exactly the 6-j re-projection of the J-basis polarisability:
+    # the (2F+1)-weighted, channel-averaged manifold mean recovers α₀, and
+    # J = 1/2 manifolds have exactly zero tensor component.
+    toy32 = toy(3//2, zero_consts)
+    for level in ("S_1/2", "D_5/2")
+        states = collect(StateBasis(toy32, level))
+        mean =
+            sum(sum(state_polarisabilities(toy32, s, ħω)) / 3 for s in states) /
+            length(states)
+        @test mean ≈ scalar_polarisability(sr88, level, 674.0u"nm") rtol = 1e-12
+    end
+    for f in 1:2
+        @test abs(tensor_polarisability(toy32, "S_1/2 F=$f", 674.0u"nm")) <
+              1e-15 * abs(scalar_polarisability(sr88, "S_1/2", 674.0u"nm"))
+    end
+
+    # The α₀/α₁/α₂ decomposition (with j → F) against the per-channel sum, for
+    # an arbitrary elliptical polarisation.
+    _, ε = beam_vectors(0.4, 0.6, 0.8)
+    w = Levels.polarisation_weights(ε)
+    laser = 674.0u"nm"
+    for (level, m) in (("D_5/2 F=4", 3//1), ("D_5/2 F=2", -1//1), ("S_1/2 F=2", 2//1))
+        spec = HyperfineNumberSpec(level)
+        f = spec.f
+        α = state_polarisabilities(toy32, StateSpec(spec, m), ħω)
+        α0 = scalar_polarisability(toy32, level, laser)
+        α1 = vector_polarisability(toy32, level, laser)
+        α2 = tensor_polarisability(toy32, level, laser)
+        circ = w[3] - w[1]
+        tensor_angle = (3 * w[2] - 1) / 2 * (3m^2 - f * (f + 1)) / (f * (2f - 1))
+        @test sum(w .* α) ≈ α0 + circ * (m / (2f)) * α1 + tensor_angle * α2 rtol = 1e-12
+    end
+
+    # Hyperfine-resolved intermediate detunings give an S_1/2 F level a small
+    # but genuinely non-zero tensor polarisability (∝ A_P/Δ) that pure J-basis
+    # re-projection cannot produce.
+    split_consts = [
+        "S_1/2" => HyperfineConstants(; a=0.0u"J"),
+        "D_5/2" => HyperfineConstants(; a=0.0u"J"),
+        "P_1/2" => HyperfineConstants(; a=u"h" * -100.0u"MHz"),
+        "P_3/2" => HyperfineConstants(; a=u"h" * -20.0u"MHz", b=u"h" * -5.0u"MHz"),
+    ]
+    toy_split = toy(3//2, split_consts)
+    α2_split = tensor_polarisability(toy_split, "S_1/2 F=2", laser)
+    α0_ref = scalar_polarisability(sr88, "S_1/2", laser)
+    @test abs(α2_split) > 1e-9 * abs(α0_ref)
+    @test abs(α2_split) < 1e-4 * abs(α0_ref)
+
+    # Hyperfine levels on a species without hyperfine structure fail loudly.
+    @test_throws ArgumentError scalar_polarisability(sr88, "S_1/2 F=2", laser)
+end
+
+@testitem "Hyperfine near-resonant quadrupole shift API" tags=[:unit] begin
+    using Unitful
+    using Levels: quadrupole_shift_coefficients
+
+    s = StateSpec("S_1/2 F=4", 4)
+    d = StateSpec("D_5/2 F=4", 3)
+    laser = uconvert(
+        u"nm",
+        2π * u"c" * u"ħ" / (u"ħ" * Levels.transition_frequency(ca43, s.level, d.level)),
+    )
+    B = 0.3u"mT"
+    intensity = 10.0u"W/m^2"
+    n, ε = beam_vectors(π / 2, π / 4, 0.3)
+
+    # One-shot form against the precomputed coefficients (E1 data is absent for
+    # ca43, so the E1 rows are NaN, but the E2 machinery must work regardless).
+    basis = StateBasis(ca43, "S_1/2", "D_5/2")
+    c = LightShiftCoefficients(ca43, basis, laser; B)
+    @test quadrupole_light_shift(c, s => d, intensity, ε; n, B) ≈
+          quadrupole_light_shift(ca43, s, d, intensity, ε; n, B) rtol = 1e-12
+
+    # Unlike the fine-structure case ([Lindvall2025] Sec. III F 2), the ±m
+    # Zeeman-pair average does *not* cancel for linear polarisation: the
+    # spectators in other F levels sit at hyperfine-interval detunings that
+    # are even under m → −m (only the intra-F Zeeman detunings are odd), so
+    # their contribution survives — and here dominates — the pair average.
+    # The rigorous mirror symmetry is instead E(F, m, −B) = E(F, −m, B): the
+    # −m pair at +B equals the +m pair at −B.
+    s_m = StateSpec("S_1/2 F=4", -4)
+    d_m = StateSpec("D_5/2 F=4", -3)
+    n_lin, ε_lin = beam_vectors(π / 2, π / 4)
+    plus = quadrupole_light_shift(ca43, s, d, intensity, ε_lin; n=n_lin, B)
+    minus = quadrupole_light_shift(ca43, s_m, d_m, intensity, ε_lin; n=n_lin, B)
+    @test !isapprox(plus + minus, zero(plus); atol=abs(plus))
+    @test minus ≈ quadrupole_light_shift(ca43, s, d, intensity, ε_lin; n=n_lin, B=(-B)) rtol =
+        1e-9
+
+    # Field-consistency and error paths.
+    @test_throws ArgumentError quadrupole_light_shift(
+        c,
+        s => d,
+        intensity,
+        ε;
+        n,
+        B=0.4u"mT",
+    )
+    @test_throws ArgumentError quadrupole_shift_coefficients(ca43, s, d)
+    @test_throws ArgumentError quadrupole_shift_coefficients(ca43, s, d, 0.0u"mT")
+    @test_throws ArgumentError quadrupole_shift_coefficients(
+        ca43,
+        s,
+        d,
+        [0.0, 0.0, 0.3]u"mT",
+    )
+    @test_throws ArgumentError quadrupole_light_shift(
+        ca43,
+        StateSpec("S_1/2 F=4", -4),
+        StateSpec("D_5/2 F=6", -1),
+        intensity,
+        ε;
+        n,
+        B,
+    )
+    @test_throws ArgumentError quadrupole_light_shift(ca43, d, s, intensity, ε; n, B)
+
+    # Without B, the constructor precomputes the E1 part only.
+    @test isempty(LightShiftCoefficients(ca43, basis, laser).quadrupole_shifts)
+end
+
+@testitem "Hyperfine near-resonant quadrupole shift vs exact model" tags=[
+    :integration,
+    :slow,
+] setup=[] begin
+    using Unitful
+    using Levels.PeriodicDynamics
+
+    # The perturbative κ contraction against the exact resonance position of
+    # the laser-probed two-manifold model (monodromy propagation, no ac
+    # drives): the shift of the carrier resonance from the off-resonant
+    # couplings to the spectator Zeeman components is exactly what the
+    # near-resonant E2 model describes. The laser-coupling scale is chosen
+    # small enough (Ω₀ ≪ Zeeman splittings) that higher orders are negligible.
+    s = StateSpec("S_1/2 F=4", 4)
+    d = StateSpec("D_5/2 F=4", 3)
+    B = 0.3u"mT"
+    n, ε = beam_vectors(π / 2, π / 4, 0.3)
+    # Large enough that the ~Ω₀·1e-7-scale resonance-finder tolerance of
+    # exact_sideband stays well below the ∝ Ω₀² shift, small enough that
+    # Ω₀ ≪ the ~MHz Zeeman splittings keeps higher orders negligible.
+    Ω0 = 2π * 10.0u"kHz"
+
+    # Intensity that gives the probed component the carrier Rabi frequency Ω0.
+    ref_intensity = 1.0u"W/m^2"
+    intensity = ref_intensity * (Ω0 / rabi_frequency(ca43, s, d, ref_intensity, ε, n))^2
+
+    expected = quadrupole_light_shift(ca43, s, d, intensity, ε; n, B)
+
+    basis = StateBasis(ca43, "S_1/2", "D_5/2")
+    coupling = rabi_normalised(
+        quadrupole_couplings(ca43, basis, "S_1/2", "D_5/2", ε, n),
+        basis,
+        s => d,
+        Ω0,
+    )
+    dt = DrivenTransition(
+        ca43,
+        basis,
+        s => d;
+        drive_frequency=2π * 30.0u"MHz",
+        static_field=B,
+        coupling,
+    )
+    exact = exact_sideband(dt; sideband=0, ngrid=16)
+    @test exact.δ_res ≈ expected rtol = 2e-2
+end
