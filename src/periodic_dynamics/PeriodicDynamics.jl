@@ -54,5 +54,6 @@ include("driving.jl")
 include("floquet.jl")
 include("ac_zeeman.jl")
 include("tdse.jl")
+include("quantum_toolbox.jl")
 
 end # module

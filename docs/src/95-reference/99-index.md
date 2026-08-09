@@ -13,5 +13,6 @@ Pages = [
     "47-polarisability.md",
     "50-optics.md",
     "60-periodic-dynamics.md",
+    "70-quantum-toolbox.md",
 ]
 ```
