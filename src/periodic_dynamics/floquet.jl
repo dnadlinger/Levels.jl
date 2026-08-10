@@ -3,7 +3,8 @@
 # order between the dressed Floquet modes.
 
 """
-    dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid) -> (ε, U)
+    dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid;
+                   min_overlap = 0.0) -> (ε, U)
 
 Computes the Floquet modes of one manifold driven by
 ``H(t) = H_0 + H_1 e^{iΩt} + H_1^† e^{−iΩt}``, truncating the Floquet
@@ -13,8 +14,19 @@ For each bare level α, the returned mode is the Floquet eigenstate with maximum
 harmonic-0 weight on ``|α⟩`` (unambiguous for weak dressing); `ε[α]` is its
 quasienergy (in angular frequency units, like `H0`), and `U[:, it, α]` the
 periodic part ``u_α(t)`` sampled on `ngrid` uniform times over one drive period.
+
+A warning is emitted whenever that maximum weight falls below `min_overlap`
+(the identification of the dressed state is then ambiguous, e.g. for a
+near-resonant drive).
 """
-function dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid)
+function dress_manifold(
+    H0::Diagonal,
+    H1::AbstractMatrix,
+    Ω,
+    nharm,
+    ngrid;
+    min_overlap=0.0,
+)
     # Strip to a common inverse-time unit for the eigensolver.
     h0 = ustrip.(u"µs^-1", H0.diag)
     h1 = ustrip.(u"µs^-1", H1)
@@ -42,6 +54,12 @@ function dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid)
     θs = 2π .* (0:(ngrid-1)) ./ ngrid
     for α in 1:d
         idx = argmax(abs2.(vecs[k0+α, :]))
+        overlap = abs2(vecs[k0+α, idx])
+        if overlap < min_overlap
+            @warn "Ambiguous dressed-state identification (e.g. near-resonant " *
+                  "drive); the assignment of quasienergies to bare levels may " *
+                  "be unreliable." α overlap
+        end
         ε[α] = vals[idx]
         v = reshape(vecs[:, idx], d, 2 * nharm + 1)
         for (it, θ) in enumerate(θs), k in (-nharm):nharm

@@ -15,10 +15,14 @@ monodromy-matrix propagation of the time-dependent Schrödinger equation
 ([`exact_sideband`](@ref), [`stroboscopic_populations`](@ref)) as a
 nonperturbative cross-check.
 
-For hyperfine species, the [`DrivenTransition`](@ref) model is built on the
-exact [`Levels.hyperfine_manifold`](@ref) eigenstates, accounting for the ``F``
-mixing at the working field by rotating couplings and drives into the field
-eigenbasis.
+The ac Zeeman shifts themselves — with or without a probe laser — are available
+directly through the second-order perturbation sum [`ac_zeeman_shift`](@ref)
+(with [`ac_zeeman_contributions`](@ref) diagnostics and near-resonance warnings)
+and its nonperturbative counterpart [`floquet_zeeman_shift`](@ref); for
+hyperfine species these operate on the exact
+[`Levels.hyperfine_manifold`](@ref) eigenstates, whose ``F`` mixing the
+hyperfine [`DrivenTransition`](@ref) method likewise accounts for by rotating
+couplings and drives into the field eigenbasis.
 
 Cf. Joshi et al., "Characterization of ion-trap-induced ac magnetic fields",
 Phys. Rev. A **110**, 063101 (2024),
@@ -31,6 +35,7 @@ using Unitful
 
 using ..Levels:
     Levels,
+    HyperfineManifold,
     HyperfineNumberSpec,
     HyperfineOneElectronSpecies,
     NoHyperfineNumberSpec,
@@ -47,6 +52,7 @@ using ..Levels:
 
 include("driving.jl")
 include("floquet.jl")
+include("ac_zeeman.jl")
 include("tdse.jl")
 
 end # module
