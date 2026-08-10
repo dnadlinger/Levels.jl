@@ -37,7 +37,7 @@ pkg> activate
 pkg> add JuliaFormatter
 ```
 
-To install `pre-commit`, we recommend using [uv](https://uv.astral.sh) as follows:
+To install `pre-commit`, we recommend using [uv](https://docs.astral.sh/uv) as follows:
 
 ```bash
 uv tool install pre-commit
