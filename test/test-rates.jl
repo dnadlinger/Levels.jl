@@ -247,7 +247,7 @@ end
     )
     @test hyperfine_reduction(toy, "S_1/2 F=1/2", "D_5/2 F=5/2") ≈ 1.0 atol = 1e-14
     for m_l in (-1//2):(1//2), m_u in (-5//2):(5//2)
-        @test clebsch_gordan(
+        @test transition_amplitude(
             toy,
             StateSpec("S_1/2 F=1/2", m_l),
             StateSpec("D_5/2 F=5/2", m_u),
@@ -256,7 +256,7 @@ end
     end
 
     # Kind guards.
-    @test_throws ArgumentError clebsch_gordan(
+    @test_throws ArgumentError transition_amplitude(
         ca43,
         StateSpec("S_1/2", 1//2),
         StateSpec("D_5/2", 3//2),
@@ -266,7 +266,6 @@ end
 
 @testitem "Hyperfine Rabi frequency" tags=[:unit, :fast] begin
     using Unitful
-    using Levels: clebsch_gordan
 
     s = StateSpec("S_1/2 F=4", 4)
     d = StateSpec("D_5/2 F=4", 3)
@@ -281,9 +280,34 @@ end
     expected = uconvert(
         u"µs^-1",
         sqrt(20π * u"c"^2 * intensity * a / (u"ħ" * ω^3)) *
-        abs(clebsch_gordan(ca43, s, d) * geometry),
+        abs(transition_amplitude(ca43, s, d) * geometry),
     )
     @test rabi_frequency(ca43, s, d, intensity, ε, n) ≈ expected rtol = 1e-12
+
+    # The at-field form scales the plain one by the exact at-field amplitude
+    # ratio, and for a fine-structure species it is the identical (already
+    # exact) result.
+    B = 0.5u"mT"
+    @test rabi_frequency(ca43, s, d, intensity, ε, n, B) ≈
+          rabi_frequency(ca43, s, d, intensity, ε, n) *
+          abs(transition_amplitude(ca43, s, d, B) / transition_amplitude(ca43, s, d)) rtol =
+        1e-12
+    @test rabi_frequency(
+        sr88,
+        StateSpec("S_1/2", 1//2),
+        StateSpec("D_5/2", 5//2),
+        intensity,
+        ε,
+        n,
+        B,
+    ) == rabi_frequency(
+        sr88,
+        StateSpec("S_1/2", 1//2),
+        StateSpec("D_5/2", 5//2),
+        intensity,
+        ε,
+        n,
+    )
 
     # An undrivable |Δm| > 2 component vanishes identically, and
     # fine-structure states are rejected for a hyperfine species.
@@ -305,4 +329,105 @@ end
         ε,
         n,
     )
+end
+
+@testitem "At-field transition amplitudes" tags=[:unit, :fast] begin
+    using Unitful
+    using WignerSymbols: clebschgordan
+    using Levels: coupling_transform
+
+    B = 0.5u"mT"
+    m_s = hyperfine_manifold(ca43, "S_1/2", B)
+    m_d = hyperfine_manifold(ca43, "D_5/2", B)
+    s_states = collect(m_s.basis)
+    d_states = collect(m_d.basis)
+
+    # First-principles pin: the electronic E2 tensor components built in the
+    # |m_I, m_J⟩ product basis (identity on the nucleus), conjugated into the
+    # coupled basis with the Clebsch–Gordan unitaries and then into the field
+    # eigenbasis with the manifold eigenvectors, must reproduce every at-field
+    # amplitude — independently of the 6-j route the implementation takes —
+    # and vanish for Δm ≠ q (m_F stays exact).
+    i_nuc = ca43.nuclear_spin
+    n_i = Int(2 * i_nuc + 1)
+    j_lo = NoHyperfineNumberSpec("S_1/2").j
+    j_hi = NoHyperfineNumberSpec("D_5/2").j
+    d_lo = Int(2j_lo + 1)
+    d_hi = Int(2j_hi + 1)
+    u_lo = coupling_transform(ca43, "S_1/2")
+    u_hi = coupling_transform(ca43, "D_5/2")
+    maxdev = let dev = 0.0
+        for q in -2:2
+            m = zeros(n_i * d_hi, n_i * d_lo)
+            for i_i in 1:n_i
+                for (a, m_j) in enumerate((-j_lo):j_lo),
+                    (b, m_jp) in enumerate((-j_hi):j_hi)
+
+                    m_jp == m_j + q || continue
+                    m[(i_i-1)*d_hi+b, (i_i-1)*d_lo+a] =
+                        Float64(clebschgordan(j_lo, m_j, 2, q, j_hi, m_jp))
+                end
+            end
+            amplitudes = m_d.states' * u_hi' * m * u_lo * m_s.states
+            for (ci, ls) in enumerate(s_states), (ck, us) in enumerate(d_states)
+                expected = if us.m == ls.m + q
+                    transition_amplitude(m_s, m_d, ls, us)
+                else
+                    0.0
+                end
+                dev = max(dev, abs(amplitudes[ck, ci] - expected))
+            end
+        end
+        dev
+    end
+    @test maxdev < 1e-12
+
+    # The one-shot species form matches the manifold-pair form, B = 0 falls
+    # back to the zero-field amplitudes, and Δm beyond the rank still carries
+    # no amplitude.
+    s = StateSpec("S_1/2 F=4", 4)
+    d = StateSpec("D_5/2 F=4", 3)
+    @test transition_amplitude(ca43, s, d, B) ≈ transition_amplitude(m_s, m_d, s, d) rtol =
+        1e-12
+    @test transition_amplitude(ca43, s, d, 0.0u"mT") == transition_amplitude(ca43, s, d)
+    @test iszero(
+        transition_amplitude(
+            ca43,
+            StateSpec("S_1/2 F=4", -4),
+            StateSpec("D_5/2 F=4", -1),
+            B,
+        ),
+    )
+
+    # Low-field continuity (including sign) with the zero-field amplitudes.
+    for (lower, upper) in state_pairs("S_1/2 F=4", "D_5/2 F=5"; Δm=-2:2)
+        @test transition_amplitude(ca43, lower, upper, 1e-4u"mT") ≈
+              transition_amplitude(ca43, lower, upper) atol = 1e-3
+    end
+
+    # At 0.5 mT the F mixing moves the ⁴³Ca⁺ clock-component amplitude at the
+    # percent level — the rotation is not a silent no-op.
+    ratio = transition_amplitude(ca43, s, d, B) / transition_amplitude(ca43, s, d)
+    @test 1e-3 < abs(ratio - 1) < 0.2
+
+    # For a fine-structure species a static field along ẑ changes nothing, so
+    # the B form is the identical (already exact) amplitude.
+    @test transition_amplitude(
+        sr88,
+        StateSpec("S_1/2", 1//2),
+        StateSpec("D_5/2", 5//2),
+        B,
+    ) == transition_amplitude(sr88, StateSpec("S_1/2", 1//2), StateSpec("D_5/2", 5//2))
+
+    # Within one manifold (rank = 1, M1): the same manifold twice; at a small
+    # field this recovers the zero-field F-basis amplitude.
+    lo = StateSpec("S_1/2 F=4", 0)
+    hi = StateSpec("S_1/2 F=3", 1)
+    m_s_small = hyperfine_manifold(ca43, "S_1/2", 1e-4u"mT")
+    @test transition_amplitude(m_s_small, m_s_small, lo, hi; rank=1) ≈
+          transition_amplitude(ca43, lo, hi; rank=1) atol = 1e-4
+
+    # Manifold solutions from different fields are rejected.
+    m_d2 = hyperfine_manifold(ca43, "D_5/2", 2 * B)
+    @test_throws ArgumentError transition_amplitude(m_s, m_d2, s, d)
 end

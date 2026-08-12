@@ -35,6 +35,12 @@ hyperfine states are exact quantities derived from the eigen-solution (the
 latter via the Hellmann–Feynman theorem), not first-order expressions.
 [`insensitive_field`](@ref) finds the roots of the sensitivity, e.g. the
 ⁴³Ca⁺ clock-transition points at 3.38 G and 4.96 G.
+[`eigenbasis_transform`](@ref) exposes the rotation from the coupled basis
+into the labelled field eigenbasis as a matrix, so any coupled-basis operator
+— a [`quadrupole_couplings`](@ref) matrix, a
+[`zeeman_hamiltonian`](@ref) of an rf field — follows the eigenstates as
+``V^† X V``; per-component transition amplitudes are available directly via
+[`transition_amplitude`](@ref).
 
 ```@autodocs
 Modules = [Levels]

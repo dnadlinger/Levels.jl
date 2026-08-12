@@ -92,28 +92,49 @@ end
 
 @testitem "Hyperfine quadrupole couplings" tags=[:unit, :fast] begin
     using Unitful
-    using Levels: clebsch_gordan, fine_structure
+    using Levels: fine_structure
 
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     n, ε = beam_vectors(0.3, 0.7, 0.2)
     Γ = quadrupole_geometry(ε, n)
     C = quadrupole_couplings(ca43, basis, "S_1/2", "D_5/2", ε, n)
 
-    # Element-wise agreement with the species-first Clebsch–Gordan amplitudes
-    # in the upper⟨row|lower⟩⟨col| block, zero elsewhere.
+    # Element-wise agreement with the zero-field transition amplitudes in the
+    # upper⟨row|lower⟩⟨col| block, zero elsewhere.
     s_manifold = NoHyperfineNumberSpec("S_1/2")
     d_manifold = NoHyperfineNumberSpec("D_5/2")
     function expected_coupling(ls, us)
         if fine_structure(ls.level) == s_manifold &&
            fine_structure(us.level) == d_manifold
             q = us.m - ls.m
-            abs(q) <= 2 ? clebsch_gordan(ca43, ls, us) * Γ[Int(q)+3] : 0.0im
+            abs(q) <= 2 ? transition_amplitude(ca43, ls, us) * Γ[Int(q)+3] : 0.0im
         else
             0.0im
         end
     end
     @test maximum(
         abs(C[k, i] - expected_coupling(basis[i], basis[k])) for
+        i in 1:length(basis), k in 1:length(basis)
+    ) < 1e-14
+
+    # The eigenbasis rotation of the zero-field matrix reproduces the at-field
+    # transition amplitudes component by component.
+    B = 0.5u"mT"
+    v = eigenbasis_transform(ca43, basis, B)
+    C_B = v' * C * v
+    m_s = hyperfine_manifold(ca43, "S_1/2", B)
+    m_d = hyperfine_manifold(ca43, "D_5/2", B)
+    function expected_at_field(ls, us)
+        if fine_structure(ls.level) == s_manifold &&
+           fine_structure(us.level) == d_manifold
+            q = us.m - ls.m
+            abs(q) <= 2 ? transition_amplitude(m_s, m_d, ls, us) * Γ[Int(q)+3] : 0.0im
+        else
+            0.0im
+        end
+    end
+    @test maximum(
+        abs(C_B[k, i] - expected_at_field(basis[i], basis[k])) for
         i in 1:length(basis), k in 1:length(basis)
     ) < 1e-14
 

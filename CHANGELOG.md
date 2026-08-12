@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning].
   `quadrupole_light_shift`, also folded into `light_shift` via the `n`/`B`
   keyword arguments, with the per-channel geometry weights exposed as
   `Levels.quadrupole_weights`
+- At-field transition amplitudes for hyperfine species: `transition_amplitude`
+  (zero-field ``F``-basis amplitudes, or exact at a static field — including
+  the Breit–Rabi-regime ``F`` mixing — via a trailing flux density or a
+  pre-solved `HyperfineManifold` pair) with a matching `rabi_frequency`
+  method, and the underlying `eigenbasis_transform` rotation matrix for whole
+  coupled-basis operators, which the hyperfine `DrivenTransition` now also
+  uses internally. The species-aware `Levels.clebsch_gordan` forms are
+  subsumed by `transition_amplitude` and removed; the two-argument form
+  remains as the bare fine-structure Clebsch–Gordan factor
 - `Levels.PeriodicDynamics` submodule for transitions under periodic driving
   (trap rf): the `DrivenTransition` rotating-frame model with ac Zeeman drives
   and laser phase modulation, a dressed-state Floquet engine

@@ -291,3 +291,59 @@ end
         insensitive_field(ca43, s => d, (0.6u"mT", 0.7u"mT"))
     end
 end
+
+@testitem "Eigenbasis transform" tags=[:unit, :fast] begin
+    using LinearAlgebra
+    using Unitful
+    using Levels: fine_structure
+
+    B = 0.3u"mT"
+    basis = StateBasis(ca43, "S_1/2", "D_5/2")
+    v = eigenbasis_transform(ca43, basis, B)
+
+    # Orthogonal, and block-diagonal in the manifolds.
+    @test v' * v ≈ I atol = 1e-12
+    s_range = staterange(basis, "S_1/2")
+    d_range = staterange(basis, "D_5/2")
+    @test all(iszero, v[s_range, d_range])
+    @test all(iszero, v[d_range, s_range])
+
+    # The manifold form matches the species convenience form.
+    m_s = hyperfine_manifold(ca43, "S_1/2", B)
+    m_d = hyperfine_manifold(ca43, "D_5/2", B)
+    @test eigenbasis_transform(basis, m_s, m_d) == v
+
+    # Rotating the full hyperfine + Zeeman Hamiltonian over the basis into the
+    # eigenbasis diagonalises it, with the diagonal matching the labelled
+    # eigen-energies.
+    energy(state) =
+        state_energy(fine_structure(state.level) == m_s.level ? m_s : m_d, state)
+    hamiltonian(b) =
+        Diagonal([hyperfine_shift(ca43, s.level) for s in b]) .+ zeeman_hamiltonian(ca43, b, [0.0u"mT", 0.0u"mT", B])
+    h = hamiltonian(basis)
+    reference = [energy(s) for s in basis]
+    @test maximum(abs.(v' * h * v .- Diagonal(reference))) <
+          1e-9 * maximum(abs.(reference))
+
+    # A scrambled state order is supported.
+    scrambled = StateBasis(reverse(collect(basis)))
+    v2 = eigenbasis_transform(ca43, scrambled, B)
+    reference2 = [energy(s) for s in scrambled]
+    @test maximum(abs.(v2' * hamiltonian(scrambled) * v2 .- Diagonal(reference2))) <
+          1e-9 * maximum(abs.(reference2))
+
+    # Validation: incomplete manifolds, missing or inconsistent manifold
+    # solutions, and the B = 0 rejection of hyperfine_manifold all surface.
+    @test_throws ArgumentError eigenbasis_transform(
+        ca43,
+        StateBasis(ca43, "S_1/2 F=4", "D_5/2"),
+        B,
+    )
+    @test_throws ArgumentError eigenbasis_transform(basis, m_s)
+    @test_throws ArgumentError eigenbasis_transform(
+        basis,
+        m_s,
+        hyperfine_manifold(ca43, "D_5/2", 2 * B),
+    )
+    @test_throws ArgumentError eigenbasis_transform(ca43, basis, 0.0u"mT")
+end

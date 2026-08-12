@@ -121,8 +121,12 @@ relative ``F``-resolved coupling amplitudes
 manifold, in which case all its ``F`` levels present in the basis contribute.
 
 These are zero-field amplitudes; at finite field the ``F`` mixing within the
-manifolds modifies them (the eigenbasis rotation inside the hyperfine
-`Levels.PeriodicDynamics.DrivenTransition` is the exact treatment).
+manifolds modifies them. The exact at-field matrix over a complete-manifold
+basis is `V' * C * V` with `V` from [`eigenbasis_transform`](@ref) (the
+rotation the hyperfine `Levels.PeriodicDynamics.DrivenTransition` applies
+internally — so pass *this* zero-field matrix there, never a pre-rotated one);
+individual at-field components are available via
+[`transition_amplitude`](@ref).
 
 For a [`NoHyperfineOneElectronSpecies`](@ref) this simply forwards to the
 species-less form.

@@ -364,6 +364,98 @@ state_energy(m::HyperfineManifold, level, m_f) =
     m.energies[stateindex(m.basis, level, m_f)]
 
 """
+    eigenbasis_transform(basis::StateBasis, manifolds::HyperfineManifold...)
+    eigenbasis_transform(species::HyperfineOneElectronSpecies, basis::StateBasis, B)
+
+Returns the orthogonal matrix ``V`` relating the canonical coupled ``|F, m_F⟩``
+basis to the field eigenbasis over the given state basis: column ``k`` holds
+the coupled-basis components of the eigenstate carrying the adiabatic
+``(F, m_F)`` label `basis[k]` (cf. [`hyperfine_manifold`](@ref)), so a
+coupled-basis operator ``X`` over `basis` rotates into the eigenbasis as
+``V^† X V``. For example, the exact at-field counterpart of a zero-field
+[`quadrupole_couplings`](@ref) matrix `C` is `V' * C * V`, with the basis
+states then denoting the adiabatically-labelled eigenstates (individual
+components are also available directly via [`transition_amplitude`](@ref)).
+
+The basis may span any number of fine-structure manifolds, in any state order,
+but must contain each spanned manifold **completely** — the eigen-solution
+lives on the full manifold state space. ``V`` is block-diagonal in the
+manifolds. The species form solves each manifold at the static flux density
+`B` (along the quantisation axis ẑ); the manifold form takes pre-solved
+[`HyperfineManifold`](@ref)s, which must share one species and field. The
+column signs follow the eigenvector convention of
+[`hyperfine_manifold`](@ref).
+"""
+function eigenbasis_transform(
+    basis::StateBasis{HyperfineNumberSpec},
+    manifolds::HyperfineManifold...,
+)
+    if isempty(manifolds)
+        throw(ArgumentError("At least one manifold solution is required"))
+    end
+    reference = first(manifolds)
+    for m in manifolds
+        if m.species !== reference.species
+            throw(ArgumentError("Manifold solutions must belong to one species"))
+        end
+        if m.field != reference.field
+            throw(
+                ArgumentError(
+                    "Manifold solutions must share one static field, " *
+                    "got $(m.field) and $(reference.field)",
+                ),
+            )
+        end
+    end
+    by_level = Dict(m.level => m for m in manifolds)
+    if length(by_level) != length(manifolds)
+        throw(ArgumentError("Duplicate manifold solutions given"))
+    end
+
+    # For each basis state: its manifold and canonical index within it.
+    slots = map(collect(basis)) do state
+        fs = fine_structure(state.level)
+        m = get(by_level, fs, nothing)
+        if isnothing(m)
+            throw(ArgumentError("No manifold solution given for level '$fs'"))
+        end
+        (; fs, m, index=stateindex(m.basis, state))
+    end
+    for (fs, m) in by_level
+        present = count(slot -> slot.fs == fs, slots)
+        iszero(present) && continue
+        if present != length(m.basis)
+            throw(
+                ArgumentError(
+                    "Basis must contain the complete '$fs' manifold — the " *
+                    "eigenbasis rotation needs the full state space",
+                ),
+            )
+        end
+    end
+
+    n = length(basis)
+    v = zeros(n, n)
+    for k in 1:n, i in 1:n
+        slots[i].fs == slots[k].fs || continue
+        v[i, k] = slots[k].m.states[slots[i].index, slots[k].index]
+    end
+    v
+end
+
+function eigenbasis_transform(
+    species::HyperfineOneElectronSpecies,
+    basis::StateBasis{HyperfineNumberSpec},
+    B,
+)
+    manifolds = unique!([fine_structure(s.level) for s in basis])
+    eigenbasis_transform(
+        basis,
+        (hyperfine_manifold(species, fs, B) for fs in manifolds)...,
+    )
+end
+
+"""
     zeeman_shift(species::HyperfineOneElectronSpecies, state, B)
 
 Returns the Zeeman shift ``E(B) - E(0)`` of the adiabatically-labelled
@@ -501,5 +593,6 @@ export HyperfineManifold,
     hyperfine_shift,
     hyperfine_manifold,
     state_energy,
+    eigenbasis_transform,
     insensitive_field
 public coupling_transform, moment_operators, coupled_moments, manifold_hamiltonian

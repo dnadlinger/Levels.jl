@@ -203,8 +203,10 @@ For a [`HyperfineOneElectronSpecies`](@ref), the basis must consist of the two
 energies are the exact manifold eigen-energies, and `coupling` and `drives` —
 supplied in the coupled zero-field ``|F, m_F⟩`` basis, e.g. from
 [`Levels.quadrupole_couplings`](@ref) and [`zeeman_drives`](@ref) — are rotated
-into that eigenbasis internally, which accounts exactly for the ``F`` mixing at
-the working field.
+into that eigenbasis internally via [`Levels.eigenbasis_transform`](@ref),
+which accounts exactly for the ``F`` mixing at the working field. Always
+supply the zero-field coupled-basis matrices: a matrix already rotated to the
+eigenbasis (e.g. with `eigenbasis_transform` by hand) would be rotated twice.
 """
 function DrivenTransition(
     species::NoHyperfineOneElectronSpecies,
@@ -304,54 +306,29 @@ function DrivenTransition(
             ),
         )
     end
-    for (fs, range) in ((fs_lower, lower_range), (fs_upper, upper_range))
-        if length(range) != Int(2 * species.nuclear_spin + 1) * Int(2 * fs.j + 1)
-            throw(
-                ArgumentError(
-                    "Basis must contain the complete '$fs' manifold — the " *
-                    "eigenbasis rotation needs the full state space",
-                ),
-            )
-        end
-    end
-
     validate_driven_blocks(n, coupling, drives, lower_range, upper_range)
 
     m_lower = hyperfine_manifold(species, fs_lower, static_field)
     m_upper = hyperfine_manifold(species, fs_upper, static_field)
-
-    # Permutations from the (possibly reordered) user basis to the canonical
-    # manifold bases; the eigen-solutions are label-aligned, so this reorders
-    # both the coupled-basis components and the adiabatic labels consistently.
-    perm_lower = [stateindex(m_lower.basis, basis[i]) for i in lower_range]
-    perm_upper = [stateindex(m_upper.basis, basis[i]) for i in upper_range]
-    v_lower = m_lower.states[perm_lower, perm_lower]
-    v_upper = m_upper.states[perm_upper, perm_upper]
+    # The transform (and its complete-manifold validation) aligns the (possibly
+    # reordered) user basis with the label-aligned eigen-solutions.
+    v = eigenbasis_transform(basis, m_lower, m_upper)
 
     # Rotating-frame diagonal at δ = 0: exact eigen-energies relative to the
     # probed pair.
-    frame = Vector{eltype(m_lower.energies)}(undef, n)
-    frame[lower_range] =
-        m_lower.energies[perm_lower] .-
-        m_lower.energies[stateindex(m_lower.basis, lower_state)]
-    frame[upper_range] =
-        m_upper.energies[perm_upper] .-
-        m_upper.energies[stateindex(m_upper.basis, upper_state)]
-
-    # Rotate the coupled-basis coupling and drives into the field eigenbasis.
-    coupling = complex.(coupling)
-    rotated_coupling = zero(coupling)
-    rotated_coupling[upper_range, lower_range] =
-        v_upper' * coupling[upper_range, lower_range] * v_lower
-    rotated_drives = map(drives) do d
-        amplitude = complex.(d.amplitude)
-        rotated = zero(amplitude)
-        rotated[lower_range, lower_range] =
-            v_lower' * amplitude[lower_range, lower_range] * v_lower
-        rotated[upper_range, upper_range] =
-            v_upper' * amplitude[upper_range, upper_range] * v_upper
-        HarmonicDrive(rotated, d.phase)
+    frame = map(collect(basis)) do state
+        m, reference =
+            fine_structure(state.level) == fs_lower ? (m_lower, lower_state) :
+            (m_upper, upper_state)
+        state_energy(m, state) - state_energy(m, reference)
     end
+
+    # Rotate the coupled-basis coupling and drives into the field eigenbasis
+    # (v is block-diagonal in the manifolds, so the block structure of both is
+    # preserved).
+    rotated_coupling = v' * complex.(coupling) * v
+    rotated_drives =
+        [HarmonicDrive(v' * complex.(d.amplitude) * v, d.phase) for d in drives]
 
     coupling, drives = normalise_driven_matrices(rotated_coupling, rotated_drives)
 

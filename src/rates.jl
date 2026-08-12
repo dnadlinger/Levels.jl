@@ -17,19 +17,15 @@ end
 
 """
     clebsch_gordan(lower::StateSpec, upper::StateSpec)
-    clebsch_gordan(species, lower::StateSpec, upper::StateSpec)
 
-Returns the Clebsch–Gordan coefficient ``⟨j m; R Δm | j' m'⟩`` giving the
-amplitude of the transition between the two given states relative to the reduced
-matrix element of the transition, with the rank ``R`` the electric-multipole
-order from [`multipole_rank`](@ref).
+Returns the bare Clebsch–Gordan coefficient ``⟨j m; R Δm | j' m'⟩`` between two
+fine-structure states, with the rank ``R`` the electric-multipole order from
+[`multipole_rank`](@ref).
 
-The species-first form generalises to hyperfine states of a
-[`HyperfineOneElectronSpecies`](@ref), for which the amplitude relative to the
-*fine-structure* reduced matrix element is
-``⟨F m; R Δm | F' m'⟩ β^{(R)}(F → F')`` with the
-[`Levels.hyperfine_reduction`](@ref) factor ``β``; in the ``I → 0`` limit this
-degenerates exactly (including sign) to the two-argument form.
+This is the purely geometric coupling factor; the general transition amplitude
+relative to the reduced matrix element — species-aware, covering hyperfine
+``F`` levels and their exact mixing at a static field — is
+[`transition_amplitude`](@ref).
 """
 function clebsch_gordan(lower::StateSpec, upper::StateSpec)
     lo = convert(NoHyperfineNumberSpec, lower.level)
@@ -40,30 +36,161 @@ function clebsch_gordan(lower::StateSpec, upper::StateSpec)
     Float64(clebschgordan(lo.j, lower.m, rank, Δm, hi.j, upper.m))
 end
 
-clebsch_gordan(species, lower::StateSpec, upper::StateSpec) =
-    clebsch_gordan(lower, upper)
-
-function clebsch_gordan(
-    species::HyperfineOneElectronSpecies,
-    lower::StateSpec,
-    upper::StateSpec,
-)
-    lo = parse_level(lower.level)
-    hi = parse_level(upper.level)
-    if !(lo isa HyperfineNumberSpec && hi isa HyperfineNumberSpec)
+# Canonicalises a state specification and checks it names a hyperfine (F) level.
+function hyperfine_state(state::StateSpec)
+    spec = parse_level(state.level)
+    if !(spec isa HyperfineNumberSpec)
         throw(
             ArgumentError(
-                "States must specify hyperfine (F) levels for a hyperfine species",
+                "State '$state' must specify a hyperfine (F) level " *
+                "for a hyperfine species",
             ),
         )
     end
-    validate_hyperfine(species, lo)
-    validate_hyperfine(species, hi)
-    rank = multipole_rank(fine_structure(lo), fine_structure(hi))
+    StateSpec(spec, state.m)
+end
+
+"""
+    transition_amplitude(species, lower::StateSpec, upper::StateSpec[, B]; rank)
+    transition_amplitude(m_lower::HyperfineManifold, m_upper::HyperfineManifold,
+                         lower::StateSpec, upper::StateSpec; rank)
+
+Returns the amplitude of the rank-`rank` multipole transition between the two
+given states relative to the reduced matrix element of the *fine-structure*
+transition, ``⟨\\mathrm{up}|T^k_q|\\mathrm{lo}⟩ / (⟨J'‖T^k‖J⟩/\\sqrt{2J'+1})``
+with ``q = Δm``. `rank` defaults to the electric-multipole order of
+[`multipole_rank`](@ref); pass it explicitly for other operators (e.g. `1` for
+M1 within one fine-structure level).
+
+For fine-structure states this is the bare Clebsch–Gordan coefficient
+``⟨j m; k Δm | j' m'⟩`` (cf. [`Levels.clebsch_gordan`](@ref)); for hyperfine
+states of a [`HyperfineOneElectronSpecies`](@ref) at zero field it is
+``⟨F m; k Δm | F' m'⟩ β^{(k)}(F → F')`` with the
+[`Levels.hyperfine_reduction`](@ref) factor ``β``, which in the ``I → 0``
+limit degenerates exactly (including sign) to the fine-structure form.
+
+With the static flux density `B` (along the quantisation axis ẑ) as the final
+positional argument, hyperfine states denote the **adiabatically-labelled
+eigenstates** of the hyperfine + Zeeman Hamiltonian (cf.
+[`hyperfine_manifold`](@ref)) and the amplitude is exact at that field,
+including the ``F`` mixing within the manifolds (which modifies the ⁴³Ca⁺
+D``_{5/2}`` component amplitudes at the few-percent level already at 0.5 mT).
+``m_F`` stays exact, so each state pair still couples through the single
+spherical component ``q = Δm``. For a fine-structure species a static field
+along ẑ leaves the ``m_J`` eigenstates unchanged, so `B` is accepted and
+ignored — the zero-field form is already exact — keeping generic code uniform
+across species.
+
+The manifold-pair form evaluates the same at-field amplitude from pre-solved
+[`HyperfineManifold`](@ref)s (which must share one species and field; pass the
+same manifold twice for a transition within one manifold), avoiding the
+re-diagonalisation in loops over many components; the matrix counterpart is
+the [`eigenbasis_transform`](@ref) rotation. At-field amplitudes connect
+continuously (including sign) to the zero-field ones at low field, but the
+individual signs inherit the eigenvector convention of
+[`hyperfine_manifold`](@ref); magnitudes, and relative phases within one
+consistently-rotated matrix, are the physically meaningful quantities.
+"""
+function transition_amplitude(species, lower::StateSpec, upper::StateSpec; rank=nothing)
+    lo = convert(NoHyperfineNumberSpec, lower.level)
+    hi = convert(NoHyperfineNumberSpec, upper.level)
+    k = something(rank, multipole_rank(lo, hi))
     Δm = upper.m - lower.m
-    abs(Δm) <= rank || return 0.0
-    Float64(clebschgordan(lo.f, lower.m, rank, Δm, hi.f, upper.m)) *
-    hyperfine_reduction(species.nuclear_spin, lo, hi; rank)
+    (abs(Δm) <= k && is_triangle(lo.j, k, hi.j)) || return 0.0
+    Float64(clebschgordan(lo.j, lower.m, k, Δm, hi.j, upper.m))
+end
+
+transition_amplitude(species, lower::StateSpec, upper::StateSpec, B; rank=nothing) =
+    transition_amplitude(species, lower, upper; rank)
+
+function transition_amplitude(
+    species::HyperfineOneElectronSpecies,
+    lower::StateSpec,
+    upper::StateSpec;
+    rank=nothing,
+)
+    lo = hyperfine_state(lower)
+    hi = hyperfine_state(upper)
+    validate_hyperfine(species, lo.level)
+    validate_hyperfine(species, hi.level)
+    k = something(
+        rank,
+        multipole_rank(fine_structure(lo.level), fine_structure(hi.level)),
+    )
+    Δm = hi.m - lo.m
+    abs(Δm) <= k || return 0.0
+    β = hyperfine_reduction(species.nuclear_spin, lo.level, hi.level; rank=k)
+    iszero(β) && return 0.0
+    Float64(clebschgordan(lo.level.f, lo.m, k, Δm, hi.level.f, hi.m)) * β
+end
+
+function transition_amplitude(
+    species::HyperfineOneElectronSpecies,
+    lower::StateSpec,
+    upper::StateSpec,
+    B;
+    rank=nothing,
+)
+    iszero(B) && return transition_amplitude(species, lower, upper; rank)
+    lo = hyperfine_state(lower)
+    hi = hyperfine_state(upper)
+    validate_hyperfine(species, lo.level)
+    validate_hyperfine(species, hi.level)
+    fs_lo = fine_structure(lo.level)
+    fs_hi = fine_structure(hi.level)
+    m_lower = hyperfine_manifold(species, fs_lo, B)
+    m_upper = fs_hi == fs_lo ? m_lower : hyperfine_manifold(species, fs_hi, B)
+    transition_amplitude(m_lower, m_upper, lo, hi; rank)
+end
+
+function transition_amplitude(
+    m_lower::HyperfineManifold,
+    m_upper::HyperfineManifold,
+    lower::StateSpec,
+    upper::StateSpec;
+    rank=nothing,
+)
+    if m_lower.species !== m_upper.species
+        throw(ArgumentError("Manifold solutions must belong to one species"))
+    end
+    if m_lower.field != m_upper.field
+        throw(
+            ArgumentError(
+                "Manifold solutions must share one static field, " *
+                "got $(m_lower.field) and $(m_upper.field)",
+            ),
+        )
+    end
+    lo = hyperfine_state(lower)
+    hi = hyperfine_state(upper)
+    k = something(rank, multipole_rank(m_lower.level, m_upper.level))
+    q = hi.m - lo.m
+    abs(q) <= k || return 0.0
+
+    # m_F is exact, so both eigenvectors live in single-m_F blocks and only the
+    # F decompositions are summed over.
+    v_lo = view(m_lower.states, :, stateindex(m_lower.basis, lo))
+    v_hi = view(m_upper.states, :, stateindex(m_upper.basis, hi))
+    amplitude = 0.0
+    for (i, sl) in enumerate(m_lower.basis)
+        (sl.m == lo.m && !iszero(v_lo[i])) || continue
+        for (j, su) in enumerate(m_upper.basis)
+            (su.m == hi.m && !iszero(v_hi[j])) || continue
+            β = hyperfine_reduction(
+                m_lower.species.nuclear_spin,
+                sl.level,
+                su.level;
+                rank=k,
+            )
+            iszero(β) && continue
+            amplitude +=
+                v_hi[j] *
+                v_lo[i] *
+                Float64(clebschgordan(sl.level.f, sl.m, k, q, su.level.f, su.m)) *
+                β
+        end
+    end
+    amplitude
 end
 
 # Triangle condition (|a - b| ≤ c ≤ a + b with integer perimeter) for angular
@@ -130,6 +257,7 @@ end
 
 """
     rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, ε, n)
+    rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, ε, n, B)
 
 Returns the Rabi frequency (in angular units, such that the excitation
 probability oscillates as ``\\sin^2(Ω t / 2)`` on resonance) for driving the
@@ -154,14 +282,19 @@ Only the directions of `ε` and `n` matter — both are normalised internally, a
 the field amplitude is fixed by the intensity.
 
 For hyperfine states of a [`HyperfineOneElectronSpecies`](@ref), the Einstein A
-coefficient is that of the fine-structure transition, the angular factor is the
-``F``-basis Clebsch–Gordan coefficient times the
-[`Levels.hyperfine_reduction`](@ref) factor, and the transition frequency
-includes the zero-field hyperfine shifts. Note these are zero-field amplitudes:
-at finite field the ``F`` mixing within the manifolds modifies the component
-amplitudes (at the few-percent level for the ⁴³Ca⁺ D``_{5/2}`` manifold at
-0.5 mT) — the eigenbasis rotation inside the hyperfine
-`Levels.PeriodicDynamics.DrivenTransition` is the exact treatment.
+coefficient is that of the fine-structure transition, the angular factor is
+the zero-field [`transition_amplitude`](@ref) (``F``-basis Clebsch–Gordan
+coefficient times the [`Levels.hyperfine_reduction`](@ref) factor), and the
+transition frequency includes the zero-field hyperfine shifts. At finite field
+the ``F`` mixing within the manifolds modifies the component amplitudes (at
+the few-percent level for the ⁴³Ca⁺ D``_{5/2}`` manifold at 0.5 mT); passing
+the static flux density `B` (along the quantisation axis ẑ) as the final
+positional argument evaluates the angular factor exactly at that field, with
+the states denoting the adiabatically-labelled eigenstates (cf.
+[`transition_amplitude`](@ref)). The ``ω^3`` prefactor keeps the zero-field
+transition frequency, whose Zeeman corrections are fractionally ``~10^{-9}``
+on an optical transition. For a fine-structure species the `B` form returns
+the plain result, which is already exact.
 
 # References
 
@@ -172,6 +305,41 @@ amplitudes (at the few-percent level for the ⁴³Ca⁺ D``_{5/2}`` manifold at
   [arXiv:quant-ph/9702053](https://arxiv.org/abs/quant-ph/9702053) numbering.
 """
 function rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, ε, n)
+    rabi_from_amplitude(
+        species,
+        lower,
+        upper,
+        intensity,
+        ε,
+        n,
+        transition_amplitude(species, lower, upper),
+    )
+end
+
+function rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, ε, n, B)
+    rabi_from_amplitude(
+        species,
+        lower,
+        upper,
+        intensity,
+        ε,
+        n,
+        transition_amplitude(species, lower, upper, B),
+    )
+end
+
+# The James-formula core shared by the rabi_frequency methods: scales the given
+# relative angular amplitude to the absolute Rabi frequency for the beam
+# intensity and geometry.
+function rabi_from_amplitude(
+    species,
+    lower::StateSpec,
+    upper::StateSpec,
+    intensity,
+    ε,
+    n,
+    angular,
+)
     lo = parse_level(lower.level)
     hi = parse_level(upper.level)
     fs_lo = fine_structure(lo)
@@ -195,7 +363,6 @@ function rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, 
         20.0, quadrupole_geometry(ε, n)[Int(Δm)+3] / (ε_scale * n_scale)
     end
     scale = prefactor * π * u"c"^2 * intensity * a / (u"ħ" * ω^3)
-    angular = clebsch_gordan(species, StateSpec(lo, lower.m), StateSpec(hi, upper.m))
     uconvert(u"µs^-1", sqrt(scale) * abs(angular * geometry))
 end
 
@@ -230,5 +397,5 @@ function rabi_normalised(
     (Ω0 / abs(c)) .* couplings
 end
 
-export rabi_frequency, rabi_normalised
+export transition_amplitude, rabi_frequency, rabi_normalised
 public clebsch_gordan, multipole_rank, hyperfine_reduction
