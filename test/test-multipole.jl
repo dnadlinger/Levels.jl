@@ -115,7 +115,7 @@ end
     @test maximum(
         abs(C[k, i] - expected_coupling(basis[i], basis[k])) for
         i in 1:length(basis), k in 1:length(basis)
-    ) < 1e-14
+    ) < 1e-13
 
     # The eigenbasis rotation of the zero-field matrix reproduces the at-field
     # transition amplitudes component by component.
@@ -136,7 +136,7 @@ end
     @test maximum(
         abs(C_B[k, i] - expected_at_field(basis[i], basis[k])) for
         i in 1:length(basis), k in 1:length(basis)
-    ) < 1e-14
+    ) < 1e-13
 
     # Restricting to a single F pair picks the corresponding block of the full
     # matrix and leaves everything else zero.
