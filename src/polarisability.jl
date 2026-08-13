@@ -2,16 +2,6 @@ using Unitful
 using WignerSymbols
 
 """
-    photon_energy(laser)
-
-Returns the photon energy ``ħ ω`` of a laser given either by its wavelength or
-by its angular frequency.
-"""
-photon_energy(wavelength::Unitful.Length) =
-    uconvert(u"J", 2π * u"ħ" * u"c" / wavelength)
-photon_energy(frequency::Unitful.Frequency) = uconvert(u"J", u"ħ" * frequency)
-
-"""
 Returns ``⟨j m; 1 q | j' m + q⟩``, or zero where that is not a valid
 electric-dipole channel.
 """
@@ -95,12 +85,29 @@ fine-structure polarisability. The tensor part of the lumped static remainder
 is re-projected with the expectation value of the ``J``-basis tensor operator
 in the coupled state (diagonal-in-``F`` approximation; the ``F``-off-diagonal
 elements are second order in the hyperfine mixing).
+
+The `exclude` keyword names one intermediate fine-structure level whose
+*co-rotating* term is left out of the sum — used when that channel is
+near-resonant and handled Zeeman-resolved by the channel machinery of
+[`LightShiftCoefficients`](@ref) instead; its smooth counter-rotating term
+stays in the background. The excluded channel must be explicit in the
+[`LevelPolarisability`](@ref) data, not lumped into the static remainder,
+which cannot be split.
 """
-function state_polarisabilities(species, state::StateSpec, ħω)
+function state_polarisabilities(species, state::StateSpec, ħω; exclude=nothing)
     level = convert(NoHyperfineNumberSpec, state.level)
     data = level_polarisability(species, level)
     if isnothing(data)
         throw(ArgumentError("No light-shift data known for level '$(state.level)'"))
+    end
+    if !isnothing(exclude) && !haskey(data.reduced_dipoles, exclude)
+        throw(
+            ArgumentError(
+                "The '$level' → '$exclude' channel is lumped into the static " *
+                "remainder of the polarisability data, so its near-resonant part " *
+                "cannot be separated out",
+            ),
+        )
     end
     j, m = level.j, state.m
     if abs(m) > j || !isinteger(j - m)
@@ -112,9 +119,13 @@ function state_polarisabilities(species, state::StateSpec, ħω)
     for (upper, d) in data.reduced_dipoles
         Δ = species.energies[upper] - e_level
         r = d^2 / (2 * upper.j + 1)
+        # For a channel to a level below, the near-resonant term is the one at
+        # Δ + ħω (the labels swap), so the exclusion picks by the sign of Δ.
+        drop_rotating = upper == exclude && Δ > zero(Δ)
+        drop_counter = upper == exclude && !drop_rotating
         for q in -1:1
-            rotating = dipole_cg(j, m, q, upper.j)^2
-            counter = dipole_cg(j, m, -q, upper.j)^2
+            rotating = drop_rotating ? 0.0 : dipole_cg(j, m, q, upper.j)^2
+            counter = drop_counter ? 0.0 : dipole_cg(j, m, -q, upper.j)^2
             α[q+2] +=
                 uconvert(u"C*m^2/V", r * (rotating / (Δ - ħω) + counter / (Δ + ħω)))
         end
@@ -133,13 +144,23 @@ end
 function state_polarisabilities(
     species::HyperfineOneElectronSpecies,
     state::StateSpec{HyperfineNumberSpec},
-    ħω,
+    ħω;
+    exclude=nothing,
 )
     spec = validate_hyperfine(species, state.level)
     fs = fine_structure(spec)
     data = level_polarisability(species, fs)
     if isnothing(data)
         throw(ArgumentError("No light-shift data known for level '$(state.level)'"))
+    end
+    if !isnothing(exclude) && !haskey(data.reduced_dipoles, exclude)
+        throw(
+            ArgumentError(
+                "The '$fs' → '$exclude' channel is lumped into the static " *
+                "remainder of the polarisability data, so its near-resonant part " *
+                "cannot be separated out",
+            ),
+        )
     end
     f, m = spec.f, state.m
     if abs(m) > f || !isinteger(f - m)
@@ -160,9 +181,11 @@ function state_polarisabilities(
             β = hyperfine_reduction(species.nuclear_spin, spec, upper_f; rank=1)
             iszero(β) && continue
             Δ = species.energies[upper] + shift_of(upper_f) - e_level
+            drop_rotating = upper == exclude && Δ > zero(Δ)
+            drop_counter = upper == exclude && !drop_rotating
             for q in -1:1
-                rotating = dipole_cg(f, m, q, upper_f.f)^2
-                counter = dipole_cg(f, m, -q, upper_f.f)^2
+                rotating = drop_rotating ? 0.0 : dipole_cg(f, m, q, upper_f.f)^2
+                counter = drop_counter ? 0.0 : dipole_cg(f, m, -q, upper_f.f)^2
                 α[q+2] += uconvert(
                     u"C*m^2/V",
                     r * β^2 * (rotating / (Δ - ħω) + counter / (Δ + ħω)),
@@ -197,59 +220,8 @@ function state_polarisabilities(
 end
 
 """
-Returns the near-resonant electric-quadrupole shift coefficients ``κ_q`` of the
-given `lower` → `upper` transition, per ``Δm = q`` channel as a length-5 tuple
-indexed by `q + 3`, or `nothing` if the two states are not connected by an
-electric-quadrupole transition with a known Einstein A coefficient, or the
-probed component itself is not a drivable one (``|Δm| ≤ 2``).
-
-Contracted with the [`quadrupole_weights`](@ref) and scaled by the intensity
-over the magnetic flux density, these give the shift; see
-[`quadrupole_light_shift`](@ref) for the physics and the conventions.
-"""
-function quadrupole_shift_coefficients(species, lower::StateSpec, upper::StateSpec)
-    lo = convert(NoHyperfineNumberSpec, lower.level)
-    hi = convert(NoHyperfineNumberSpec, upper.level)
-    multipole_rank(lo, hi) == 2 || return nothing
-    abs(lo.j - hi.j) <= 2 <= lo.j + hi.j || return nothing
-    Δm = upper.m - lower.m
-    abs(Δm) <= 2 || return nothing
-    a = einstein_a(species, lo, hi)
-    isnothing(a) && return nothing
-    ω = transition_frequency(species, lo, hi)
-
-    # Ω² = rabi_scale × intensity × |⟨j m; 2 q|j' m'⟩ Γ_q|², cf. rabi_frequency().
-    rabi_scale = 20π * u"c"^2 * a / (u"ħ" * ω^3)
-
-    # With the laser on resonance with the probed transition, the line centre
-    # drops out of every detuning: a channel `q` sharing the probed upper state
-    # couples it to the lower sublevel at `upper.m - q`, and what is left of its
-    # detuning is the Zeeman splitting of the two lower states involved — and
-    # vice versa for the channels sharing the probed lower state. Both shift the
-    # observed resonance in the same direction, hence the common sign below.
-    w = fill(0.0u"µs*mT", 5)
-    for q in -2:2
-        q == Δm && continue
-        m_lower = upper.m - q
-        if abs(m_lower) <= lo.j
-            c = clebschgordan(Float64, lo.j, m_lower, 2, q, hi.j, upper.m)
-            other = StateSpec(lower.level, m_lower)
-            w[q+3] += c^2 / zeeman_sensitivity(species, lower, other)
-        end
-        m_upper = lower.m + q
-        if abs(m_upper) <= hi.j
-            c = clebschgordan(Float64, lo.j, lower.m, 2, q, hi.j, m_upper)
-            other = StateSpec(upper.level, m_upper)
-            w[q+3] += c^2 / zeeman_sensitivity(species, other, upper)
-        end
-    end
-
-    ntuple(i -> uconvert(u"m^2*T/J", -rabi_scale * w[i] / 4), 5)
-end
-
-"""
 Raises an error unless `B` is a sensible signed scalar flux density for the
-near-resonant quadrupole shift.
+near-resonant channel construction.
 """
 function validate_shift_field(B)
     if !(B isa Unitful.BField)
@@ -264,275 +236,498 @@ function validate_shift_field(B)
     if iszero(B)
         throw(
             ArgumentError(
-                "The near-resonant quadrupole shift is undefined at zero magnetic " *
+                "The near-resonant channels are undefined at zero magnetic " *
                 "field, where the Zeeman components are degenerate",
             ),
         )
     end
 end
 
-# Relative quadrupole amplitudes between the adiabatically-labelled eigenstates
-# of two solved manifolds: the coupled-basis CG × β amplitudes conjugated with
-# the eigenvector matrices ([upper eigenstate, lower eigenstate], real).
-function rotated_quadrupole_amplitudes(
+# Relative rank-`rank` multipole amplitudes between the adiabatically-labelled
+# eigenstates of two solved manifolds: the coupled-basis CG × β amplitudes
+# conjugated with the eigenvector matrices ([upper eigenstate, lower
+# eigenstate], real).
+function rotated_multipole_amplitudes(
     species::HyperfineOneElectronSpecies,
     m_lower::HyperfineManifold,
     m_upper::HyperfineManifold,
+    rank::Integer,
 )
     c = zeros(length(m_upper.basis), length(m_lower.basis))
     for (i, ls) in enumerate(m_lower.basis), (k, us) in enumerate(m_upper.basis)
         q = us.m - ls.m
-        abs(q) <= 2 || continue
-        β = hyperfine_reduction(species.nuclear_spin, ls.level, us.level; rank=2)
+        abs(q) <= rank || continue
+        β = hyperfine_reduction(species.nuclear_spin, ls.level, us.level; rank)
         iszero(β) && continue
-        c[k, i] = Float64(clebschgordan(ls.level.f, ls.m, 2, q, us.level.f, us.m)) * β
+        c[k, i] =
+            Float64(clebschgordan(ls.level.f, ls.m, rank, q, us.level.f, us.m)) * β
     end
     m_upper.states' * c * m_lower.states
 end
 
-# The near-resonant shift coefficients of the probed eigen-pair (il, iu) from
-# the rotated amplitudes and the exact eigen-energy detunings. As m_F is exact,
-# every spectator pair belongs to a well-defined Δm channel; unlike the
-# fine-structure case, spectators sharing the probed state's m_F (but a
-# different F label) contribute too, at hyperfine-interval detunings.
-function kappa_from_rotated(rotated, m_lower, m_upper, il, iu, rabi_scale)
-    w = fill(0.0u"µs", 5)
-    lower_m = m_lower.basis[il].m
-    upper_m = m_upper.basis[iu].m
-    for idx in eachindex(m_lower.energies)
-        idx == il && continue
-        q = upper_m - m_lower.basis[idx].m
-        abs(q) <= 2 || continue
-        w[Int(q)+3] +=
-            abs2(rotated[iu, idx]) / (m_lower.energies[idx] - m_lower.energies[il])
+"""
+One near-resonant coupling channel of a basis state: a Zeeman component
+connecting it to `partner` in the other manifold of a level pair the laser sits
+close to.
+
+The signed `weight` is such that the second-order shift of the state from this
+channel is `weight × intensity × w / (δ − Δ)`, with `w` the geometric weight of
+its ``Δm = q`` component ([`polarisation_weights`](@ref)`[q + 2]` for rank 1,
+[`quadrupole_weights`](@ref)`[q + 3]` for rank 2) and `δ` the laser offset from
+the same reference `Δ` is measured against. It is positive for a state in the
+lower manifold of the pair and negative for one in the upper (level repulsion
+away from the driving photon); `4 × |weight| × intensity × w` is the squared
+Rabi frequency of the component, and `γ` the total decay rate of the upper
+level — both used by the validity warnings at evaluation time.
+"""
+struct ResonantChannel{S<:StateSpec}
+    "The state at the other end (adiabatic labels at the construction field)."
+    partner::S
+
+    "The multipole rank of the level pair (1 = E1, 2 = E2)."
+    rank::Int8
+
+    "The ``Δm`` of the component, indexing the geometric weights."
+    q::Int8
+
+    "Signed shift weight (see above)."
+    weight::typeof(1.0u"m^2/(W*µs^2)")
+
+    "Position of the component relative to the pair's zero-field reference."
+    Δ::typeof(1.0u"µs^-1")
+
+    "Total decay rate of the upper level of the pair."
+    γ::typeof(1.0u"µs^-1")
+end
+
+channel_type(basis::StateBasis{L}) where {L} = ResonantChannel{StateSpec{L}}
+
+# Ordered (lower, upper) pairs among the fine-structure `levels` connected by
+# an electric-quadrupole transition with a known Einstein A coefficient.
+function quadrupole_pairs(species, levels)
+    pairs = Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}[]
+    for lo in levels, hi in levels
+        species.energies[lo] < species.energies[hi] || continue
+        multipole_rank(lo, hi) == 2 || continue
+        abs(lo.j - hi.j) <= 2 <= lo.j + hi.j || continue
+        isnothing(einstein_a(species, lo, hi)) && continue
+        push!(pairs, (lo, hi))
     end
-    for idx in eachindex(m_upper.energies)
-        idx == iu && continue
-        q = m_upper.basis[idx].m - lower_m
-        abs(q) <= 2 || continue
-        w[Int(q)+3] +=
-            abs2(rotated[idx, il]) / (m_upper.energies[iu] - m_upper.energies[idx])
-    end
-    ntuple(i -> uconvert(u"µs^-1*m^2/W", -rabi_scale * w[i] / 4), 5)
+    pairs
+end
+
+# Common scale of the channel weights of one (lower, upper) level pair: the
+# James-formula Ω²-per-intensity prefactor over four (cf. rabi_frequency), so
+# that weight × intensity × w is the Ω²/4 of a unit-amplitude component.
+function channel_scale(species, lo, hi, rank)
+    a = einstein_a(species, lo, hi)
+    ω = transition_frequency(species, lo, hi)
+    prefactor = rank == 1 ? 6.0 : 20.0
+    uconvert(u"m^2/(W*µs^2)", prefactor * π * u"c"^2 * a / (4 * u"ħ" * ω^3))
 end
 
 """
-    quadrupole_shift_coefficients(species::HyperfineOneElectronSpecies,
-                                  lower::StateSpec, upper::StateSpec, B)
-
-Hyperfine form of the near-resonant shift coefficients: in the Breit–Rabi
-regime the spectator detunings are the exact eigen-energy differences of the
-manifolds at the static field `B` (neither linear in ``m`` nor sharing a
-common ``1/B`` factor), so the field enters the *construction*, and the
-coefficients directly scale the intensity (`shift = intensity × Σ w_q κ_q`),
-with no ``1/B`` at evaluation time. The amplitudes are the eigenbasis-rotated
-``F``-basis amplitudes, accounting exactly for the ``F`` mixing.
+Validates that the reference pair of a [`RelativeFrequency`](@ref) laser is a
+transition the channel machinery can describe, returning its ordered
+fine-structure levels and multipole rank.
 """
-function quadrupole_shift_coefficients(
-    species::HyperfineOneElectronSpecies,
-    lower::StateSpec,
-    upper::StateSpec,
-    B,
-)
-    validate_shift_field(B)
-    lo = parse_level(lower.level)
-    hi = parse_level(upper.level)
-    if !(lo isa HyperfineNumberSpec && hi isa HyperfineNumberSpec)
+function validate_reference(species, laser::RelativeFrequency)
+    lo = fine_structure(laser.lower)
+    hi = fine_structure(laser.upper)
+    rank = multipole_rank(lo, hi)
+    if !(abs(lo.j - hi.j) <= rank <= lo.j + hi.j)
         throw(
             ArgumentError(
-                "States must specify hyperfine (F) levels for a hyperfine species",
+                "'$(laser.lower)' and '$(laser.upper)' are not connected by an " *
+                "E$rank transition",
             ),
         )
     end
-    fs_lo = fine_structure(lo)
-    fs_hi = fine_structure(hi)
-    multipole_rank(fs_lo, fs_hi) == 2 || return nothing
-    abs(fs_lo.j - fs_hi.j) <= 2 <= fs_lo.j + fs_hi.j || return nothing
-    abs(upper.m - lower.m) <= 2 || return nothing
-    a = einstein_a(species, fs_lo, fs_hi)
-    isnothing(a) && return nothing
-    ω = transition_frequency(species, fs_lo, fs_hi)
-    rabi_scale = 20π * u"c"^2 * a / (u"ħ" * ω^3)
+    if isnothing(einstein_a(species, lo, hi))
+        if !isnothing(einstein_a(species, hi, lo))
+            throw(
+                ArgumentError(
+                    "'$(laser.lower)' is of higher energy than '$(laser.upper)'; " *
+                    "give the reference as lower => upper",
+                ),
+            )
+        end
+        throw(
+            ArgumentError(
+                "No known Einstein A coefficient between '$lo' and '$hi', which " *
+                "the near-resonant channel amplitudes require",
+            ),
+        )
+    end
+    lo, hi, rank
+end
 
-    m_lower = hyperfine_manifold(species, fs_lo, B)
-    m_upper = hyperfine_manifold(species, fs_hi, B)
-    rotated = rotated_quadrupole_amplitudes(species, m_lower, m_upper)
-    kappa_from_rotated(
-        rotated,
-        m_lower,
-        m_upper,
-        stateindex(m_lower.basis, StateSpec(lo, lower.m)),
-        stateindex(m_upper.basis, StateSpec(hi, upper.m)),
-        rabi_scale,
-    )
+# The background-exclusion partner function of the given laser: maps a basis
+# level to the other member of an electric-dipole reference pair (whose
+# co-rotating term moves into the channel sum), or to nothing.
+function exclusion_partner(laser)
+    laser isa RelativeFrequency || return Returns(nothing)
+    lo = fine_structure(laser.lower)
+    hi = fine_structure(laser.upper)
+    multipole_rank(lo, hi) == 1 || return Returns(nothing)
+    function (level)
+        fs = fine_structure(parse_level(level))
+        fs == lo ? hi : fs == hi ? lo : nothing
+    end
+end
+
+# The other fine-structure manifold of the laser's reference pair for the
+# given level, or nothing if the level belongs to neither side.
+function reference_partner_manifold(laser::RelativeFrequency, level)
+    lo = fine_structure(laser.lower)
+    hi = fine_structure(laser.upper)
+    fs = fine_structure(level)
+    fs == lo ? hi : fs == hi ? lo : nothing
 end
 
 """
-Entry of [`LightShiftCoefficients`](@ref)`.quadrupole_shifts`: the near-resonant
-shift coefficients `κ` of one transition (cf.
-[`quadrupole_shift_coefficients`](@ref)) and the photon energy `ħω` of its
-resonance.
+Builds the per-state near-resonant channel lists over `basis` at the static
+flux density `B`: for every state, one entry per Zeeman component connecting it
+to the other manifold of each relevant level pair — the electric-quadrupole
+pairs within the basis, plus the reference pair of a
+[`RelativeFrequency`](@ref) `laser` (of either rank). Channel positions are
+exact at-field offsets from the pair's zero-field interval; for the reference
+pair that is the very reference the laser offset is measured against, for the
+others the reference cancels out of the driven-mode differences it is used in.
 """
-const QuadrupoleShiftEntry =
-    @NamedTuple{ħω::typeof(1.0u"J"), κ::NTuple{5,typeof(1.0u"m^2*T/J")}}
+function resonant_channels(species, basis::StateBasis{NoHyperfineNumberSpec}, laser, B)
+    channels = [channel_type(basis)[] for _ in basis]
+    pairs = quadrupole_pairs(species, unique(basis.levels))
+    if laser isa RelativeFrequency
+        named = (fine_structure(laser.lower), fine_structure(laser.upper))
+        named in pairs || push!(pairs, named)
+    end
+    for (lo, hi) in pairs
+        rank = multipole_rank(lo, hi)
+        scale = channel_scale(species, lo, hi, rank)
+        γ = uconvert(u"µs^-1", 1 / lifetime(species, hi))
+        # Relative amplitude of the m_lo → m_hi component (zero also covers the
+        # dipole-forbidden j combinations).
+        amplitude(m_lo, q, m_hi) =
+            rank == 1 ? dipole_cg(lo.j, m_lo, q, hi.j) :
+            Float64(clebschgordan(lo.j, m_lo, 2, q, hi.j, m_hi))
+        for (i, state) in enumerate(basis)
+            if state.level == lo
+                for m in (-hi.j):hi.j
+                    q = m - state.m
+                    abs(q) <= rank || continue
+                    amp = amplitude(state.m, q, m)
+                    iszero(amp) && continue
+                    partner = StateSpec(hi, m)
+                    Δ = uconvert(
+                        u"µs^-1",
+                        zeeman_shift(species, partner, B) -
+                        zeeman_shift(species, state, B),
+                    )
+                    push!(
+                        channels[i],
+                        ResonantChannel(
+                            partner,
+                            Int8(rank),
+                            Int8(Int(q)),
+                            scale * amp^2,
+                            Δ,
+                            γ,
+                        ),
+                    )
+                end
+            elseif state.level == hi
+                for m in (-lo.j):lo.j
+                    q = state.m - m
+                    abs(q) <= rank || continue
+                    amp = amplitude(m, q, state.m)
+                    iszero(amp) && continue
+                    partner = StateSpec(lo, m)
+                    Δ = uconvert(
+                        u"µs^-1",
+                        zeeman_shift(species, state, B) -
+                        zeeman_shift(species, partner, B),
+                    )
+                    push!(
+                        channels[i],
+                        ResonantChannel(
+                            partner,
+                            Int8(rank),
+                            Int8(Int(q)),
+                            -scale * amp^2,
+                            Δ,
+                            γ,
+                        ),
+                    )
+                end
+            end
+        end
+    end
+    channels
+end
+
+function resonant_channels(
+    species::HyperfineOneElectronSpecies,
+    basis::StateBasis{HyperfineNumberSpec},
+    laser,
+    B,
+)
+    channels = [channel_type(basis)[] for _ in basis]
+    pairs = quadrupole_pairs(species, unique!(fine_structure.(basis.levels)))
+    named = nothing
+    if laser isa RelativeFrequency
+        named = (fine_structure(laser.lower), fine_structure(laser.upper))
+        named in pairs || push!(pairs, named)
+    end
+    needed = unique!([level for pair in pairs for level in pair])
+    manifolds = Dict(fs => hyperfine_manifold(species, fs, B) for fs in needed)
+    for (lo, hi) in pairs
+        rank = multipole_rank(lo, hi)
+        scale = channel_scale(species, lo, hi, rank)
+        γ = uconvert(u"µs^-1", 1 / lifetime(species, hi))
+        m_lo, m_hi = manifolds[lo], manifolds[hi]
+        rotated = rotated_multipole_amplitudes(species, m_lo, m_hi, rank)
+        # For the reference pair, positions are measured from the named
+        # zero-field F-pair interval; the manifold eigen-energies are relative
+        # to their centroids, so only the Casimir offsets of the named levels
+        # remain (the centroid interval cancels).
+        ref = 0.0u"µs^-1"
+        if (lo, hi) == named
+            ref = uconvert(
+                u"µs^-1",
+                hyperfine_shift(species, laser.upper) -
+                hyperfine_shift(species, laser.lower),
+            )
+        end
+        for (i, state) in enumerate(basis)
+            fs = fine_structure(state.level)
+            if fs == lo
+                li = stateindex(m_lo.basis, state)
+                for (k, partner) in enumerate(m_hi.basis)
+                    q = partner.m - state.m
+                    abs(q) <= rank || continue
+                    amp = rotated[k, li]
+                    iszero(amp) && continue
+                    Δ = uconvert(u"µs^-1", (m_hi.energies[k] - m_lo.energies[li]) - ref)
+                    push!(
+                        channels[i],
+                        ResonantChannel(
+                            partner,
+                            Int8(rank),
+                            Int8(Int(q)),
+                            scale * amp^2,
+                            Δ,
+                            γ,
+                        ),
+                    )
+                end
+            elseif fs == hi
+                ui = stateindex(m_hi.basis, state)
+                for (k, partner) in enumerate(m_lo.basis)
+                    q = state.m - partner.m
+                    abs(q) <= rank || continue
+                    amp = rotated[ui, k]
+                    iszero(amp) && continue
+                    Δ = uconvert(u"µs^-1", (m_hi.energies[ui] - m_lo.energies[k]) - ref)
+                    push!(
+                        channels[i],
+                        ResonantChannel(
+                            partner,
+                            Int8(rank),
+                            Int8(Int(q)),
+                            -scale * amp^2,
+                            Δ,
+                            γ,
+                        ),
+                    )
+                end
+            end
+        end
+    end
+    channels
+end
 
 """
-Hyperfine counterpart of [`Levels.QuadrupoleShiftEntry`](@ref): the
-coefficients are field-resolved (computed at the stored flux density `B`, which
-evaluation checks) and scale the intensity directly, with no ``1/B``.
+A bare laser frequency closer than this to an explicit electric-dipole channel
+would make the background silently miss the Zeeman/hyperfine structure of the
+line (which only a [`RelativeFrequency`](@ref) reference resolves); beyond it,
+neglecting that structure is a ``≲ 10^{-3}`` relative error.
 """
-const HyperfineQuadrupoleShiftEntry = @NamedTuple{
-    ħω::typeof(1.0u"J"),
-    B::typeof(1.0u"mT"),
-    κ::NTuple{5,typeof(1.0u"µs^-1*m^2/W")},
+const BACKGROUND_GUARD_WINDOW = u"ħ" * 2π * 100.0u"GHz"
+
+"""
+Raises an error if the laser photon energy `ħω` falls within
+[`Levels.BACKGROUND_GUARD_WINDOW`](@ref) of an explicit electric-dipole channel
+of any of the given levels, except the excluded (reference-pair) partner.
+"""
+function validate_background_detunings(species, levels, ħω, exclude)
+    for level in levels
+        fs = fine_structure(parse_level(level))
+        data = level_polarisability(species, fs)
+        isnothing(data) && continue
+        e_level = species.energies[fs]
+        for (upper, _) in data.reduced_dipoles
+            upper == exclude(level) && continue
+            detuning = abs(abs(species.energies[upper] - e_level) - ħω)
+            if detuning < BACKGROUND_GUARD_WINDOW
+                cyclic = round(u"GHz", detuning / u"ħ" / 2π; digits=1)
+                throw(
+                    ArgumentError(
+                        "The laser is within $cyclic of the '$fs' → '$upper' " *
+                        "resonance, where the electric-dipole background misses " *
+                        "the Zeeman structure of the line; give the laser as a " *
+                        "RelativeFrequency naming that transition instead",
+                    ),
+                )
+            end
+        end
+    end
+end
+
+"""
+Light-shift data for a set of states, precomputed for one laser.
+
+Construct with [`LightShiftCoefficients`](@ref)`(species, basis, laser[; B])`
+and evaluate with [`light_shift`](@ref) (parked beam, single states) or
+[`driven_light_shift`](@ref) (resonantly driven component); see there for the
+sign and unit conventions.
+"""
+struct LightShiftCoefficients{
+    S,
+    L<:LevelSpec,
+    E<:Quantity,
+    T<:Quantity,
+    R<:Union{Nothing,RelativeFrequency},
+    F<:Union{Nothing,Quantity},
 }
+    "The species the data was computed for."
+    species::S
 
-"""
-Light-shift data for a set of states, precomputed for one laser frequency.
-
-Construct with [`LightShiftCoefficients`](@ref)`(species, basis, laser)` and
-evaluate with [`light_shift`](@ref); see there for the sign and unit
-conventions.
-"""
-struct LightShiftCoefficients{L<:LevelSpec,E<:Quantity,T<:Quantity,Q}
     "The states the coefficients refer to, fixing the row order."
     basis::StateBasis{L}
 
-    "The photon energy the coefficients were computed for."
+    "The photon energy the background polarisabilities were computed for."
     photon_energy::E
 
     """
-    Polarisability of each state for each ``Δm`` channel, as a
-    `length(basis) × 3` matrix indexed by `[stateindex, q + 2]`.
+    Background (far-detuned electric-dipole) polarisability of each state for
+    each ``Δm`` channel, as a `length(basis) × 3` matrix indexed by
+    `[stateindex, q + 2]`.
 
     States of levels without [`LevelPolarisability`](@ref) data carry `NaN`
-    entries; evaluating an electric-dipole shift involving them raises an
-    error.
+    entries; evaluating a background shift involving them raises an error. For
+    an electric-dipole reference pair, the co-rotating part of that one channel
+    is excluded here — it lives in `channels`, Zeeman-resolved, instead.
     """
     polarisabilities::Matrix{T}
 
     """
-    Near-resonant electric-quadrupole shift coefficients of the transitions
-    between the basis states, keyed by their `(lower, upper)` pair of basis
-    indices (cf. [`quadrupole_light_shift`](@ref)).
-
-    Only pairs that are actually connected by an electric-quadrupole transition
-    with known data appear. Unlike the polarisabilities, the coefficients do
-    not depend on the laser frequency, which the model instead fixes to
-    resonance with the probed transition; the photon energy of that resonance
-    is stored alongside them so that evaluation can check the premise against
-    the frequency the coefficients were computed for. The entries are
-    [`Levels.QuadrupoleShiftEntry`](@ref)s for a no-hyperfine basis, or
-    field-resolved [`Levels.HyperfineQuadrupoleShiftEntry`](@ref)s for a
-    hyperfine one.
+    Near-resonant channels of each basis state (cf.
+    [`Levels.ResonantChannel`](@ref)), by basis index; empty unless the static
+    flux density `B` was given at construction.
     """
-    quadrupole_shifts::Dict{Tuple{Int,Int},Q}
+    channels::Vector{Vector{ResonantChannel{StateSpec{L}}}}
+
+    "The [`RelativeFrequency`](@ref) the laser was given as, if it was."
+    laser::R
+
+    "The static flux density the channels were computed at, if any."
+    field::F
 end
 
 """
-    LightShiftCoefficients(species, basis::StateBasis, laser)
-    LightShiftCoefficients(species, levels_or_states::AbstractVector, laser)
+    LightShiftCoefficients(species, basis::StateBasis, laser[; B])
+    LightShiftCoefficients(species, levels_or_states::AbstractVector, laser[; B])
 
-Precomputes the ac Stark shift of every state in the given basis for a laser of
-the given wavelength or angular frequency.
+Precomputes the ac Stark shift data of every state in the given basis, for a
+laser given as a wavelength, an angular frequency, or a
+[`RelativeFrequency`](@ref).
 
 All the atomic structure enters here, so that evaluating the shift for a
 particular intensity and polarisation afterwards costs only a handful of
 arithmetic operations — the intended use when fitting laser parameters against
 many observed transition frequencies.
 
-The electric-dipole part requires [`LevelPolarisability`](@ref) data. Levels
-without it are still admitted, but evaluating any shift involving their
-polarisability raises an error. The near-resonant electric-quadrupole
-coefficients only need the Einstein A coefficient; they are computed for
-whichever pairs of basis states support them, and simply left out for the rest.
+Two kinds of data are held. The far-detuned electric-dipole **background** —
+the per-state polarisabilities at the laser frequency — requires
+[`LevelPolarisability`](@ref) data; levels without it are admitted, but
+evaluating their background raises. The **near-resonant channels** — per-state
+couplings to the individual Zeeman components of a level pair the laser sits
+close to, at their exact at-field positions — are built when the static flux
+density `B` is given: for every electric-quadrupole pair within the basis
+(enabling [`driven_light_shift`](@ref)), and for the reference pair of a
+`RelativeFrequency` laser of either rank (additionally enabling the parked
+single-state [`light_shift`](@ref) at the laser's stated offset). The channels
+need only the Einstein A coefficient, not polarisability data.
 
-For a hyperfine basis (of a [`HyperfineOneElectronSpecies`](@ref)), the
-quadrupole coefficients are field-resolved (cf. the four-argument
-[`Levels.quadrupole_shift_coefficients`](@ref)), so the static flux density
-must be supplied via the `B` keyword if they are wanted; without it only the
-electric-dipole part is precomputed. Evaluation then checks that the `B` it is
-given matches the one the coefficients were built for.
+A `RelativeFrequency` laser requires `B`. If its reference pair is an
+electric-dipole one, the co-rotating part of that channel is moved from the
+background into the channels (which requires it to be explicit in the
+[`LevelPolarisability`](@ref) data rather than lumped into the static
+remainder). A bare wavelength that falls within ~100 GHz of an explicit
+electric-dipole channel is refused for the same reason: the background alone
+would silently miss the Zeeman structure of the line.
 """
-function LightShiftCoefficients(
+LightShiftCoefficients(
     species,
     basis::StateBasis{NoHyperfineNumberSpec},
-    laser,
-)
-    ħω = photon_energy(laser)
-    rows = [
-        isnothing(level_polarisability(species, state.level)) ?
-        fill(NaN * u"C*m^2/V", 3) : state_polarisabilities(species, state, ħω) for
-        state in basis
-    ]
-    quadrupole = Dict{Tuple{Int,Int},QuadrupoleShiftEntry}()
-    for (i, lower) in enumerate(basis), (k, upper) in enumerate(basis)
-        κ = quadrupole_shift_coefficients(species, lower, upper)
-        isnothing(κ) && continue
-        resonance = uconvert(
-            u"J",
-            u"ħ" * transition_frequency(species, lower.level, upper.level),
-        )
-        quadrupole[(i, k)] = (ħω=resonance, κ=κ)
-    end
-    LightShiftCoefficients(basis, ħω, permutedims(reduce(hcat, rows)), quadrupole)
-end
+    laser;
+    B=nothing,
+) = build_coefficients(species, basis, laser, B)
 
-function LightShiftCoefficients(
+LightShiftCoefficients(
     species::HyperfineOneElectronSpecies,
     basis::StateBasis{HyperfineNumberSpec},
     laser;
     B=nothing,
-)
-    ħω = photon_energy(laser)
-    rows = [
-        isnothing(level_polarisability(species, state.level)) ?
-        fill(NaN * u"C*m^2/V", 3) : state_polarisabilities(species, state, ħω) for
-        state in basis
-    ]
-    quadrupole = Dict{Tuple{Int,Int},HyperfineQuadrupoleShiftEntry}()
-    if !isnothing(B)
-        validate_shift_field(B)
-        # Hoist the manifold solutions and rotated amplitude matrices out of
-        # the pair loop; per pair only the O(n) spectator sums remain.
-        manifolds = Dict(
-            fs => hyperfine_manifold(species, fs, B) for
-            fs in unique!(fine_structure.(basis.levels))
-        )
-        for (fs_lo, m_lower) in manifolds, (fs_hi, m_upper) in manifolds
-            fs_lo == fs_hi && continue
-            multipole_rank(fs_lo, fs_hi) == 2 || continue
-            abs(fs_lo.j - fs_hi.j) <= 2 <= fs_lo.j + fs_hi.j || continue
-            a = einstein_a(species, fs_lo, fs_hi)
-            isnothing(a) && continue
-            ω = transition_frequency(species, fs_lo, fs_hi)
-            rabi_scale = 20π * u"c"^2 * a / (u"ħ" * ω^3)
-            rotated = rotated_quadrupole_amplitudes(species, m_lower, m_upper)
-            for (i, lower) in enumerate(basis), (k, upper) in enumerate(basis)
-                fine_structure(lower.level) == fs_lo || continue
-                fine_structure(upper.level) == fs_hi || continue
-                abs(upper.m - lower.m) <= 2 || continue
-                κ = kappa_from_rotated(
-                    rotated,
-                    m_lower,
-                    m_upper,
-                    stateindex(m_lower.basis, lower),
-                    stateindex(m_upper.basis, upper),
-                    rabi_scale,
-                )
-                resonance = uconvert(
-                    u"J",
-                    u"ħ" * transition_frequency(species, lower.level, upper.level),
-                )
-                quadrupole[(i, k)] = (ħω=resonance, B=uconvert(u"mT", B), κ=κ)
-            end
-        end
-    end
-    LightShiftCoefficients(basis, ħω, permutedims(reduce(hcat, rows)), quadrupole)
-end
+) = build_coefficients(species, basis, laser, B)
 
 LightShiftCoefficients(species, levels_or_states::AbstractVector, laser; kwargs...) =
     LightShiftCoefficients(species, StateBasis(levels_or_states), laser; kwargs...)
+
+function build_coefficients(species, basis, laser, B)
+    if laser isa RelativeFrequency
+        if !(laser.lower isa eltype(basis.levels))
+            throw(
+                ArgumentError(
+                    "The RelativeFrequency reference levels must be of the same " *
+                    "kind as the basis levels",
+                ),
+            )
+        end
+        validate_reference(species, laser)
+        if isnothing(B)
+            throw(
+                ArgumentError(
+                    "A RelativeFrequency laser requires the static flux density " *
+                    "B, as the near-resonant channels are field-resolved",
+                ),
+            )
+        end
+    end
+    isnothing(B) || validate_shift_field(B)
+    ħω = photon_energy(species, laser)
+    exclude = exclusion_partner(laser)
+    rows = [
+        isnothing(level_polarisability(species, state.level)) ?
+        fill(NaN * u"C*m^2/V", 3) :
+        state_polarisabilities(species, state, ħω; exclude=exclude(state.level)) for
+        state in basis
+    ]
+    validate_background_detunings(species, unique(basis.levels), ħω, exclude)
+    channels =
+        isnothing(B) ? [channel_type(basis)[] for _ in basis] :
+        resonant_channels(species, basis, laser, B)
+    LightShiftCoefficients(
+        species,
+        basis,
+        ħω,
+        permutedims(reduce(hcat, rows)),
+        channels,
+        laser isa RelativeFrequency ? laser : nothing,
+        isnothing(B) ? nothing : uconvert(u"mT", B),
+    )
+end
 
 """
 Returns the polarisability of the basis state with the given index for the
@@ -558,247 +753,291 @@ shift_at_intensity(α, intensity) =
     uconvert(u"µs^-1", -intensity * α / (2 * u"c" * u"ε0" * u"ħ"))
 
 """
-Contracts near-resonant quadrupole shift coefficients with the
-[`quadrupole_weights`](@ref) `w` for the given intensity and magnetic flux
-density.
+Raises an error unless `parts` is a valid part selector.
 """
-function quadrupole_shift_at(κ, intensity, w, B)
-    validate_shift_field(B)
-    uconvert(u"µs^-1", (intensity / B) * sum(w .* κ))
-end
-
-"""
-Evaluates a stored quadrupole-shift entry: the fine-structure form scales the
-coefficients by intensity over `B`; the field-resolved hyperfine form scales by
-the intensity alone, after checking `B` against the field the coefficients were
-computed for.
-"""
-entry_shift(entry::QuadrupoleShiftEntry, intensity, w, B) =
-    quadrupole_shift_at(entry.κ, intensity, w, B)
-
-function entry_shift(entry::HyperfineQuadrupoleShiftEntry, intensity, w, B)
-    validate_shift_field(B)
-    if !isapprox(B, entry.B; rtol=1e-6)
+function validate_parts(parts)
+    if !(parts in (:total, :background, :resonant))
         throw(
             ArgumentError(
-                "The near-resonant quadrupole shift coefficients were computed " *
-                "for B = $(entry.B), not $B; rebuild the LightShiftCoefficients " *
-                "for the new field",
+                "parts must be :total, :background or :resonant, " *
+                "not $(repr(parts))",
             ),
         )
     end
-    uconvert(u"µs^-1", intensity * sum(w .* entry.κ))
+end
+
+# Perturbation-theory validity thresholds of the channel sum: warn when a
+# channel Rabi frequency exceeds a tenth of its detuning ((Ω/2d)² > 2.5e-3),
+# or the detuning comes within five linewidths of the pole.
+const CHANNEL_RABI_RATIO = 0.1
+const CHANNEL_LINEWIDTH_RATIO = 5.0
+
+"""
+Sums the signed near-resonant shift of the basis state `index` over its
+channels to the `other` fine-structure manifold, for a laser at `δ` from the
+channels' reference and the given geometric weights (`w_pol` indexed `q + 2`
+for rank 1, `w_quad` indexed `q + 3` for rank 2); `exclude` drops the channel
+to one partner state (the resonantly driven component of
+[`driven_light_shift`](@ref)).
+"""
+function resonant_state_shift(c, index, other, δ, intensity, w_pol, w_quad, exclude)
+    shift = 0.0u"µs^-1"
+    state = c.basis[index]
+    for ch in c.channels[index]
+        fine_structure(ch.partner.level) == other || continue
+        ch.partner == exclude && continue
+        w = ch.rank == 1 ? w_pol[Int(ch.q)+2] : w_quad[Int(ch.q)+3]
+        iszero(w) && continue
+        d = δ - ch.Δ
+        rabi² = 4 * abs(ch.weight) * intensity * w
+        if rabi² > (CHANNEL_RABI_RATIO * d)^2
+            @warn "Channel Rabi frequency is comparable to its detuning; " *
+                  "second-order perturbation theory may be inaccurate." state = state partner =
+                ch.partner rabi = uconvert(u"µs^-1", sqrt(rabi²)) detuning =
+                uconvert(u"µs^-1", d)
+        end
+        if abs(d) < CHANNEL_LINEWIDTH_RATIO * ch.γ
+            @warn "Laser within a few linewidths of a channel resonance, where " *
+                  "the pole approximation of the shift breaks down." state = state partner =
+                ch.partner detuning = uconvert(u"µs^-1", d) linewidth = ch.γ
+        end
+        shift += ch.weight * intensity * w / d
+    end
+    shift
 end
 
 """
-Returns the electric-dipole shift of the transition between the basis states
-with the given indices, for the [`polarisation_weights`](@ref) `w`.
-"""
-dipole_transition_shift(
-    c::LightShiftCoefficients,
-    lower::Integer,
-    upper::Integer,
-    intensity,
-    w,
-) = shift_at_intensity(
-    state_polarisability(c, upper, w) - state_polarisability(c, lower, w),
-    intensity,
-)
+    light_shift(coefficients::LightShiftCoefficients, state::StateSpec, intensity, ε; n, δ, parts)
+    light_shift(species, state::StateSpec, laser, intensity, ε; n, B, δ, parts)
 
+Returns the ac Stark (light) shift of the given state (in angular units) for a
+beam of the given intensity and polarisation `ε`, parked at the laser frequency
+the coefficients were built for.
+
+The shift is the far-detuned electric-dipole **background** — which depends on
+the polarisation alone, never on the beam direction — plus, for a
+[`RelativeFrequency`](@ref) laser (necessarily built with `B`), the
+**near-resonant** sum over the Zeeman components connecting the state to the
+other manifold of the reference pair, at their exact at-field detunings from
+the stated laser offset. For an electric-quadrupole reference pair the beam
+direction `n` is required, as the quadrupole coupling depends on it; for an
+electric-dipole one it is not used. `parts` selects `:total` (the default),
+`:background` or `:resonant`.
+
+`δ` overrides the laser offset (relative to the same reference interval), so a
+frequency sweep or fit can reuse one set of coefficients.
+
+The change a parked beam makes to the splitting of a `lower => upper` pair — a
+Ramsey-type measurement, with no component resonantly driven — is the
+difference of the two states' shifts; the displacement of the resonance
+observed when *driving* a component is [`driven_light_shift`](@ref) instead.
+
+The near-resonant sum is second-order perturbation theory: every channel Rabi
+frequency must stay small against its detuning, and detunings within a few
+linewidths of a pole are outside the model; both conditions warn when
+violated. The one-shot species form is a convenience wrapper that rebuilds the
+coefficients on every call.
 """
-Returns the near-resonant electric-quadrupole shift of the transition between
-the basis states with the given indices, for the [`quadrupole_weights`](@ref)
-`w`.
-"""
-function quadrupole_transition_shift(
+function light_shift(
     c::LightShiftCoefficients,
-    lower::Integer,
-    upper::Integer,
+    state::StateSpec,
     intensity,
-    w,
-    B,
+    ε;
+    n=nothing,
+    δ=nothing,
+    parts=:total,
 )
-    entry = get(c.quadrupole_shifts, (lower, upper), nothing)
-    if isnothing(entry)
-        levels(i, k) = (c.basis[i].level, c.basis[k].level)
-        passed = levels(lower, upper)
-        if any(levels(i, k) == passed for (i, k) in keys(c.quadrupole_shifts))
-            # Other components of the same two levels do have coefficients, so
-            # only the probed component itself can be at fault.
-            Δm = c.basis[upper].m - c.basis[lower].m
-            Δm = isinteger(Δm) ? Int(Δm) : Δm
+    validate_parts(parts)
+    index = stateindex(c.basis, state)
+    w_pol = polarisation_weights(ε)
+    background() = shift_at_intensity(state_polarisability(c, index, w_pol), intensity)
+    parts == :background && return background()
+    if isnothing(c.laser)
+        isnothing(δ) || throw(
+            ArgumentError("δ requires a RelativeFrequency laser for its reference"),
+        )
+        if parts == :resonant
             throw(
                 ArgumentError(
-                    "The Δm = $Δm component '$(c.basis[lower])' => " *
-                    "'$(c.basis[upper])' of an electric-quadrupole transition " *
-                    "cannot be driven (|Δm| ≤ 2), so there is no resonance whose " *
-                    "shift could be observed",
-                ),
-            )
-        elseif any(levels(k, i) == passed for (i, k) in keys(c.quadrupole_shifts))
-            throw(
-                ArgumentError(
-                    "'$(c.basis[lower])' is of higher energy than " *
-                    "'$(c.basis[upper])'; give the transition as lower => upper",
+                    "The near-resonant shift of a single state requires the " *
+                    "laser given as a RelativeFrequency (with B): a bare " *
+                    "frequency does not locate it within the Zeeman manifold",
                 ),
             )
         end
-        throw(
-            ArgumentError(
-                "'$(c.basis[lower])' and '$(c.basis[upper])' are not connected by " *
-                "an electric-quadrupole transition with a known Einstein A " *
-                "coefficient",
-            ),
-        )
+        # A bare laser is guaranteed far from every explicit channel (cf.
+        # LightShiftCoefficients), so the background is the whole story.
+        return background()
     end
-    if !isapprox(c.photon_energy, entry.ħω; rtol=1e-3)
-        wavelength(ħω) = round(u"nm", 2π * u"ħ" * u"c" / ħω; digits=3)
-        throw(
-            ArgumentError(
-                "The near-resonant quadrupole shift presumes the laser to be tuned " *
-                "to resonance with the probed transition, but the coefficients were " *
-                "computed for $(wavelength(c.photon_energy)) rather than the " *
-                "$(wavelength(entry.ħω)) of '$(c.basis[lower])' => '$(c.basis[upper])'",
-            ),
-        )
+    δ_eval = isnothing(δ) ? c.laser.offset : δ
+    if !(δ_eval isa Unitful.Frequency)
+        throw(ArgumentError("δ must be an angular frequency offset"))
     end
-    entry_shift(entry, intensity, w, B)
+    other = reference_partner_manifold(c.laser, c.basis[index].level)
+    resonant = if isnothing(other)
+        0.0u"µs^-1"
+    else
+        rank = multipole_rank(fine_structure(c.laser.lower), fine_structure(c.laser.upper))
+        w_quad = nothing
+        if rank == 2
+            isnothing(n) && throw(
+                ArgumentError(
+                    "The beam direction n is required: the reference pair is an " *
+                    "electric-quadrupole transition, whose coupling depends on it",
+                ),
+            )
+            w_quad = quadrupole_weights(ε, n)
+        end
+        resonant_state_shift(c, index, other, δ_eval, intensity, w_pol, w_quad, nothing)
+    end
+    parts == :resonant ? resonant : background() + resonant
 end
-
-"""
-Raises an error unless the beam direction `n` and the magnetic flux density `B`
-keyword arguments are given either both or not at all.
-"""
-function check_geometry_keywords(n, B)
-    if isnothing(n) != isnothing(B)
-        throw(
-            ArgumentError(
-                "The beam direction n and the magnetic flux density B must be " *
-                "given together",
-            ),
-        )
-    end
-end
-
-"""
-    light_shift(coefficients::LightShiftCoefficients, state::StateSpec, intensity, ε)
-    light_shift(coefficients::LightShiftCoefficients, transition::Pair, intensity, ε[; n, B])
-
-Returns the ac Stark (light) shift of a state, or of a `lower => upper`
-transition, from the precomputed `coefficients` (in angular units).
-
-For a transition this is the shift of the upper state minus that of the lower
-one, i.e. the amount by which the frequency at which resonant Rabi flopping is
-observed exceeds the unperturbed transition frequency.
-
-Without the keyword arguments, only the electric-dipole contributions are
-included. Those are what shifts an isolated state, and they do not depend on
-the beam direction — an E1 light shift is set by the polarisation `ε` alone,
-whose overall scale is irrelevant as the intensity is given separately.
-
-Passing the beam direction `n` and the magnetic flux density `B` (always
-together) additionally accounts for the near-resonant coupling to the other
-Zeeman components of the probed quadrupole transition itself, which is only
-defined for a transition and does depend on the beam direction; see
-[`quadrupole_light_shift`](@ref) for the model and its range of validity.
-"""
-light_shift(c::LightShiftCoefficients, state::StateSpec, intensity, ε) =
-    shift_at_intensity(
-        state_polarisability(c, stateindex(c.basis, state), polarisation_weights(ε)),
-        intensity,
-    )
 
 function light_shift(
-    c::LightShiftCoefficients,
-    transition::Pair,
+    species,
+    state::StateSpec,
+    laser,
     intensity,
     ε;
     n=nothing,
     B=nothing,
+    δ=nothing,
+    parts=:total,
 )
-    check_geometry_keywords(n, B)
-    lower = stateindex(c.basis, transition.first)
-    upper = stateindex(c.basis, transition.second)
-    shift = dipole_transition_shift(c, lower, upper, intensity, polarisation_weights(ε))
-    isnothing(n) && return shift
-    shift +
-    quadrupole_transition_shift(c, lower, upper, intensity, quadrupole_weights(ε, n), B)
+    if !(laser isa RelativeFrequency) && !isnothing(B)
+        throw(
+            ArgumentError(
+                "B only enters through the near-resonant channels of a " *
+                "RelativeFrequency laser; the shift of a single state from a " *
+                "bare laser frequency does not depend on it",
+            ),
+        )
+    end
+    c = LightShiftCoefficients(species, [state.level], laser; B)
+    light_shift(c, state, intensity, ε; n, δ, parts)
 end
 
-"""
-    light_shift(species, state::StateSpec, laser, intensity, ε)
-    light_shift(species, lower::StateSpec, upper::StateSpec, laser, intensity, ε[; n, B])
-
-Returns the ac Stark (light) shift of a single state or transition for a laser
-of the given wavelength or angular frequency, intensity and polarisation.
-
-This is a convenience wrapper that does the full sum over intermediate levels on
-every call; use [`LightShiftCoefficients`](@ref) to hoist that work out of a
-loop over intensities or polarisations.
-
-As for the precomputed form, giving the beam direction `n` and the magnetic flux
-density `B` as keywords adds the near-resonant
-[`quadrupole_light_shift`](@ref).
-"""
-light_shift(species, state::StateSpec, laser, intensity, ε) = shift_at_intensity(
-    sum(
-        polarisation_weights(ε) .*
-        state_polarisabilities(species, state, photon_energy(laser)),
-    ),
-    intensity,
-)
-
-function light_shift(
+# The pair forms of light_shift were replaced by the parked/driven split;
+# fail with guidance rather than a MethodError.
+light_shift(c::LightShiftCoefficients, transition::Pair, intensity, ε; kwargs...) =
+    throw(
+        ArgumentError(
+            "The light shift of a pair is driven_light_shift (laser locked to " *
+            "the driven component) or, for a parked beam, the difference of the " *
+            "two states' light_shift results",
+        ),
+    )
+light_shift(
     species,
     lower::StateSpec,
     upper::StateSpec,
     laser,
     intensity,
     ε;
-    n=nothing,
-    B=nothing,
+    kwargs...,
+) = throw(
+    ArgumentError(
+        "The light shift of a pair is driven_light_shift (laser locked to " *
+        "the driven component; no laser argument — the probed transition fixes " *
+        "it) or, for a parked beam, the difference of the two states' " *
+        "light_shift results",
+    ),
 )
-    check_geometry_keywords(n, B)
-    ħω = photon_energy(laser)
-    w = polarisation_weights(ε)
-    α_lower = sum(w .* state_polarisabilities(species, lower, ħω))
-    α_upper = sum(w .* state_polarisabilities(species, upper, ħω))
-    shift = shift_at_intensity(α_upper - α_lower, intensity)
-    isnothing(n) && return shift
-    shift + quadrupole_light_shift(species, lower, upper, intensity, ε; n, B)
+
+# Explains why no channel connects the probed pair, mirroring the checks the
+# construction applies.
+function throw_undriveable(c, lower, upper)
+    fs_lo = fine_structure(lower.level)
+    fs_hi = fine_structure(upper.level)
+    rank = multipole_rank(fs_lo, fs_hi)
+    connected =
+        abs(fs_lo.j - fs_hi.j) <= rank <= fs_lo.j + fs_hi.j &&
+        !isnothing(einstein_a(c.species, fs_lo, fs_hi))
+    if connected
+        named =
+            !isnothing(c.laser) &&
+            (fine_structure(c.laser.lower), fine_structure(c.laser.upper)) ==
+            (fs_lo, fs_hi)
+        if rank == 1 && !named
+            throw(
+                ArgumentError(
+                    "Driving the electric-dipole '$fs_lo' → '$fs_hi' line " *
+                    "requires naming it as the RelativeFrequency reference at " *
+                    "construction",
+                ),
+            )
+        end
+        Δm = upper.m - lower.m
+        Δm = isinteger(Δm) ? Int(Δm) : Δm
+        if abs(Δm) > rank
+            throw(
+                ArgumentError(
+                    "The Δm = $Δm component '$lower' => '$upper' of an E$rank " *
+                    "transition cannot be driven (|Δm| ≤ $rank), so there is no " *
+                    "resonance whose shift could be observed",
+                ),
+            )
+        end
+        throw(
+            ArgumentError(
+                "The component '$lower' => '$upper' has vanishing amplitude, so " *
+                "it cannot be resonantly driven",
+            ),
+        )
+    end
+    if !isnothing(einstein_a(c.species, fs_hi, fs_lo))
+        throw(
+            ArgumentError(
+                "'$lower' is of higher energy than '$upper'; give the transition " *
+                "as lower => upper",
+            ),
+        )
+    end
+    throw(
+        ArgumentError(
+            "'$lower' and '$upper' are not connected by a transition with a " *
+            "known Einstein A coefficient",
+        ),
+    )
 end
 
 """
-    quadrupole_light_shift(coefficients::LightShiftCoefficients, transition::Pair, intensity, ε; n, B)
-    quadrupole_light_shift(species, lower::StateSpec, upper::StateSpec, intensity, ε; n, B)
+    driven_light_shift(coefficients::LightShiftCoefficients, transition::Pair, intensity, ε; n, parts)
+    driven_light_shift(species, lower::StateSpec, upper::StateSpec, intensity, ε; n, B, parts)
 
-Returns the near-resonant electric-quadrupole contribution to the light shift of
-a `lower => upper` transition (in angular units), assuming the laser is tuned to
-resonance with that transition. When evaluating from precomputed
-[`LightShiftCoefficients`](@ref), an error is raised if the laser frequency they
-were computed for is inconsistent with that premise (i.e. belongs to a different
-transition).
+Returns the light shift of the observed resonance when the `lower => upper`
+Zeeman component is resonantly driven (in angular units): the amount by which
+the frequency at which resonant Rabi flopping is observed exceeds the
+unperturbed transition frequency, with the laser servo-locked to the probed
+component.
 
-Driving one Zeeman component of a quadrupole transition also couples the two
-states involved, off resonantly, to every other component sharing one of them;
-the resulting ac Stark shifts move the observed resonance. This is the shift for
-which ⁸⁸Sr⁺ clock evaluations quote an "E2 ac Stark shift" (`[Lindvall2025]`,
-Sec. III F 2): with a perfectly linear polarisation the shifts of the two
-components of a ``±m`` Zeeman pair are equal and opposite and hence average out,
-whereas an elliptical polarisation leaves a net shift.
+The **background** part is the difference of the two states' far-detuned
+electric-dipole shifts. The **resonant** part sums, for both states, the
+couplings to every *other* Zeeman component sharing one of them — the driven
+channel itself is the coherent drive, not a shift — with the laser pinned to
+the probed component, so the laser frequency drops out and only exact at-field
+splittings enter the detunings. `parts` selects `:total` (the default),
+`:background` or `:resonant`.
 
-The detunings involved are the Zeeman splittings of the two manifolds, so the
-result scales as the intensity over the magnetic flux density `B` — the signed
-component along the quantisation axis. Both the polarisation `ε` and the beam
-direction `n` enter, through the [`quadrupole_weights`](@ref); the laser
-frequency does not, as it is pinned to the probed transition.
+This is the shift ⁸⁸Sr⁺ clock evaluations quote as the "E2 ac Stark shift"
+(`[Lindvall2025]`, Sec. III F 2): with a perfectly linear polarisation the
+shifts of the two components of a ``±m`` Zeeman pair are equal and opposite
+and cancel in the pair average, whereas an elliptical polarisation leaves a
+net shift. (For a hyperfine species the cancellation survives only
+approximately — spectators in other ``F`` levels sit at hyperfine-interval
+detunings that are even under ``m → −m``; the rigorous mirror identity is
+shift(−m pair, B) = shift(+m pair, −B).)
 
-This is second-order perturbation theory in the coupling, so it holds as long as
-every Rabi frequency involved is small compared with the Zeeman splittings, and
-breaks down for near-degenerate components at very low fields. Counter-rotating
-terms and the far-detuned quadrupole channels to other levels are neglected;
-both are smaller by many orders of magnitude, and the latter are in any case
-dwarfed by the dipole contributions to [`light_shift`](@ref).
+The probed pair may be any electric-quadrupole transition with channels in the
+coefficients (which requires construction with `B`); an electric-dipole pair
+must additionally be the [`RelativeFrequency`](@ref) reference pair. The beam
+direction `n` is required for electric-quadrupole pairs and unused for
+electric-dipole ones. For the background part, the coefficients' laser
+frequency must be consistent with the probed transition (rtol ``10^{-3}``) —
+in driven mode the laser *is* on that line. Like the parked
+[`light_shift`](@ref), the resonant sum is second-order perturbation theory
+and warns when a spectator Rabi frequency approaches its detuning (which
+breaks down first for near-degenerate components at very low fields).
 
 # References
 
@@ -807,124 +1046,120 @@ dwarfed by the dipole contributions to [`light_shift`](@ref).
   Its Absolute Frequency", Phys. Rev. Applied **24**, 044082 (2025),
   [doi:10.1103/cztf-bfvp](https://doi.org/10.1103/cztf-bfvp).
 """
-function quadrupole_light_shift(
+function driven_light_shift(
     c::LightShiftCoefficients,
     transition::Pair,
     intensity,
     ε;
-    n,
-    B,
+    n=nothing,
+    parts=:total,
 )
-    quadrupole_transition_shift(
-        c,
-        stateindex(c.basis, transition.first),
-        stateindex(c.basis, transition.second),
-        intensity,
-        quadrupole_weights(ε, n),
-        B,
-    )
-end
-
-# For a hyperfine species, the coefficients are only defined at a given static
-# field; direct the caller to the four-argument form.
-function quadrupole_shift_coefficients(
-    species::HyperfineOneElectronSpecies,
-    lower::StateSpec,
-    upper::StateSpec,
-)
-    throw(
-        ArgumentError(
-            "The near-resonant quadrupole shift of a hyperfine species requires " *
-            "the static field: pass B (cf. quadrupole_shift_coefficients(species, " *
-            "lower, upper, B))",
-        ),
-    )
-end
-
-function quadrupole_light_shift(
-    species::HyperfineOneElectronSpecies,
-    lower::StateSpec,
-    upper::StateSpec,
-    intensity,
-    ε;
-    n,
-    B,
-)
-    κ = quadrupole_shift_coefficients(species, lower, upper, B)
-    if isnothing(κ)
-        lo = fine_structure(parse_level(lower.level))
-        hi = fine_structure(parse_level(upper.level))
-        e2 = multipole_rank(lo, hi) == 2 && abs(lo.j - hi.j) <= 2 <= lo.j + hi.j
-        if e2 && !isnothing(einstein_a(species, lo, hi))
-            Δm = upper.m - lower.m
-            Δm = isinteger(Δm) ? Int(Δm) : Δm
+    validate_parts(parts)
+    il = stateindex(c.basis, transition.first)
+    iu = stateindex(c.basis, transition.second)
+    lower, upper = c.basis[il], c.basis[iu]
+    w_pol = polarisation_weights(ε)
+    background = 0.0u"µs^-1"
+    if parts != :resonant
+        resonance = uconvert(
+            u"J",
+            u"ħ" * transition_frequency(c.species, lower.level, upper.level),
+        )
+        if !isapprox(c.photon_energy, resonance; rtol=1e-3)
+            wavelength(ħω) = round(u"nm", 2π * u"ħ" * u"c" / ħω; digits=3)
             throw(
                 ArgumentError(
-                    "The Δm = $Δm component '$lower' => '$upper' of an " *
-                    "electric-quadrupole transition cannot be driven (|Δm| ≤ 2), " *
-                    "so there is no resonance whose shift could be observed",
-                ),
-            )
-        elseif e2 && !isnothing(einstein_a(species, hi, lo))
-            throw(
-                ArgumentError(
-                    "'$lower' is of higher energy than '$upper'; give the " *
-                    "transition as lower => upper",
+                    "Driven-mode evaluation presumes the laser to be on the " *
+                    "probed transition, but the coefficients were computed for " *
+                    "$(wavelength(c.photon_energy)) rather than the " *
+                    "$(wavelength(resonance)) of '$lower' => '$upper'",
                 ),
             )
         end
+        background = shift_at_intensity(
+            state_polarisability(c, iu, w_pol) - state_polarisability(c, il, w_pol),
+            intensity,
+        )
+        parts == :background && return background
+    end
+    if isnothing(c.field)
         throw(
             ArgumentError(
-                "'$lower' and '$upper' are not connected by an electric-quadrupole " *
-                "transition with a known Einstein A coefficient",
+                "The near-resonant part requires the channels: construct the " *
+                "LightShiftCoefficients with the static flux density B",
             ),
         )
     end
-    uconvert(u"µs^-1", intensity * sum(quadrupole_weights(ε, n) .* κ))
+    probed = findfirst(ch -> ch.partner == upper, c.channels[il])
+    isnothing(probed) && throw_undriveable(c, lower, upper)
+    ch = c.channels[il][probed]
+    if ch.weight < zero(ch.weight)
+        throw(
+            ArgumentError(
+                "'$lower' is of higher energy than '$upper'; give the transition " *
+                "as lower => upper",
+            ),
+        )
+    end
+    w_quad = nothing
+    if ch.rank == 2
+        isnothing(n) && throw(
+            ArgumentError(
+                "The beam direction n is required for an electric-quadrupole " *
+                "transition, whose coupling depends on it",
+            ),
+        )
+        w_quad = quadrupole_weights(ε, n)
+    end
+    fs_lo = fine_structure(lower.level)
+    fs_hi = fine_structure(upper.level)
+    resonant =
+        resonant_state_shift(c, iu, fs_lo, ch.Δ, intensity, w_pol, w_quad, lower) -
+        resonant_state_shift(c, il, fs_hi, ch.Δ, intensity, w_pol, w_quad, upper)
+    parts == :resonant ? resonant : background + resonant
 end
 
-function quadrupole_light_shift(
+function driven_light_shift(
     species,
     lower::StateSpec,
     upper::StateSpec,
     intensity,
     ε;
-    n,
-    B,
+    n=nothing,
+    B=nothing,
+    parts=:total,
 )
-    κ = quadrupole_shift_coefficients(species, lower, upper)
-    if isnothing(κ)
-        lo = convert(NoHyperfineNumberSpec, lower.level)
-        hi = convert(NoHyperfineNumberSpec, upper.level)
-        e2 = multipole_rank(lo, hi) == 2 && abs(lo.j - hi.j) <= 2 <= lo.j + hi.j
-        if e2 && !isnothing(einstein_a(species, lo, hi))
-            # The levels are connected in the given order, so only the probed
-            # component itself can be at fault.
-            Δm = upper.m - lower.m
-            Δm = isinteger(Δm) ? Int(Δm) : Δm
+    levels = [lower.level, upper.level]
+    if isnothing(B)
+        if parts != :background
             throw(
                 ArgumentError(
-                    "The Δm = $Δm component '$lower' => '$upper' of an " *
-                    "electric-quadrupole transition cannot be driven (|Δm| ≤ 2), " *
-                    "so there is no resonance whose shift could be observed",
-                ),
-            )
-        elseif e2 && !isnothing(einstein_a(species, hi, lo))
-            throw(
-                ArgumentError(
-                    "'$lower' is of higher energy than '$upper'; give the " *
-                    "transition as lower => upper",
+                    "The near-resonant part requires the static flux density B",
                 ),
             )
         end
-        throw(
-            ArgumentError(
-                "'$lower' and '$upper' are not connected by an electric-quadrupole " *
-                "transition with a known Einstein A coefficient",
-            ),
+        fs_lo = fine_structure(parse_level(lower.level))
+        fs_hi = fine_structure(parse_level(upper.level))
+        if multipole_rank(fs_lo, fs_hi) == 1
+            throw(
+                ArgumentError(
+                    "The background of a driven electric-dipole line requires B: " *
+                    "separating out its resonant channel is field-resolved",
+                ),
+            )
+        end
+        # For an electric-quadrupole pair the background needs no channels, so
+        # a bare construction at the line's own frequency suffices.
+        c = LightShiftCoefficients(
+            species,
+            levels,
+            transition_frequency(species, lower.level, upper.level),
         )
+        return driven_light_shift(c, lower => upper, intensity, ε; n, parts)
     end
-    quadrupole_shift_at(κ, intensity, quadrupole_weights(ε, n), B)
+    laser = RelativeFrequency(lower.level => upper.level, 0.0u"µs^-1")
+    c = LightShiftCoefficients(species, levels, laser; B)
+    driven_light_shift(c, lower => upper, intensity, ε; n, parts)
 end
 
 """
@@ -1063,9 +1298,9 @@ function tensor_polarisability(species, level, laser)
 end
 
 export LightShiftCoefficients,
+    driven_light_shift,
     light_shift,
-    quadrupole_light_shift,
     scalar_polarisability,
     tensor_polarisability,
     vector_polarisability
-public photon_energy, polarisation_weights, quadrupole_weights
+public polarisation_weights, quadrupole_weights

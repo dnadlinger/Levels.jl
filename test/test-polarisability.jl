@@ -42,17 +42,42 @@ end
     coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ)
     for (m, reference) in zip((1//2, 3//2, 5//2), (0.77, 0.74, 0.67))
         transition = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", m)
-        shift = light_shift(coefficients, transition, intensity, ε)
+        shift = driven_light_shift(
+            coefficients,
+            transition,
+            intensity,
+            ε;
+            parts=:background,
+        )
         @test shift ≈ 2π * reference * u"mHz" rtol = 2e-2
 
         # The Zeeman pairs are quoted as pair averages; with a linear
         # polarisation the shift is the same for both signs of m by symmetry.
         mirrored = StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -m)
-        @test light_shift(coefficients, mirrored, intensity, ε) ≈ shift
+        @test driven_light_shift(
+            coefficients,
+            mirrored,
+            intensity,
+            ε;
+            parts=:background,
+        ) ≈ shift
 
-        # The one-shot form must agree with the precomputed one.
-        @test light_shift(sr88, transition.first, transition.second, λ, intensity, ε) ≈
-              shift
+        # The one-shot form must agree with the precomputed one. (It evaluates
+        # at the exact line frequency rather than the rounded λ above, hence
+        # the finite tolerance.)
+        @test driven_light_shift(
+            sr88,
+            transition.first,
+            transition.second,
+            intensity,
+            ε;
+            parts=:background,
+        ) ≈ shift rtol = 1e-5
+
+        # A parked pair shift is the difference of the two states' shifts; for
+        # the background part that is the same number.
+        @test light_shift(coefficients, transition.second, intensity, ε) -
+              light_shift(coefficients, transition.first, intensity, ε) ≈ shift
     end
 
     # Appendix B of the same paper gives the differential scalar polarisability
@@ -112,11 +137,12 @@ end
     d = light_shift(coefficients, StateSpec("D_5/2", 5//2), intensity, ε)
     @test s < zero(s)
     @test d > zero(d)
-    @test light_shift(
+    @test driven_light_shift(
         coefficients,
         StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2),
         intensity,
-        ε,
+        ε;
+        parts=:background,
     ) ≈ d - s
 
     # Only the polarisation enters an E1 light shift, not the beam direction —
@@ -167,8 +193,8 @@ end
           LightShiftCoefficients(sr88, ["S_1/2"], λ).polarisabilities
 
     # Levels without polarisability data are admitted — the near-resonant
-    # quadrupole part does not need it — but their electric-dipole shift is
-    # rejected at evaluation rather than silently treated as unshifted.
+    # channels do not need it — but their background shift is rejected at
+    # evaluation rather than silently treated as unshifted.
     @test isnothing(level_polarisability(sr88, "D_3/2"))
     mixed = LightShiftCoefficients(sr88, ["S_1/2", "D_3/2"], λ)
     @test light_shift(mixed, StateSpec("S_1/2", 1//2), intensity, ε) ≈
@@ -179,11 +205,14 @@ end
         intensity,
         ε,
     )
-    @test_throws ArgumentError light_shift(
-        mixed,
+    ω_687 = Levels.transition_frequency(sr88, "S_1/2", "D_3/2")
+    d32 = LightShiftCoefficients(sr88, ["S_1/2", "D_3/2"], ω_687)
+    @test_throws ArgumentError driven_light_shift(
+        d32,
         StateSpec("S_1/2", 1//2) => StateSpec("D_3/2", 3//2),
         intensity,
-        ε,
+        ε;
+        parts=:background,
     )
     @test_throws ArgumentError scalar_polarisability(sr88, "P_1/2", λ)
     @test_throws ArgumentError light_shift(
@@ -194,13 +223,13 @@ end
         ε,
     )
 
-    # The beam direction and the field only make sense together.
+    # The removed pair forms of light_shift fail with guidance towards
+    # driven_light_shift or the difference of the two states' shifts.
     @test_throws ArgumentError light_shift(
         coefficients,
         StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 3//2),
         intensity,
-        ε;
-        n=[0.0, 1.0, 0.0],
+        ε,
     )
     @test_throws ArgumentError light_shift(
         sr88,
@@ -208,8 +237,35 @@ end
         StateSpec("D_5/2", 3//2),
         λ,
         intensity,
+        ε,
+    )
+
+    # B only enters through the near-resonant channels of a RelativeFrequency
+    # laser; on a bare-laser single state it signals a misunderstanding.
+    @test_throws ArgumentError light_shift(
+        sr88,
+        StateSpec("S_1/2", 1//2),
+        λ,
+        intensity,
         ε;
         B=0.5u"mT",
+    )
+
+    # A δ override needs a RelativeFrequency reference to be relative to, and
+    # the parts selector is validated.
+    @test_throws ArgumentError light_shift(
+        coefficients,
+        StateSpec("S_1/2", 1//2),
+        intensity,
+        ε;
+        δ=2π * 1.0u"MHz",
+    )
+    @test_throws ArgumentError light_shift(
+        coefficients,
+        StateSpec("S_1/2", 1//2),
+        intensity,
+        ε;
+        parts=:everything,
     )
 
     # A zero polarisation vector carries no information about the geometry.
@@ -221,7 +277,48 @@ end
     )
 end
 
-@testitem "Near-resonant quadrupole shift vs exact diagonalisation" tags=[:unit, :fast] begin
+@testitem "Laser reference validation" tags=[:unit, :fast] begin
+    using Unitful
+
+    # The reference pair must be a transition of the species, given in
+    # lower => upper order.
+    B = 0.5u"mT"
+    @test_throws ArgumentError LightShiftCoefficients(
+        sr88,
+        ["S_1/2", "D_5/2"],
+        RelativeFrequency("D_5/2" => "S_1/2", 0.0u"s^-1");
+        B,
+    )
+
+    # A RelativeFrequency laser requires the static field (the channels are
+    # field-resolved), and its levels must match the basis kind.
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 1.0u"MHz")
+    @test_throws ArgumentError LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel)
+    @test_throws ArgumentError LightShiftCoefficients(
+        ca43,
+        StateBasis(ca43, "S_1/2", "D_5/2"),
+        rel;
+        B,
+    )
+
+    # A bare laser frequency within ~100 GHz of an explicit electric-dipole
+    # channel is refused: the background would silently miss the Zeeman
+    # structure that only a RelativeFrequency reference resolves.
+    near_p = Levels.transition_frequency(sr88, "S_1/2", "P_1/2") + 2π * 10.0u"GHz"
+    @test_throws ArgumentError LightShiftCoefficients(sr88, ["S_1/2"], near_p)
+    @test_throws ArgumentError light_shift(
+        sr88,
+        StateSpec("S_1/2", 1//2),
+        near_p,
+        1.0u"W/m^2",
+        [0.0im, 0.0im, 1.0 + 0im],
+    )
+    # Named as a reference, the same frequency is fine.
+    relp = RelativeFrequency("S_1/2" => "P_1/2", 2π * 10.0u"GHz")
+    @test LightShiftCoefficients(sr88, ["S_1/2"], relp; B) isa LightShiftCoefficients
+end
+
+@testitem "Driven shift vs exact diagonalisation" tags=[:unit, :fast] begin
     using LinearAlgebra
     using Unitful
 
@@ -230,7 +327,7 @@ end
     intensity = 500.0u"W/m^2"
     n, ε = beam_vectors(1.1, 0.7, 0.4) # generic elliptical polarisation
     basis = StateBasis(["S_1/2", "D_5/2"])
-    coefficients = LightShiftCoefficients(sr88, basis, λ)
+    coefficients = LightShiftCoefficients(sr88, basis, λ; B)
     couplings = quadrupole_couplings(basis, "S_1/2", "D_5/2", ε, n)
     zeeman = [zeeman_shift(sr88, state, B) for state in basis]
 
@@ -279,19 +376,112 @@ end
         # matrix with ~10² µs⁻¹ entries, so at intensities much below this one
         # the comparison hits the double-precision floor long before the
         # perturbation theory does.
-        @test quadrupole_light_shift(coefficients, probed, intensity, ε; n, B) ≈ exact rtol =
-            1e-5
+        @test driven_light_shift(
+            coefficients,
+            probed,
+            intensity,
+            ε;
+            n,
+            parts=:resonant,
+        ) ≈ exact rtol = 1e-5
     end
 end
 
-@testitem "Near-resonant quadrupole shift vs explicit level sum" tags=[:unit, :fast] begin
+@testitem "Parked shift vs exact diagonalisation" tags=[:unit, :fast] begin
+    using LinearAlgebra
+    using Unitful
+
+    B = 0.5u"mT"
+    intensity = 500.0u"W/m^2"
+    n, ε = beam_vectors(1.1, 0.7, 0.4)
+    basis = StateBasis(["S_1/2", "D_5/2"])
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 0.0u"s^-1")
+    coefficients = LightShiftCoefficients(sr88, basis, rel; B)
+    zeeman = [zeeman_shift(sr88, state, B) for state in basis]
+
+    # Absolute couplings: the relative quadrupole amplitudes scaled to the
+    # Rabi frequency of one reference component at this intensity.
+    reference = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 3//2)
+    Ω_ref = rabi_frequency(sr88, reference.first, reference.second, intensity, ε, n)
+    scaled = rabi_normalised(
+        quadrupole_couplings(basis, "S_1/2", "D_5/2", ε, n),
+        basis,
+        reference,
+        Ω_ref,
+    )
+
+    # Rotating-frame Hamiltonian with the laser parked at δ from the zero-field
+    # line centre: lower states at their Zeeman shifts, upper states at theirs
+    # minus δ, all couplings kept. The parked shift of a state is the
+    # displacement of the dressed quasi-energy adiabatically connected to it.
+    function exact_shifts(δ)
+        h = ustrip.(u"µs^-1", (scaled .+ scaled') ./ 2)
+        for (i, state) in enumerate(basis)
+            h[i, i] = ustrip(u"µs^-1", zeeman[i])
+            state.level == convert(NoHyperfineNumberSpec, "D_5/2") &&
+                (h[i, i] -= ustrip(u"µs^-1", δ))
+        end
+        unperturbed = real.(diag(h))
+        values, vectors = eigen(Hermitian(h))
+        [
+            (values[argmax(abs2.(vectors[k, :]))] - unperturbed[k]) * u"µs^-1" for
+            k in 1:length(basis)
+        ]
+    end
+
+    # Off-resonance offsets between and beyond the Zeeman components (which
+    # span ±2π × 28 MHz at this field).
+    for δ in (2π * 8.3u"MHz", -2π * 16.7u"MHz", 2π * 40.0u"MHz")
+        exact = exact_shifts(δ)
+        for (i, state) in enumerate(basis)
+            @test light_shift(
+                coefficients,
+                state,
+                intensity,
+                ε;
+                n,
+                δ,
+                parts=:resonant,
+            ) ≈ exact[i] rtol = 1e-4
+        end
+    end
+end
+
+@testitem "Parked and driven shifts are consistent" tags=[:unit, :fast] begin
+    using Unitful
+
+    # With the laser parked at ±x around the probed component and the two
+    # results averaged, the (odd-in-x) terms of the probed channel cancel and
+    # the spectator terms approach their driven values as x², so the parked
+    # pair difference converges onto the driven shift.
+    B = 0.32u"mT"
+    intensity = 12.0u"W/m^2"
+    n, ε = beam_vectors(0.9, 0.6, 0.35)
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 0.0u"s^-1")
+    c = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel; B)
+
+    x = 2π * 0.02u"MHz"
+    for (lower, upper) in state_pairs("S_1/2", "D_5/2"; Δm=[-1, 0, 2])
+        driven = driven_light_shift(c, lower => upper, intensity, ε; n, parts=:resonant)
+        δ_star = uconvert(
+            u"µs^-1",
+            zeeman_shift(sr88, upper, B) - zeeman_shift(sr88, lower, B),
+        )
+        pair(δ) =
+            light_shift(c, upper, intensity, ε; n, δ, parts=:resonant) -
+            light_shift(c, lower, intensity, ε; n, δ, parts=:resonant)
+        @test (pair(δ_star + x) + pair(δ_star - x)) / 2 ≈ driven rtol = 1e-3
+    end
+end
+
+@testitem "Near-resonant shift vs explicit level sum" tags=[:unit, :fast] begin
     using Unitful
 
     λ = 674.025u"nm"
     B = 0.32u"mT"
     intensity = 12.0u"W/m^2"
     n, ε = beam_vectors(0.9, 0.6, 0.35)
-    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ)
+    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ; B)
 
     # Second-order perturbation theory written out over the Zeeman components:
     # every other component sharing the probed upper state pushes it by
@@ -320,28 +510,53 @@ end
     end
 
     for (lower, upper) in state_pairs("S_1/2", "D_5/2"; Δm=[-2, -1, 0, 1, 2])
-        shift = quadrupole_light_shift(coefficients, lower => upper, intensity, ε; n, B)
+        shift = driven_light_shift(
+            coefficients,
+            lower => upper,
+            intensity,
+            ε;
+            n,
+            parts=:resonant,
+        )
         @test shift ≈ reference(lower, upper)
 
         # The precomputed and one-shot forms must agree, …
-        @test quadrupole_light_shift(sr88, lower, upper, intensity, ε; n, B) ≈ shift
+        @test driven_light_shift(
+            sr88,
+            lower,
+            upper,
+            intensity,
+            ε;
+            n,
+            B,
+            parts=:resonant,
+        ) ≈ shift
 
-        # … and adding the near-resonant part to light_shift must be exactly
-        # that: the dipole shift plus the quadrupole one.
-        @test light_shift(coefficients, lower => upper, intensity, ε; n, B) ≈
-              light_shift(coefficients, lower => upper, intensity, ε) + shift
-        @test light_shift(sr88, lower, upper, λ, intensity, ε; n, B) ≈
-              light_shift(coefficients, lower => upper, intensity, ε; n, B)
+        # … and the total must be exactly the background plus the resonant
+        # part.
+        @test driven_light_shift(coefficients, lower => upper, intensity, ε; n) ≈
+              driven_light_shift(
+            coefficients,
+            lower => upper,
+            intensity,
+            ε;
+            parts=:background,
+        ) + shift
+        @test driven_light_shift(sr88, lower, upper, intensity, ε; n, B) ≈
+              driven_light_shift(coefficients, lower => upper, intensity, ε; n) rtol =
+            1e-5
     end
 end
 
-@testitem "Near-resonant quadrupole shift symmetries" tags=[:unit, :fast] begin
+@testitem "Near-resonant shift symmetries" tags=[:unit, :fast] begin
     using Unitful
 
     λ = 674.025u"nm"
     B = 0.24u"mT"
     intensity = 8.0u"W/m^2"
-    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ)
+    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ; B)
+    resonant(c, t, ε_, n_) =
+        driven_light_shift(c, t, intensity, ε_; n=n_, parts=:resonant)
     pairs =
         [StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", m) for m in (1//2, 3//2, 5//2)]
     mirrored(t) = StateSpec("S_1/2", -t.first.m) => StateSpec("D_5/2", -t.second.m)
@@ -351,31 +566,17 @@ end
     # they cancel in the pair average that the clock is steered to.
     n_lin, ε_lin = beam_vectors(deg2rad(71.0), deg2rad(33.0))
     for t in pairs
-        shift = quadrupole_light_shift(coefficients, t, intensity, ε_lin; n=n_lin, B)
+        shift = resonant(coefficients, t, ε_lin, n_lin)
         @test !isapprox(shift, zero(shift), atol=1e-12u"µs^-1")
-        @test quadrupole_light_shift(
-            coefficients,
-            mirrored(t),
-            intensity,
-            ε_lin;
-            n=n_lin,
-            B,
-        ) ≈ -shift
+        @test resonant(coefficients, mirrored(t), ε_lin, n_lin) ≈ -shift
     end
 
     # An elliptical polarisation breaks that symmetry and leaves a net shift.
     n_ell, ε_ell = beam_vectors(deg2rad(71.0), deg2rad(33.0), 0.3)
     for t in pairs
         average =
-            quadrupole_light_shift(coefficients, t, intensity, ε_ell; n=n_ell, B) +
-            quadrupole_light_shift(
-                coefficients,
-                mirrored(t),
-                intensity,
-                ε_ell;
-                n=n_ell,
-                B,
-            )
+            resonant(coefficients, t, ε_ell, n_ell) +
+            resonant(coefficients, mirrored(t), ε_ell, n_ell)
         @test !isapprox(average, zero(average), atol=1e-12u"µs^-1")
     end
 
@@ -386,36 +587,51 @@ end
     for m in (-1//2, 1//2)
         driven = StateSpec("S_1/2", m) => StateSpec("D_5/2", m + 1)
         @test !iszero(rabi_frequency(sr88, driven..., intensity, ε_σ, n_σ))
-        shift = quadrupole_light_shift(coefficients, driven, intensity, ε_σ; n=n_σ, B)
+        shift = resonant(coefficients, driven, ε_σ, n_σ)
         @test isapprox(shift, zero(shift), atol=1e-12u"µs^-1")
     end
 
     # The shift is linear in the intensity and inverse in the field, which is
     # signed: reversing the field mirrors the Zeeman structure.
     t = first(pairs)
-    shift = quadrupole_light_shift(coefficients, t, intensity, ε_ell; n=n_ell, B)
-    @test quadrupole_light_shift(coefficients, t, 3intensity, ε_ell; n=n_ell, B) ≈
-          3shift
-    @test quadrupole_light_shift(coefficients, t, intensity, ε_ell; n=n_ell, B=B / 4) ≈
-          4shift
-    @test quadrupole_light_shift(coefficients, t, intensity, ε_ell; n=n_ell, B=(-B)) ≈
-          -shift
+    shift = resonant(coefficients, t, ε_ell, n_ell)
+    @test driven_light_shift(
+        coefficients,
+        t,
+        3intensity,
+        ε_ell;
+        n=n_ell,
+        parts=:resonant,
+    ) ≈ 3shift
+    @test driven_light_shift(
+        sr88,
+        t.first,
+        t.second,
+        intensity,
+        ε_ell;
+        n=n_ell,
+        B=B / 4,
+        parts=:resonant,
+    ) ≈ 4shift
+    @test driven_light_shift(
+        sr88,
+        t.first,
+        t.second,
+        intensity,
+        ε_ell;
+        n=n_ell,
+        B=(-B),
+        parts=:resonant,
+    ) ≈ -shift
 
     # Only the directions of ε and n matter, and an overall phase of ε is a
     # gauge choice — but unlike the dipole shift, the beam direction does
     # enter: the same polarisation sent along two different beam directions
     # gives different shifts.
-    @test quadrupole_light_shift(
-        coefficients,
-        t,
-        intensity,
-        cis(0.7) * 5ε_ell;
-        n=3n_ell,
-        B,
-    ) ≈ shift
+    @test resonant(coefficients, t, cis(0.7) * 5ε_ell, 3n_ell) ≈ shift
     ε_y = [0.0im, 1.0 + 0.0im, 0.0im]
-    along_z = quadrupole_light_shift(coefficients, t, intensity, ε_y; n=[0, 0, 1.0], B)
-    along_x = quadrupole_light_shift(coefficients, t, intensity, ε_y; n=[1.0, 0, 0], B)
+    along_z = resonant(coefficients, t, ε_y, [0, 0, 1.0])
+    along_x = resonant(coefficients, t, ε_y, [1.0, 0, 0])
     @test !isapprox(along_z, along_x)
 end
 
@@ -450,17 +666,18 @@ end
     # quotes ≈500 µHz, obtained after accounting for resolved sidebands and
     # thermal dephasing, which raise the intensity needed for a given pulse area
     # (they measure a factor of two directly); this only checks the scale.
-    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], 674.025u"nm")
+    coefficients =
+        LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], 674.025u"nm"; B=4.8u"µT")
     shifts = map(zip((1//2, 3//2, 5//2), intensities)) do (m, intensity)
         upper = StateSpec("D_5/2", m)
         area = 1.1π / rabi_frequency(sr88, lower, upper, intensity, ε, n)
         scaled = intensity * (area / 100u"ms")^2
-        quadrupole_light_shift(coefficients, lower => upper, scaled, ε; n, B=4.8u"µT")
+        driven_light_shift(coefficients, lower => upper, scaled, ε; n, parts=:resonant)
     end
     @test 50u"µHz" < maximum(abs, shifts) / 2π < 1u"mHz"
 end
 
-@testitem "Near-resonant quadrupole shift API" tags=[:unit, :fast] begin
+@testitem "Near-resonant channel API" tags=[:unit, :fast] begin
     using Unitful
 
     λ = 674.025u"nm"
@@ -468,42 +685,53 @@ end
     intensity = 8.0u"W/m^2"
     n, ε = beam_vectors(0.9, 0.6, 0.35)
     lower, upper = StateSpec("S_1/2", 1//2), StateSpec("D_5/2", 3//2)
-    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ)
+    coefficients = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ; B)
 
     # The Zeeman components are degenerate without a field, where second-order
-    # perturbation theory has nothing to expand in.
-    @test_throws ArgumentError quadrupole_light_shift(
-        coefficients,
-        lower => upper,
-        intensity,
-        ε;
-        n,
+    # perturbation theory has nothing to expand in; and B is the signed scalar
+    # component along the quantisation axis, not the Cartesian field vector
+    # zeeman_hamiltonian() accepts. Both are checked at construction.
+    @test_throws ArgumentError LightShiftCoefficients(
+        sr88,
+        ["S_1/2", "D_5/2"],
+        λ;
         B=0.0u"mT",
     )
-
-    # B is the signed scalar component along the quantisation axis, not the
-    # Cartesian field vector zeeman_hamiltonian() accepts.
-    @test_throws ArgumentError quadrupole_light_shift(
-        coefficients,
-        lower => upper,
-        intensity,
-        ε;
-        n,
+    @test_throws ArgumentError LightShiftCoefficients(
+        sr88,
+        ["S_1/2", "D_5/2"],
+        λ;
         B=[0.0, 0.0, 0.5] .* u"mT",
     )
 
-    # Transitions that are not electric-quadrupole ones with known data are
-    # rejected rather than silently treated as unshifted — including a pair
-    # given the wrong way round, …
-    @test_throws ArgumentError quadrupole_light_shift(
+    # The resonant part needs the channels, which need B.
+    @test_throws ArgumentError driven_light_shift(
+        LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ),
+        lower => upper,
+        intensity,
+        ε;
+        n,
+    )
+    @test_throws ArgumentError driven_light_shift(sr88, lower, upper, intensity, ε; n)
+
+    # Transitions that are not drivable components are rejected rather than
+    # silently treated as unshifted — a pair given the wrong way round, …
+    @test_throws ArgumentError driven_light_shift(
         coefficients,
         upper => lower,
         intensity,
         ε;
         n,
-        B,
     )
-    @test_throws ArgumentError quadrupole_light_shift(
+    @test_throws ArgumentError driven_light_shift(
+        coefficients,
+        upper => lower,
+        intensity,
+        ε;
+        n,
+        parts=:resonant,
+    )
+    @test_throws ArgumentError driven_light_shift(
         sr88,
         upper,
         lower,
@@ -512,29 +740,20 @@ end
         n,
         B,
     )
-    @test_throws ArgumentError quadrupole_light_shift(
-        sr88,
-        StateSpec("S_1/2", 1//2),
-        StateSpec("P_3/2", 3//2),
-        intensity,
-        ε;
-        n,
-        B,
-    )
 
-    # … and so are Δm = ±3 components, which no beam geometry can drive, so
-    # there is no resonance whose shift could be observed.
+    # … and Δm = ±3 components, which no beam geometry can drive, so there is
+    # no resonance whose shift could be observed.
     undrivable = StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", 5//2)
     @test iszero(Levels.clebsch_gordan(undrivable.first, undrivable.second))
-    @test_throws ArgumentError quadrupole_light_shift(
+    @test_throws ArgumentError driven_light_shift(
         coefficients,
         undrivable,
         intensity,
         ε;
         n,
-        B,
+        parts=:resonant,
     )
-    @test_throws ArgumentError quadrupole_light_shift(
+    @test_throws ArgumentError driven_light_shift(
         sr88,
         undrivable.first,
         undrivable.second,
@@ -542,69 +761,281 @@ end
         ε;
         n,
         B,
+        parts=:resonant,
     )
-    @test !haskey(
-        coefficients.quadrupole_shifts,
-        (
-            stateindex(coefficients.basis, undrivable.first),
-            stateindex(coefficients.basis, undrivable.second),
-        ),
+
+    # An electric-dipole pair can be driven too, but only as the named
+    # RelativeFrequency reference — its background extraction is what needs
+    # the naming.
+    sp = LightShiftCoefficients(sr88, ["S_1/2", "P_1/2"], λ; B)
+    @test_throws ArgumentError driven_light_shift(
+        sp,
+        StateSpec("S_1/2", 1//2) => StateSpec("P_1/2", 1//2),
+        intensity,
+        ε;
+        parts=:resonant,
     )
+    relp = RelativeFrequency("S_1/2" => "P_1/2", 0.0u"s^-1")
+    named = LightShiftCoefficients(sr88, ["S_1/2", "P_1/2"], relp; B)
+    # For a line this broad the Zeeman spectators sit within the linewidth, so
+    # driving it must also raise the pole-approximation warning.
+    e1 = @test_logs (:warn, r"linewidths") match_mode = :any driven_light_shift(
+        named,
+        StateSpec("S_1/2", 1//2) => StateSpec("P_1/2", 1//2),
+        intensity,
+        ε;
+        parts=:resonant,
+    )
+    @test isfinite(ustrip(u"µs^-1", e1)) && !iszero(e1)
+    # The n requirement is rank-dependent: unused for E1 (above), required for
+    # E2 — but only where the channels actually enter; the background needs
+    # neither n nor B.
+    @test_throws ArgumentError driven_light_shift(
+        coefficients,
+        lower => upper,
+        intensity,
+        ε;
+        parts=:resonant,
+    )
+    @test driven_light_shift(sr88, lower, upper, intensity, ε; parts=:background) ≈
+          driven_light_shift(
+        coefficients,
+        lower => upper,
+        intensity,
+        ε;
+        parts=:background,
+    ) rtol = 1e-5
 
     # A vanishing beam direction carries no information about the geometry, and
     # a polarisation that is not transverse to the beam direction does not
     # describe a physical beam.
-    @test_throws ArgumentError quadrupole_light_shift(
+    @test_throws ArgumentError driven_light_shift(
         coefficients,
         lower => upper,
         intensity,
         ε;
         n=zeros(3),
-        B,
     )
-    @test_throws ArgumentError quadrupole_light_shift(
+    @test_throws ArgumentError driven_light_shift(
         coefficients,
         lower => upper,
         intensity,
         ε;
         n=[0.0, 1.0, 0.0],
-        B,
     )
 
-    # The near-resonant coefficients do not depend on the laser frequency, which
-    # the model instead fixes to resonance with the probed transition — but for
-    # that very reason, evaluating them for a laser inconsistent with that
-    # premise is refused.
-    off_resonant = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], 1092.0u"nm")
-    @test off_resonant.quadrupole_shifts == coefficients.quadrupole_shifts
-    @test !isempty(coefficients.quadrupole_shifts)
-    @test_throws ArgumentError quadrupole_light_shift(
+    # The driven-mode background presumes the laser to be on the probed line;
+    # the resonant part is laser-frequency-free by construction, so it must
+    # agree between constructions at different frequencies.
+    off_resonant = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], 1092.0u"nm"; B)
+    @test_throws ArgumentError driven_light_shift(
         off_resonant,
         lower => upper,
         intensity,
         ε;
         n,
-        B,
     )
-    @test_throws ArgumentError light_shift(
+    @test driven_light_shift(
         off_resonant,
         lower => upper,
         intensity,
         ε;
         n,
-        B,
+        parts=:resonant,
+    ) ≈ driven_light_shift(
+        coefficients,
+        lower => upper,
+        intensity,
+        ε;
+        n,
+        parts=:resonant,
     )
 
-    # Bases without an E2 pair simply carry no near-resonant data.
-    @test isempty(LightShiftCoefficients(sr88, ["S_1/2"], λ).quadrupole_shifts)
+    # Channels appear exactly where connected pairs exist.
+    @test all(isempty, LightShiftCoefficients(sr88, ["S_1/2"], λ; B).channels)
+    @test !any(isempty, coefficients.channels)
+    @test all(isempty, LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], λ).channels)
 
-    # The quadrupole part needs no E1 polarisability data: the 687-nm
-    # S₁/₂ → D₃/₂ line works precomputed just as well as one-shot.
+    # The channels need no E1 polarisability data: the 687-nm S₁/₂ → D₃/₂ line
+    # works precomputed just as well as one-shot.
     ω_687 = Levels.transition_frequency(sr88, "S_1/2", "D_3/2")
-    d32 = LightShiftCoefficients(sr88, ["S_1/2", "D_3/2"], ω_687)
+    d32 = LightShiftCoefficients(sr88, ["S_1/2", "D_3/2"], ω_687; B)
     t = StateSpec("S_1/2", 1//2) => StateSpec("D_3/2", 3//2)
-    @test quadrupole_light_shift(d32, t, intensity, ε; n, B) ≈
-          quadrupole_light_shift(sr88, t.first, t.second, intensity, ε; n, B)
+    @test driven_light_shift(d32, t, intensity, ε; n, parts=:resonant) ≈
+          driven_light_shift(
+        sr88,
+        t.first,
+        t.second,
+        intensity,
+        ε;
+        n,
+        B,
+        parts=:resonant,
+    )
+
+    # Parked single-state evaluation needs the RelativeFrequency reference, and
+    # the beam direction for an E2 reference pair.
+    @test_throws ArgumentError light_shift(
+        coefficients,
+        lower,
+        intensity,
+        ε;
+        parts=:resonant,
+    )
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 1.0u"MHz")
+    parked = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel; B)
+    @test_throws ArgumentError light_shift(parked, lower, intensity, ε; parts=:resonant)
+    @test_throws ArgumentError light_shift(
+        parked,
+        lower,
+        intensity,
+        ε;
+        n,
+        δ=5.0u"nm",
+        parts=:resonant,
+    )
+    # The one-shot parked form matches the precomputed one.
+    @test light_shift(sr88, lower, rel, intensity, ε; n, B) ≈
+          light_shift(parked, lower, intensity, ε; n)
+end
+
+@testitem "Near-resonant channel warnings" tags=[:unit, :fast] begin
+    using Unitful
+
+    B = 0.5u"mT"
+    n, ε = beam_vectors(0.9, 0.6, 0.35)
+    # 2π × 0.1 MHz from the S₁/₂(m = 1/2) → D₅/₂(m = 3/2) component, which
+    # sits at 2π × 5.6 MHz at this field.
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 5.5u"MHz")
+    c = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel; B)
+    state = StateSpec("S_1/2", 1//2)
+
+    # At a benign intensity and detuning, no warnings.
+    @test_logs light_shift(c, state, 10.0u"W/m^2", ε; n, parts=:resonant)
+
+    # Parked close to a component (nearest at 2π × 2.8 MHz here) with a strong
+    # beam, the channel Rabi frequency approaches the detuning and
+    # perturbation theory degrades: the evaluation warns rather than silently
+    # returning a number outside its validity.
+    @test_logs (:warn, r"perturbation theory") match_mode = :any light_shift(
+        c,
+        state,
+        1e5u"W/m^2",
+        ε;
+        n,
+        parts=:resonant,
+    )
+
+    # Within a few linewidths of a broad E1 line, the pole approximation
+    # itself breaks down (γ(P₁/₂) ≈ 2π × 21.5 MHz).
+    relp = RelativeFrequency("S_1/2" => "P_1/2", 2π * 50.0u"MHz")
+    cp = LightShiftCoefficients(sr88, ["S_1/2"], relp; B)
+    @test_logs (:warn, r"linewidths") match_mode = :any light_shift(
+        cp,
+        state,
+        1.0u"W/m^2",
+        ε;
+        parts=:resonant,
+    )
+end
+
+@testitem "Near-resonant E1 shift vs exact diagonalisation" tags=[:unit, :fast] begin
+    using LinearAlgebra
+    using Unitful
+
+    # A laser parked ~150 MHz from the S₁/₂ → P₁/₂ line: the Zeeman structure
+    # (2π × 5–10 MHz at this field) modifies the naive single-line shift at
+    # the several-percent level, and the channel sum must track the exact
+    # two-manifold diagonalisation. Unlike the electric-quadrupole twin of
+    # this test, the dipole coupling is strong: even at this intensity the
+    # Rabi frequency is ~2π × 2 MHz, leaving a genuine (Ω/2δ)² ≈ 6 × 10⁻⁵
+    # perturbation-theory residual that bounds the tolerance below.
+    B = 0.5u"mT"
+    intensity = 10.0u"W/m^2"
+    _, ε = beam_vectors(1.1, 0.7, 0.4)
+    basis = StateBasis(["S_1/2", "P_1/2"])
+    rel = RelativeFrequency("S_1/2" => "P_1/2", 0.0u"s^-1")
+    coefficients = LightShiftCoefficients(sr88, basis, rel; B)
+    zeeman = [zeeman_shift(sr88, state, B) for state in basis]
+
+    # Relative dipole couplings over the basis (CG × geometric channel
+    # amplitude), scaled to the Rabi frequency of one reference component.
+    couplings = zeros(ComplexF64, length(basis), length(basis)) * u"µs^-1"
+    for (i, lo) in enumerate(basis), (k, up) in enumerate(basis)
+        lo.level == convert(NoHyperfineNumberSpec, "S_1/2") || continue
+        up.level == convert(NoHyperfineNumberSpec, "P_1/2") || continue
+        q = up.m - lo.m
+        abs(q) <= 1 || continue
+        couplings[k, i] =
+            Levels.dipole_cg(1//2, lo.m, q, 1//2) *
+            dipole_geometry(ε)[Int(q)+2] *
+            u"µs^-1"
+    end
+    reference = StateSpec("S_1/2", -1//2) => StateSpec("P_1/2", -1//2)
+    Ω_ref = rabi_frequency(
+        sr88,
+        reference.first,
+        reference.second,
+        intensity,
+        ε,
+        [0.0, 0.0, 1.0],
+    )
+    scaled = rabi_normalised(couplings, basis, reference, Ω_ref)
+
+    function exact_shifts(δ)
+        h = ustrip.(u"µs^-1", (scaled .+ scaled') ./ 2)
+        for (i, state) in enumerate(basis)
+            h[i, i] = ustrip(u"µs^-1", zeeman[i])
+            state.level == convert(NoHyperfineNumberSpec, "P_1/2") &&
+                (h[i, i] -= ustrip(u"µs^-1", δ))
+        end
+        unperturbed = real.(diag(h))
+        values, vectors = eigen(Hermitian(h))
+        [
+            (values[argmax(abs2.(vectors[k, :]))] - unperturbed[k]) * u"µs^-1" for
+            k in 1:length(basis)
+        ]
+    end
+
+    # Detunings beyond a few linewidths (γ(P₁/₂) ≈ 2π × 21.5 MHz), where the
+    # γ-free pole approximation both models share is legitimate.
+    for δ in (2π * 150.0u"MHz", -2π * 220.0u"MHz")
+        exact = exact_shifts(δ)
+        for (i, state) in enumerate(basis)
+            @test light_shift(coefficients, state, intensity, ε; δ, parts=:resonant) ≈
+                  exact[i] rtol = 1e-3
+        end
+    end
+end
+
+@testitem "E1 background extraction bookkeeping" tags=[:unit, :fast] begin
+    using Unitful
+
+    # Far from the reference line — but with the near-resonant channel still
+    # dominating the polarisability — the split evaluation (background with
+    # the co-rotating reference channel excluded, plus the Zeeman-resolved
+    # channel sum) must agree with the plain Zeeman-unresolved polarisability
+    # at the equivalent absolute frequency to ~Zeeman/δ.
+    B = 0.5u"mT"
+    intensity = 100.0u"W/m^2"
+    _, ε = beam_vectors(1.1, 0.7, 0.4)
+    δ = 2π * 500.0u"GHz"
+    rel = RelativeFrequency("S_1/2" => "P_1/2", δ)
+    c = LightShiftCoefficients(sr88, ["S_1/2"], rel; B)
+    absolute = Levels.transition_frequency(sr88, "S_1/2", "P_1/2") + δ
+
+    for m in (-1//2, 1//2)
+        state = StateSpec("S_1/2", m)
+        plain = light_shift(sr88, state, absolute, intensity, ε)
+        # The tolerance floor here is not the split itself but the atomic
+        # data: the channel amplitude comes from the Einstein A coefficient,
+        # the background from the [Jiang2009] reduced dipole, and the two
+        # sources agree to ~0.5% for S₁/₂ → P₁/₂ (cf. the reduced-dipole test).
+        @test light_shift(c, state, intensity, ε) ≈ plain rtol = 5e-3
+        # The resonant part carries essentially the whole reference channel.
+        @test abs(light_shift(c, state, intensity, ε; parts=:resonant)) >
+              abs(light_shift(c, state, intensity, ε; parts=:background))
+    end
 end
 
 @testitem "Reduced dipole matrix elements vs Einstein A coefficients" tags=[
@@ -723,9 +1154,52 @@ end
     @test_throws ArgumentError scalar_polarisability(sr88, "S_1/2 F=2", laser)
 end
 
-@testitem "Hyperfine near-resonant quadrupole shift API" tags=[:unit] begin
+@testitem "Hyperfine E1 channels vs J-basis limit" tags=[:unit] begin
     using Unitful
-    using Levels: quadrupole_shift_coefficients
+
+    # A hyperfine twin of ⁸⁸Sr⁺ with zeroed S₁/₂/P₁/₂ hyperfine constants and a
+    # tiny nuclear g: the stretched state |F = I + 1/2, m = F⟩ is exactly the
+    # |m_I = I, m_J = 1/2⟩ product state, so its parked near-resonant E1 shift
+    # must reduce to the fine-structure result, up to the ~g_I/g_J nuclear
+    # Zeeman contamination of the eigen-detunings.
+    toy = HyperfineOneElectronSpecies(;
+        mass=sr88.mass,
+        nuclear_spin=3//2,
+        nuclear_g=2e-4,
+        energies=sr88.energies,
+        hyperfine=Dict(
+            convert(NoHyperfineNumberSpec, k) => HyperfineConstants(; a=0.0u"J") for
+            k in ("S_1/2", "P_1/2")
+        ),
+        einstein_as=sr88.einstein_as,
+        polarisabilities=sr88.polarisabilities,
+    )
+    B = 0.5u"mT"
+    intensity = 20.0u"W/m^2"
+    _, ε = beam_vectors(1.1, 0.7, 0.4)
+    δ = 2π * 150.0u"MHz"
+
+    hyperfine = LightShiftCoefficients(
+        toy,
+        StateBasis(toy, "S_1/2", "P_1/2"),
+        RelativeFrequency("S_1/2 F=2" => "P_1/2 F=2", δ);
+        B,
+    )
+    fine = LightShiftCoefficients(
+        sr88,
+        ["S_1/2"],
+        RelativeFrequency("S_1/2" => "P_1/2", δ);
+        B,
+    )
+    stretched =
+        light_shift(hyperfine, StateSpec("S_1/2 F=2", 2), intensity, ε; parts=:resonant)
+    reference =
+        light_shift(fine, StateSpec("S_1/2", 1//2), intensity, ε; parts=:resonant)
+    @test stretched ≈ reference rtol = 1e-4
+end
+
+@testitem "Hyperfine near-resonant channel API" tags=[:unit] begin
+    using Unitful
 
     s = StateSpec("S_1/2 F=4", 4)
     d = StateSpec("D_5/2 F=4", 3)
@@ -737,12 +1211,17 @@ end
     intensity = 10.0u"W/m^2"
     n, ε = beam_vectors(π / 2, π / 4, 0.3)
 
-    # One-shot form against the precomputed coefficients (E1 data is absent for
-    # ca43, so the E1 rows are NaN, but the E2 machinery must work regardless).
+    # One-shot form against the precomputed coefficients. The two use different
+    # channel references (centroid interval vs the named zero-field F pair),
+    # which the driven-mode differences must be independent of. (E1 data is
+    # absent for ca43, so the background rows are NaN, but the channel
+    # machinery must work regardless.)
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     c = LightShiftCoefficients(ca43, basis, laser; B)
-    @test quadrupole_light_shift(c, s => d, intensity, ε; n, B) ≈
-          quadrupole_light_shift(ca43, s, d, intensity, ε; n, B) rtol = 1e-12
+    resonant = driven_light_shift(c, s => d, intensity, ε; n, parts=:resonant)
+    @test driven_light_shift(ca43, s, d, intensity, ε; n, B, parts=:resonant) ≈ resonant rtol =
+        1e-9
+    @test_throws ArgumentError driven_light_shift(c, s => d, intensity, ε; n)
 
     # Unlike the fine-structure case ([Lindvall2025] Sec. III F 2), the ±m
     # Zeeman-pair average does *not* cancel for linear polarisation: the
@@ -754,30 +1233,31 @@ end
     s_m = StateSpec("S_1/2 F=4", -4)
     d_m = StateSpec("D_5/2 F=4", -3)
     n_lin, ε_lin = beam_vectors(π / 2, π / 4)
-    plus = quadrupole_light_shift(ca43, s, d, intensity, ε_lin; n=n_lin, B)
-    minus = quadrupole_light_shift(ca43, s_m, d_m, intensity, ε_lin; n=n_lin, B)
-    @test !isapprox(plus + minus, zero(plus); atol=abs(plus))
-    @test minus ≈ quadrupole_light_shift(ca43, s, d, intensity, ε_lin; n=n_lin, B=(-B)) rtol =
-        1e-9
-
-    # Field-consistency and error paths.
-    @test_throws ArgumentError quadrupole_light_shift(
-        c,
-        s => d,
-        intensity,
-        ε;
-        n,
-        B=0.4u"mT",
-    )
-    @test_throws ArgumentError quadrupole_shift_coefficients(ca43, s, d)
-    @test_throws ArgumentError quadrupole_shift_coefficients(ca43, s, d, 0.0u"mT")
-    @test_throws ArgumentError quadrupole_shift_coefficients(
+    resonant_one_shot(lo, hi, field) = driven_light_shift(
         ca43,
-        s,
-        d,
-        [0.0, 0.0, 0.3]u"mT",
+        lo,
+        hi,
+        intensity,
+        ε_lin;
+        n=n_lin,
+        B=field,
+        parts=:resonant,
     )
-    @test_throws ArgumentError quadrupole_light_shift(
+    plus = resonant_one_shot(s, d, B)
+    minus = resonant_one_shot(s_m, d_m, B)
+    @test !isapprox(plus + minus, zero(plus); atol=abs(plus))
+    @test minus ≈ resonant_one_shot(s, d, -B) rtol = 1e-9
+
+    # Field validation happens at construction; undrivable and reversed pairs
+    # at evaluation.
+    @test_throws ArgumentError LightShiftCoefficients(ca43, basis, laser; B=0.0u"mT")
+    @test_throws ArgumentError LightShiftCoefficients(
+        ca43,
+        basis,
+        laser;
+        B=[0.0, 0.0, 0.3]u"mT",
+    )
+    @test_throws ArgumentError driven_light_shift(
         ca43,
         StateSpec("S_1/2 F=4", -4),
         StateSpec("D_5/2 F=6", -1),
@@ -785,26 +1265,52 @@ end
         ε;
         n,
         B,
+        parts=:resonant,
     )
-    @test_throws ArgumentError quadrupole_light_shift(ca43, d, s, intensity, ε; n, B)
+    @test_throws ArgumentError driven_light_shift(
+        ca43,
+        d,
+        s,
+        intensity,
+        ε;
+        n,
+        B,
+        parts=:resonant,
+    )
 
-    # Without B, the constructor precomputes the E1 part only.
-    @test isempty(LightShiftCoefficients(ca43, basis, laser).quadrupole_shifts)
+    # Without B, only the background is precomputed.
+    @test all(isempty, LightShiftCoefficients(ca43, basis, laser).channels)
+
+    # Parked and driven evaluations must be consistent for hyperfine states
+    # too: the ±x average around the probed component converges onto the
+    # driven result (see the fine-structure twin of this test).
+    rel = RelativeFrequency(s.level => d.level, 0.0u"s^-1")
+    parked = LightShiftCoefficients(ca43, basis, rel; B)
+    il = stateindex(basis, s)
+    probed = parked.channels[il][findfirst(
+        ch -> ch.partner == StateSpec(d.level, d.m),
+        parked.channels[il],
+    )]
+    pair(δ) =
+        light_shift(parked, d, intensity, ε; n, δ, parts=:resonant) -
+        light_shift(parked, s, intensity, ε; n, δ, parts=:resonant)
+    x = 2π * 0.01u"MHz"
+    @test (pair(probed.Δ + x) + pair(probed.Δ - x)) / 2 ≈
+          driven_light_shift(parked, s => d, intensity, ε; n, parts=:resonant) rtol =
+        1e-3
 end
 
-@testitem "Hyperfine near-resonant quadrupole shift vs exact model" tags=[
-    :integration,
-    :slow,
-] setup=[] begin
+@testitem "Hyperfine near-resonant shift vs exact model" tags=[:integration, :slow] setup=[] begin
     using Unitful
     using Levels.PeriodicDynamics
 
-    # The perturbative κ contraction against the exact resonance position of
+    # The perturbative channel sum against the exact resonance position of
     # the laser-probed two-manifold model (monodromy propagation, no ac
     # drives): the shift of the carrier resonance from the off-resonant
     # couplings to the spectator Zeeman components is exactly what the
-    # near-resonant E2 model describes. The laser-coupling scale is chosen
-    # small enough (Ω₀ ≪ Zeeman splittings) that higher orders are negligible.
+    # near-resonant driven-mode model describes. The laser-coupling scale is
+    # chosen small enough (Ω₀ ≪ Zeeman splittings) that higher orders are
+    # negligible.
     s = StateSpec("S_1/2 F=4", 4)
     d = StateSpec("D_5/2 F=4", 3)
     B = 0.3u"mT"
@@ -818,7 +1324,7 @@ end
     ref_intensity = 1.0u"W/m^2"
     intensity = ref_intensity * (Ω0 / rabi_frequency(ca43, s, d, ref_intensity, ε, n))^2
 
-    expected = quadrupole_light_shift(ca43, s, d, intensity, ε; n, B)
+    expected = driven_light_shift(ca43, s, d, intensity, ε; n, B, parts=:resonant)
 
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     coupling = rabi_normalised(

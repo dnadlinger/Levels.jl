@@ -10,6 +10,7 @@ Pages = [
     "30-species-data.md",
     "40-rates.md",
     "45-multipole.md",
+    "46-laser.md",
     "47-polarisability.md",
     "50-optics.md",
     "60-periodic-dynamics.md",
