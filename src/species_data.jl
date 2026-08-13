@@ -23,13 +23,24 @@ photon energy.
   AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
   C **45**, 030003 (2021),
   [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
+- `[Sansonetti2010]`: J. E. Sansonetti and G. Nave, "Wavelengths, Transition
+  Probabilities, and Energy Levels for the Spectrum of Neutral Strontium (Sr I)",
+  J. Phys. Chem. Ref. Data **39**, 033103 (2010),
+  [doi:10.1063/1.3449176](https://doi.org/10.1063/1.3449176).
 - `[Jiang2009]`: D. Jiang, B. Arora, M. S. Safronova, and C. W. Clark,
   "Blackbody-radiation shift in a ⁸⁸Sr⁺ ion optical frequency standard", J. Phys. B
   **42**, 154020 (2009),
   [doi:10.1088/0953-4075/42/15/154020](https://doi.org/10.1088/0953-4075/42/15/154020).
 """
 const sr88 = NoHyperfineOneElectronSpecies(;
-    mass=87.905612253u"u", # …(6), neutral atom [AME2020]
+    # Mass of the actual ion: the neutral-atom mass 87.905612253(6) u [AME2020]
+    # less one electron, plus the Sr I first ionisation energy 45932.2036(10) cm⁻¹
+    # [Sansonetti2010] as its mass-equivalent binding correction — at 6.1e-9 u the
+    # same size as the [AME2020] mass uncertainty.
+    mass=uconvert(
+        u"u",
+        87.905612253u"u" - Unitful.me + σ_to_energy(45932.2036 / u"cm") / u"c"^2,
+    ),
     energies=Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
             "S_1/2" => 0u"J",
@@ -101,6 +112,10 @@ quoted uncertainties.
   AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
   C **45**, 030003 (2021),
   [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
+- `[Pak2022]`: C. Pak, M. J. Schlitters, and S. D. Bergeson, "Improved ionization
+  potential of calcium using frequency-comb-based Rydberg spectroscopy", Phys. Rev. A
+  **106**, 062818 (2022),
+  [doi:10.1103/PhysRevA.106.062818](https://doi.org/10.1103/PhysRevA.106.062818).
 - `[Kramida2020]`: A. Kramida, "Isotope shifts in neutral and singly-ionized
   calcium", At. Data Nucl. Data Tables **133–134**, 101322 (2020),
   [doi:10.1016/j.adt.2019.101322](https://doi.org/10.1016/j.adt.2019.101322).
@@ -152,7 +167,15 @@ quoted uncertainties.
   [doi:10.1103/PhysRevA.71.032504](https://doi.org/10.1103/PhysRevA.71.032504).
 """
 const ca43 = HyperfineOneElectronSpecies(;
-    mass=42.95876638u"u", # …(24), neutral atom [AME2020]
+    # Mass of the actual ion: the neutral-atom mass 42.95876638(24) u [AME2020]
+    # less one electron, plus the Ca I first ionisation energy 49305.919611(4) cm⁻¹
+    # [Pak2022] as its mass-equivalent binding correction (NB: as this is well below the
+    # [AME2020] mass uncertainty, the usefulness of this questionable already, so the
+    # isotope shifts on the ionisation energy are especially negligible here).
+    mass=uconvert(
+        u"u",
+        42.95876638u"u" - Unitful.me + σ_to_energy(49305.919611 / u"cm") / u"c"^2,
+    ),
     nuclear_spin=7//2,
     # μ_I/μ_N = −1.315350(9)(1), the effective moment of the nucleus bound in the
     # ion, i.e. *not* corrected for diamagnetic shielding — the appropriate value

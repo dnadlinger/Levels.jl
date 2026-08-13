@@ -14,7 +14,8 @@ const FREE_ELECTRON_G = 2.00231930436092
 Returns the LS-coupling Landé g-factor for a single electron (``s = 1/2``),
 using the free-electron spin g-factor (CODATA 2022) and the leading-order
 reduced-mass correction to the orbital g-factor, ``g_L = 1 - m_e/M`` with ``M``
-the atomic mass.
+the ion mass (any distinction from the nuclear mass is far beyond the accuracy
+of this leading-order form).
 """
 function ls_lande_g(mass, l, j)
     s = 1//2

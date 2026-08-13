@@ -106,11 +106,13 @@ and no hyperfine structure.
 Base.@kwdef struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
                    OneElectronSpecies
     """
-    The atomic mass.
+    The mass of the ion.
 
-    Conventionally that of the neutral atom; the difference to the bare ion mass
-    is negligible for the current uses (e.g. the reduced-mass correction in
-    [`lande_g`](@ref) is only affected at the ``10^{-10}`` level).
+    That of the actual charged species, i.e. the neutral-atom mass less one electron,
+    plus the (tiny) mass equivalent of the ionisation energy. In practice, this is only
+    a stylistic distinction; experimental or theoretical uncertainties in the derived
+    quantities relevant to ion-trap AMO physics will dwarf the small difference in mass
+    definitions.
     """
     mass::M
 
@@ -181,10 +183,7 @@ Base.@kwdef struct HyperfineOneElectronSpecies{
     H<:HyperfineConstants,
 } <: OneElectronSpecies
     """
-    The atomic mass.
-
-    Conventionally that of the neutral atom, as for
-    [`NoHyperfineOneElectronSpecies`](@ref).
+    The mass of the ion, as for [`NoHyperfineOneElectronSpecies`](@ref).
     """
     mass::M
 
