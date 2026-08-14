@@ -154,6 +154,49 @@ end
     @test_throws ArgumentError zeeman_shift(ca43, StateSpec("S_1/2", 1//2), 0.1u"mT")
 end
 
+@testitem "Low-field ladder-operator relations" tags=[:unit, :fast] begin
+    using LinearAlgebra
+    using Unitful
+    using Levels: coupling_transform, jplus_matrix
+
+    # At a field small enough that intermediate-field (Breit–Rabi) F mixing is
+    # negligible, the adiabatically-labelled eigenstates must reduce to the
+    # coupled |F, m_F⟩ states with positive overlap (the largest-component
+    # eigenvector sign convention), so the total raising operator
+    # F₊ = J₊ ⊗ 1 + 1 ⊗ I₊ — built in the product basis and rotated through
+    # the Clebsch–Gordan unitary and the eigenvectors — must obey the
+    # Condon–Shortley ladder relation between eigenstates,
+    # ⟨F, m_F+1|F₊|F, m_F⟩ = +√(F(F+1) − m_F(m_F+1)), with no residual
+    # elements between different F levels. A misordered coupling (nuclear
+    # spin first would introduce (−1)^{I+J−F} signs), a non-Condon–Shortley
+    # CG phase or a sign slip in the eigenvector labelling would all flip
+    # elements, so the comparison is deliberately sign-exact. F₋ is the
+    # adjoint and everything is real, so checking F₊ covers the lowering
+    # relation too. Fields as in the low-field limit test above (D_5/2 needs
+    # a much smaller one, its F intervals being MHz-scale).
+    for (fs_level, b) in (("S_1/2", 1e-4u"mT"), ("D_5/2", 3e-7u"mT"))
+        m = hyperfine_manifold(ca43, fs_level, b)
+        @test maximum(abs.(m.states - I)) < 1e-5
+
+        j = m.level.j
+        i_nuc = ca43.nuclear_spin
+        eye_j = Matrix{Float64}(I, Int(2j + 1), Int(2j + 1))
+        eye_i = Matrix{Float64}(I, Int(2i_nuc + 1), Int(2i_nuc + 1))
+        u = coupling_transform(ca43, fs_level)
+        fp_product = kron(jplus_matrix(j), eye_i) .+ kron(eye_j, jplus_matrix(i_nuc))
+        fp = m.states' * (u' * fp_product * u) * m.states
+
+        expected = zeros(length(m.basis), length(m.basis))
+        for (col, ket) in enumerate(m.basis)
+            ket.m == ket.level.f && continue
+            row = stateindex(m.basis, ket.level, ket.m + 1)
+            expected[row, col] =
+                sqrt(Float64(ket.level.f * (ket.level.f + 1) - ket.m * (ket.m + 1)))
+        end
+        @test maximum(abs.(fp .- expected)) < 1e-5
+    end
+end
+
 @testitem "Hyperfine Zeeman Hamiltonian" tags=[:unit, :fast] begin
     using LinearAlgebra
     using Unitful
