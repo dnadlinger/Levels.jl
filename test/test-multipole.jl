@@ -152,3 +152,119 @@ end
     @test quadrupole_couplings(sr88, nh_basis, "S_1/2", "D_5/2", ε, n) ==
           quadrupole_couplings(nh_basis, "S_1/2", "D_5/2", ε, n)
 end
+
+# Vector spherical harmonics Y^{(+1)}_{K,p}(k̂) for K = 1, 2, transcribed from
+# the explicit linear-polarisation-basis forms in Appendix A of [Campbell2026]
+# (W. C. Campbell, "Angular Geometry of Atomic Multipole Transitions",
+# arXiv:2510.07451): an independent formulation of the beam-geometry factors,
+# in which the coupling of a plane wave to a 2^K-pole Δm channel is the
+# bilinear projection ε · Y^{(+1)}_{K,-Δm}(k̂) of its polarisation onto the
+# channel's normalised far-field emission pattern. Shared with the Rabi
+# cross-check in test-rates.jl.
+@testsnippet CampbellVSH begin
+    θhat(ϑ, φ) = [cos(ϑ) * cos(φ), cos(ϑ) * sin(φ), -sin(ϑ)]
+    φhat(ϑ, φ) = [-sin(φ), cos(φ), 0.0]
+    khat(ϑ, φ) = [sin(ϑ) * cos(φ), sin(ϑ) * sin(φ), cos(ϑ)]
+
+    function vsh(K, p, ϑ, φ)
+        θv = complex.(θhat(ϑ, φ))
+        φv = complex.(φhat(ϑ, φ))
+        if K == 1 && p == -1
+            cis(-φ) * sqrt(3 / (16π)) .* (cos(ϑ) .* θv .- im .* φv)
+        elseif K == 1 && p == 0
+            -sqrt(3 / (8π)) * sin(ϑ) .* θv
+        elseif K == 1 && p == 1
+            -cis(φ) * sqrt(3 / (16π)) .* (cos(ϑ) .* θv .+ im .* φv)
+        elseif K == 2 && p == -2
+            cis(-2φ) * sqrt(5 / (16π)) * sin(ϑ) .* (cos(ϑ) .* θv .- im .* φv)
+        elseif K == 2 && p == -1
+            cis(-φ) * sqrt(5 / (16π)) .* (cos(2ϑ) .* θv .- im * cos(ϑ) .* φv)
+        elseif K == 2 && p == 0
+            -sqrt(15 / (32π)) * sin(2ϑ) .* θv
+        elseif K == 2 && p == 1
+            -cis(φ) * sqrt(5 / (16π)) .* (cos(2ϑ) .* θv .+ im * cos(ϑ) .* φv)
+        elseif K == 2 && p == 2
+            cis(2φ) * sqrt(5 / (16π)) * sin(ϑ) .* (cos(ϑ) .* θv .+ im .* φv)
+        else
+            error("Y^(+1)_{$K,$p} not tabulated")
+        end
+    end
+
+    # The paper's Eq. (8) dot product is bilinear (no conjugation) in the
+    # e^{-iωt} rotating polarisation, matching the field convention of
+    # beam_vectors.
+    bilinear(a, b) = sum(a .* b)
+
+    # Beam directions and transverse polarisation coefficients (ε = a θ̂ + b φ̂:
+    # linear along either axis, circular, and generic elliptical) for the
+    # cross-check grids.
+    const CAMPBELL_ANGLES = ((0.4, 0.0), (1.0, 0.9), (π / 2, 2.0), (2.2, 4.5))
+    const CAMPBELL_POLS = (
+        (1.0 + 0.0im, 0.0 + 0.0im),
+        (0.0 + 0.0im, 1.0 + 0.0im),
+        (sqrt(0.5) + 0.0im, sqrt(0.5) * im),
+        (0.6 + 0.3im, -0.4 + 0.62im),
+    )
+end
+
+@testitem "Geometry factors vs vector spherical harmonics" tags=[:unit, :fast] setup=[
+    CampbellVSH,
+] begin
+    # d_q = (-1)^q √(8π/3) ε·Y^{(+1)}_{1,-q}(k̂) and Γ_q = (-1)^q √(4π/5)
+    # ε·Y^{(+1)}_{2,-q}(k̂), channel phases included: the Clebsch–Gordan
+    # tensor-product construction coincides with [Campbell2026]'s Wigner-D
+    # tables, and the constants tie the [James1998] normalisation used by
+    # rabi_frequency to the paper's Eq. (8) (checked in test-rates.jl).
+    for (ϑ, φ) in CAMPBELL_ANGLES, (a, b) in CAMPBELL_POLS
+        ε = a .* θhat(ϑ, φ) .+ b .* φhat(ϑ, φ)
+        d = dipole_geometry(ε)
+        for q in -1:1
+            @test d[q+2] ≈ (-1)^q * sqrt(8π / 3) * bilinear(ε, vsh(1, -q, ϑ, φ)) atol =
+                1e-13
+        end
+        Γ = quadrupole_geometry(ε, khat(ϑ, φ))
+        for q in -2:2
+            @test Γ[q+3] ≈ (-1)^q * sqrt(4π / 5) * bilinear(ε, vsh(2, -q, ϑ, φ)) atol =
+                1e-13
+        end
+    end
+
+    # Summed over two orthogonal transverse polarisations, the channel weights
+    # are the far-field emission power patterns W_{K,|q|} = |Y^{(+1)}_{K,q}|²
+    # of the Δm = q components ([Campbell2026] Eq. (A13)): the same geometry
+    # factors govern absorption from a beam and emission into its direction.
+    for (ϑ, φ) in CAMPBELL_ANGLES
+        pols = (complex.(θhat(ϑ, φ)), complex.(φhat(ϑ, φ)))
+        for q in -1:1
+            w = sum(abs2(dipole_geometry(ε)[q+2]) for ε in pols)
+            @test w ≈ 8π / 3 * sum(abs2, vsh(1, q, ϑ, φ)) rtol = 1e-12 atol = 1e-14
+        end
+        for q in -2:2
+            w = sum(abs2(quadrupole_geometry(ε, khat(ϑ, φ))[q+3]) for ε in pols)
+            @test w ≈ 4π / 5 * sum(abs2, vsh(2, q, ϑ, φ)) rtol = 1e-12 atol = 1e-14
+        end
+    end
+end
+
+@testitem "Two-beam E2 interference" tags=[:unit, :fast] begin
+    # For E2, a single plane wave cannot isolate one |Δm| = 2 component: k ⊥ ẑ
+    # with in-plane (φ̂) linear polarisation maximises the per-power |Δm| = 2
+    # coupling but splits it evenly between Δm = ±2 ([Campbell2026] §IV A 2).
+    φ_pol(φ_k) = complex.([-sin(φ_k), cos(φ_k), 0.0])
+    k_xy(φ_k) = [cos(φ_k), sin(φ_k), 0.0]
+    Γ1 = quadrupole_geometry(φ_pol(0.0), k_xy(0.0))
+    @test abs(Γ1[-2+3]) ≈ 0.5
+    @test abs(Γ1[2+3]) ≈ 0.5
+    @test all(abs(Γ1[q+3]) < 1e-15 for q in -1:1)
+
+    # A second phase-coherent beam of the same geometry at azimuth Δφ_k, with
+    # drive phase π - 2Δφ_k relative to the first, cancels Δm = -2 exactly
+    # while Δm = +2 adds fully ([Campbell2026] §IV B) — the complex channel
+    # amplitudes support such coherent multi-beam geometries by summation.
+    Δφ_k = π / 4
+    Γ2 = quadrupole_geometry(φ_pol(Δφ_k), k_xy(Δφ_k))
+    Γ = Γ1 .+ cis(π - 2Δφ_k) .* Γ2
+    @test abs(Γ[-2+3]) < 1e-15
+    @test abs(Γ[2+3]) ≈ 1.0
+    @test all(abs(Γ[q+3]) < 1e-15 for q in -1:1)
+end

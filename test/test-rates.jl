@@ -431,3 +431,101 @@ end
     m_d2 = hyperfine_manifold(ca43, "D_5/2", 2 * B)
     @test_throws ArgumentError transition_amplitude(m_s, m_d2, s, d)
 end
+
+@testitem "Rabi frequencies vs Campbell (2026) closed form" tags=[:unit, :fast] setup=[
+    CampbellVSH,
+] begin
+    using Unitful
+    using WignerSymbols: wigner3j
+
+    # Absolute E1 and E2 cross-check against Eq. (8) of [Campbell2026] (W. C.
+    # Campbell, "Angular Geometry of Atomic Multipole Transitions",
+    # arXiv:2510.07451), which fixes the coupling to the Einstein A
+    # coefficient through Fermi's golden rule and carries the entire beam
+    # geometry as the projection ε·Y^{(+1)}_{K,-Δm}(k̂) of the polarisation
+    # onto the channel's far-field emission pattern — one expression for any
+    # multipole rank, derived independently of [James1998]:
+    #
+    #   Ω = (e ℰ₀/ħ) √(2π A (2J'+1) (c/ω)³/(α c))
+    #       × |(J' K J; -m' Δm m)₃ⱼ| |ε·Y^{(+1)}_{K,-Δm}(k̂)|,  ℰ₀ = √(2I/(ε₀c)).
+    α = u"q"^2 / (4π * u"ε0" * u"ħ" * u"c")
+    intensity = 1e4u"W/m^2"
+    e_field = sqrt(2 * intensity / (u"ε0" * u"c"))
+    for (lo, hi, k) in (("S_1/2", "P_3/2", 1), ("S_1/2", "D_5/2", 2))
+        j_lo = NoHyperfineNumberSpec(lo).j
+        j_hi = NoHyperfineNumberSpec(hi).j
+        a = einstein_a(sr88, lo, hi)
+        ω = Levels.transition_frequency(sr88, lo, hi)
+        scale =
+            u"q" * e_field / u"ħ" *
+            sqrt(2π * a * (2j_hi + 1) * (u"c" / ω)^3 / (α * u"c"))
+        for (ϑ, φ) in CAMPBELL_ANGLES, (c_θ, c_φ) in CAMPBELL_POLS
+            ε = c_θ .* θhat(ϑ, φ) .+ c_φ .* φhat(ϑ, φ)
+            ε = ε ./ sqrt(sum(abs2, ε))
+            n = khat(ϑ, φ)
+            for m in (-j_lo):j_lo, m_hi in (-j_hi):j_hi
+                Δm = m_hi - m
+                abs(Δm) <= k || continue
+                expected = uconvert(
+                    u"µs^-1",
+                    scale * abs(
+                        wigner3j(j_hi, k, j_lo, -m_hi, Δm, m) *
+                        bilinear(ε, vsh(k, -Int(Δm), ϑ, φ)),
+                    ),
+                )
+                Ω = rabi_frequency(
+                    sr88,
+                    StateSpec(lo, m),
+                    StateSpec(hi, m_hi),
+                    intensity,
+                    ε,
+                    n,
+                )
+                @test Ω ≈ expected rtol = 1e-9 atol = 1e-10u"µs^-1"
+            end
+        end
+    end
+end
+
+@testitem "Hyperfine amplitudes vs Campbell (2026) Appendix E" tags=[:unit, :fast] begin
+    using WignerSymbols
+
+    # The repeated-reduction formula of [Campbell2026] Appendix E (Eqs. (D5) +
+    # (E1)) gives, relative to ⟨J'‖T‖J⟩/√(2J'+1),
+    #
+    #   ⟨F' m'|T^k_q|F m⟩ = (-1)^{F'-m'} (F' k F; -m' q m)₃ⱼ
+    #       × (-1)^{J'+I+F+k} √((2F'+1)(2F+1)(2J'+1)) {J' F' I; F J k}₆ⱼ.
+    #
+    # Its Racah 3-j Wigner–Eckart form is phase-identical (for integer rank)
+    # to the Clebsch–Gordan form used here, and it couples the hyperfine
+    # states electron first, |(J I) F⟩ — the coupling_transform convention —
+    # so every m-resolved zero-field amplitude must match
+    # transition_amplitude exactly, sign included, through a different 3-j/6-j
+    # index arrangement than hyperfine_reduction's. (Nuclear-spin-first
+    # sources would instead differ by (-1)^{I+J-F} per level, i.e.
+    # (-1)^{(F'-F)-(J'-J)} per multiplet; see the hyperfine_reduction
+    # docstring.)
+    i_nuc = ca43.nuclear_spin
+    for (lo_str, hi_str, k) in
+        (("S_1/2", "P_3/2", 1), ("S_1/2", "D_3/2", 2), ("S_1/2", "D_5/2", 2))
+        j_lo = NoHyperfineNumberSpec(lo_str).j
+        j_hi = NoHyperfineNumberSpec(hi_str).j
+        maxdev = 0.0
+        for lo in hyperfine_levels(ca43, lo_str), hi in hyperfine_levels(ca43, hi_str)
+            for m_lo in (-lo.f):lo.f, m_hi in (-hi.f):hi.f
+                q = m_hi - m_lo
+                abs(q) <= k || continue
+                campbell =
+                    (-1)^Int(hi.f - m_hi) *
+                    wigner3j(hi.f, k, lo.f, -m_hi, q, m_lo) *
+                    (-1)^Int(j_hi + i_nuc + lo.f + k) *
+                    sqrt((2 * hi.f + 1) * (2 * lo.f + 1) * (2 * j_hi + 1)) *
+                    wigner6j(j_hi, hi.f, i_nuc, lo.f, j_lo, k)
+                amplitude =
+                    transition_amplitude(ca43, StateSpec(lo, m_lo), StateSpec(hi, m_hi))
+                maxdev = max(maxdev, abs(amplitude - campbell))
+            end
+        end
+        @test maxdev < 1e-12
+    end
+end
