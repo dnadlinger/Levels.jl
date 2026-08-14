@@ -206,15 +206,28 @@ amplitude of a rank-`k` electronic multipole transition between hyperfine
 levels to that between their fine-structure levels,
 
 ```math
-β^{(k)}(F → F') = (-1)^{J + I + F' + k}
+β^{(k)}(F → F') = (-1)^{J' + I + F + k}
     \\sqrt{(2F + 1)(2J' + 1)}
     \\begin{Bmatrix} J & J' & k \\\\ F' & F & I \\end{Bmatrix},
 ```
 
 such that ``⟨F' m'|T^k_q|F m⟩ / (⟨J'‖T‖J⟩/\\sqrt{2J'+1}) =
 ⟨F m; k q|F' m'⟩ β^{(k)}``. The phase convention matches the coupled basis of
-[`Levels.coupling_transform`](@ref) (``⟨I m_I; J m_J | F m_F⟩``, nuclear spin
-first); in the ``I → 0`` limit ``β ≡ +1`` exactly.
+[`Levels.coupling_transform`](@ref) (``⟨J m_J; I m_I | F m_F⟩``, electron
+first, as in most of the atomic-physics literature — this is the
+repeated-reduction formula of e.g. `[Campbell2026]`, Appendix E); in the
+``I → 0`` limit ``β ≡ +1`` exactly.
+
+The form of the Wigner–Eckart theorem is *not* a source of sign differences:
+for integer rank, Racah's 3-j form ``(-1)^{J' - M'} (J'~k~J; -M'~q~M)_{3j}
+⟨J'‖T‖J⟩`` defines exactly the same reduced matrix element as the
+Clebsch–Gordan form used here. What does differ between sources is the
+angular-momentum **coupling order** of the hyperfine states: sources that
+couple nuclear spin first, ``|(I J) F⟩``, have states differing by
+``(-1)^{I + J - F}`` per level, so their amplitudes differ from these by
+``(-1)^{(F' - F) - (J' - J)}`` — constant within each multiplet, hence all
+magnitudes and physical predictions agree; signed amplitudes must not be
+mixed across coupling orders (cross-checked in `test-rates.jl`).
 
 The squares are the relative line strengths: ``\\sum_F β^2 = 1`` for fixed
 ``F'`` (each hyperfine sublevel decays at the full fine-structure rate, with
@@ -224,6 +237,11 @@ entered as separate Einstein A coefficients.
 `rank` defaults to the electric-multipole order of [`multipole_rank`](@ref);
 pass it explicitly for other operators (e.g. `1` for M1 within one
 fine-structure level).
+
+# References
+
+- `[Campbell2026]`: W. C. Campbell, "Angular Geometry of Atomic Multipole
+  Transitions", [arXiv:2510.07451](https://arxiv.org/abs/2510.07451).
 """
 function hyperfine_reduction(nuclear_spin, lower, upper; rank=nothing)
     lo = parse_level(lower)
@@ -236,7 +254,7 @@ function hyperfine_reduction(nuclear_spin, lower, upper; rank=nothing)
         return 0.0
     end
     Float64(
-        (-1)^Int(lo.j + nuclear_spin + hi.f + k) *
+        (-1)^Int(hi.j + nuclear_spin + lo.f + k) *
         sqrt((2 * lo.f + 1) * (2 * hi.j + 1)) *
         wigner6j(lo.j, hi.j, k, hi.f, lo.f, nuclear_spin),
     )

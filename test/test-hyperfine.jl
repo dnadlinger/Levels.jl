@@ -159,7 +159,7 @@ end
     using Unitful
     using Levels: jx_matrix, jy_matrix, jz_matrix, coupling_transform
 
-    # Independent product-basis construction (nuclear factor slow, electronic
+    # Independent product-basis construction (electronic factor slow, nuclear
     # fast), conjugated with the Clebsch–Gordan unitary, must reproduce the
     # coupled-basis matrix elements.
     b = [0.2, -0.1, 0.3]u"mT"
@@ -173,14 +173,14 @@ end
     product =
         (Levels.BOHR_MAGNETON / u"ħ") * (
             lande_g(ca43, "S_1/2") * (
-                b[1] .* kron(eye_i, jx_matrix(1//2)) .+
-                b[2] .* kron(eye_i, jy_matrix(1//2)) .+
-                b[3] .* kron(eye_i, jz_matrix(1//2))
+                b[1] .* kron(jx_matrix(1//2), eye_i) .+
+                b[2] .* kron(jy_matrix(1//2), eye_i) .+
+                b[3] .* kron(jz_matrix(1//2), eye_i)
             ) .+
             ca43.nuclear_g * (
-                b[1] .* kron(jx_matrix(i_nuc), eye_j) .+
-                b[2] .* kron(jy_matrix(i_nuc), eye_j) .+
-                b[3] .* kron(jz_matrix(i_nuc), eye_j)
+                b[1] .* kron(eye_j, jx_matrix(i_nuc)) .+
+                b[2] .* kron(eye_j, jy_matrix(i_nuc)) .+
+                b[3] .* kron(eye_j, jz_matrix(i_nuc))
             )
         )
     u = coupling_transform(ca43, "S_1/2")

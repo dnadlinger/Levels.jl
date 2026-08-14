@@ -197,14 +197,14 @@ function state_polarisabilities(
     # The J-basis tensor operator of the lumped remainder, evaluated in the
     # coupled state (diagonal-in-F approximation): its angular factor is the
     # CG-weighted average of (3m_J² − J(J+1))/(J(2J−1)) over the state's
-    # |m_I, m_J⟩ decomposition. Zero for J = 1/2, where the operator vanishes
+    # |m_J, m_I⟩ decomposition. Zero for J = 1/2, where the operator vanishes
     # identically — the genuinely-new hyperfine tensor term of such levels
     # comes from the resolved detunings above instead.
     j = fs.j
     i_nuc = species.nuclear_spin
     tensor = if j > 1//2
         sum(
-            Float64(clebschgordan(i_nuc, m - m_j, j, m_j, f, m))^2 *
+            Float64(clebschgordan(j, m_j, i_nuc, m - m_j, f, m))^2 *
             (3m_j^2 - j * (j + 1)) / (j * (2j - 1)) for
             m_j in (-j):j if abs(m - m_j) <= i_nuc;
             init=0.0,

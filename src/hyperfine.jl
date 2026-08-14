@@ -1,6 +1,6 @@
 # Hyperfine-structure machinery: the coupled |F, m_F⟩ basis is the canonical
 # matrix/index convention (hyperfine interaction diagonal, matrices indexable by
-# StateBasis{HyperfineNumberSpec}); the |m_I, m_J⟩ product basis appears only as
+# StateBasis{HyperfineNumberSpec}); the |m_J, m_I⟩ product basis appears only as
 # an internal construction device, glued by the Clebsch–Gordan unitary of
 # coupling_transform.
 
@@ -104,13 +104,16 @@ end
 Returns the Cartesian components of the magnetic-moment operator
 ``\\vec{M} = (μ_B / ħ) (g_J \\vec{J} + g_I \\vec{I})`` of the given
 fine-structure manifold — the Zeeman Hamiltonian is ``\\vec{B} ⋅ \\vec{M}`` —
-in the ``|m_I, m_J⟩`` product basis, in angular frequency units per flux
+in the ``|m_J, m_I⟩`` product basis, in angular frequency units per flux
 density.
 
-The product basis is ordered with the nuclear projection slow and the
-electronic one fast (`kron(I-space, J-space)`), each in order of increasing
+The product basis is ordered with the electronic projection slow and the
+nuclear one fast (`kron(J-space, I-space)`), each in order of increasing
 projection; [`Levels.coupling_transform`](@ref) maps it to the canonical
-coupled basis.
+coupled basis. This storage order deliberately mirrors the electron-first
+coupling order, but is in itself an arbitrary layout choice with no sign
+consequences — unlike the coupling order, which fixes the signs of the
+coupled states.
 """
 function moment_operators(species::HyperfineOneElectronSpecies, fs_level)
     spec = fine_structure(parse_level(fs_level))
@@ -124,7 +127,7 @@ function moment_operators(species::HyperfineOneElectronSpecies, fs_level)
     component(op) = uconvert.(
         u"µs^-1/mT",
         (BOHR_MAGNETON / u"ħ") .*
-        (g_j .* kron(eye_i, op(j)) .+ g_i .* kron(op(i), eye_j)),
+        (g_j .* kron(op(j), eye_i) .+ g_i .* kron(eye_j, op(i))),
     )
     (x=component(jx_matrix), y=component(jy_matrix), z=component(jz_matrix))
 end
@@ -132,30 +135,40 @@ end
 """
     coupling_transform(species, fs_level)
 
-Returns the Clebsch–Gordan unitary ``U`` relating the ``|m_I, m_J⟩`` product
+Returns the Clebsch–Gordan unitary ``U`` relating the ``|m_J, m_I⟩`` product
 basis of the given fine-structure manifold (cf.
 [`Levels.moment_operators`](@ref)) to the canonical coupled ``|F, m_F⟩`` basis
 (cf. [`StateBasis(species, levels...)`](@ref StateBasis)):
-``U_{(m_I, m_J), (F, m_F)} = ⟨I m_I; J m_J | F m_F⟩``, so a product-basis
+``U_{(m_J, m_I), (F, m_F)} = ⟨J m_J; I m_I | F m_F⟩``, so a product-basis
 operator ``X`` transforms to the coupled basis as ``U^† X U``.
 
 The matrix is real (Condon–Shortley phases) and block-diagonal in
-``m_F = m_I + m_J``.
+``m_F = m_J + m_I``.
+
+The coupling order — electron first, ``|(J I) F⟩``, as in most of the
+atomic-physics literature — is the convention choice that anchors every
+signed hyperfine amplitude in the package. Sources coupling nuclear spin
+first, ``|(I J) F⟩``, have states differing by ``(-1)^{I + J - F}``; the
+consequences for amplitudes are spelled out at
+[`Levels.hyperfine_reduction`](@ref). The product-basis *storage* order
+(electronic projection slow, nuclear fast) deliberately mirrors the coupling
+order for readability, but is in itself an arbitrary layout choice that no
+sign depends on.
 """
 function coupling_transform(species::HyperfineOneElectronSpecies, fs_level)
     spec = fine_structure(parse_level(fs_level))
     i = species.nuclear_spin
     j = spec.j
-    d_j = Int(2j + 1)
-    n = Int(2i + 1) * d_j
+    d_i = Int(2i + 1)
+    n = Int(2j + 1) * d_i
 
     U = zeros(n, n)
     col = 0
     for f in abs(i-j):(i+j), m_f in (-f):f
         col += 1
-        for (i_row, m_i) in enumerate((-i):i), (j_row, m_j) in enumerate((-j):j)
+        for (j_row, m_j) in enumerate((-j):j), (i_row, m_i) in enumerate((-i):i)
             m_i + m_j == m_f || continue
-            U[(i_row-1)*d_j+j_row, col] = Float64(clebschgordan(i, m_i, j, m_j, f, m_f))
+            U[(j_row-1)*d_i+i_row, col] = Float64(clebschgordan(j, m_j, i, m_i, f, m_f))
         end
     end
     U

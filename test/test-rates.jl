@@ -188,7 +188,7 @@ end
                     (b, m_jp) in enumerate((-j_hi):j_hi)
 
                     m_jp == m_j + q || continue
-                    m[(i_i-1)*d_hi+b, (i_i-1)*d_lo+a] =
+                    m[(b-1)*n_i+i_i, (a-1)*n_i+i_i] =
                         Float64(clebschgordan(j_lo, m_j, k, q, j_hi, m_jp))
                 end
             end
@@ -343,7 +343,7 @@ end
     d_states = collect(m_d.basis)
 
     # First-principles pin: the electronic E2 tensor components built in the
-    # |m_I, m_J⟩ product basis (identity on the nucleus), conjugated into the
+    # |m_J, m_I⟩ product basis (identity on the nucleus), conjugated into the
     # coupled basis with the Clebsch–Gordan unitaries and then into the field
     # eigenbasis with the manifold eigenvectors, must reproduce every at-field
     # amplitude — independently of the 6-j route the implementation takes —
@@ -364,7 +364,7 @@ end
                     (b, m_jp) in enumerate((-j_hi):j_hi)
 
                     m_jp == m_j + q || continue
-                    m[(i_i-1)*d_hi+b, (i_i-1)*d_lo+a] =
+                    m[(b-1)*n_i+i_i, (a-1)*n_i+i_i] =
                         Float64(clebschgordan(j_lo, m_j, 2, q, j_hi, m_jp))
                 end
             end
