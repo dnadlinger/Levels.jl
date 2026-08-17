@@ -348,9 +348,37 @@ end
 """
     saturation_intensity(species::OneElectronSpecies, lower, upper)
 
-Returns the saturation intensity for the transition between the two levels.
+Returns the saturation intensity ``I_0`` of the transition between the two levels, in
+the Oxford ion-trap group's convention (follwoing A. Steane's `[SATSUM]` note).
 
-An error is raised if the two levels are not connected by a known transition.
+``I_0`` is the intensity at which the resonant lowest-order excitation rate on an
+electric-dipole Zeeman component equals ``C^2 A``, with ``C`` the Clebsch–Gordan factor
+and ``A`` the Einstein coefficient of the transition:
+```math
+I_0 = \\frac{ħ ω^3}{6 π c^2 τ} = \\frac{4 π^2 ħ c}{3 λ^3 τ},
+```
+where ``ω`` is the transition frequency and ``τ`` the **total** [`lifetime`](@ref) of
+the upper level (all decay channels summed).
+
+Equivalently, the [`rabi_frequency`](@ref) of a component driven at unit geometric
+amplitude obeys ``Ω^2 = C^2 (I/I_0) A/τ``. For a closed transition (``A = 1/τ``) this
+makes ``I_0`` **twice** the two-level saturation intensity
+``I_\\mathrm{sat} = π h c Γ/(3 λ^3)`` of e.g. `[Foot2005]` §7.6.1: in
+the saturation parameter ``s = I/I_\\mathrm{sat} = 2 Ω^2/Γ^2`` convention,
+``I = I_0`` corresponds to ``s = 2``, i.e. ``Ω = Γ`` on the stretch component.
+
+An error is raised if a level is unknown to the species, the levels are given in the
+wrong energy order, or the upper level has no known decay channels; a tabulated A
+coefficient for the pair itself is not required, as it does not enter the definition.
+
+# References
+
+- `[SATSUM]`: A. M. Steane, "A summary of saturation intensities, or: How to find
+  scattering rates and Rabi frequencies quickly", internal Oxford ion-trap group note
+  (2001-12-03).
+- `[Foot2005]`: C. J. Foot, "Atomic Physics", Oxford University Press (2005);
+  same convention in Metcalf & van der Straten, "Laser Cooling and Trapping"
+  (1999), §2.4.
 """
 function saturation_intensity(species::OneElectronSpecies, lower, upper)
     ω = transition_frequency(species, lower, upper)
