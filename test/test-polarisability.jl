@@ -26,6 +26,96 @@
     @test uconvert(u"C*m^2/V", Δα) ≈ -4.8314e-40u"C*m^2/V" rtol = 3e-3
 end
 
+@testitem "ca43 static polarisabilities vs Yu & Sahoo (2025)" tags=[:unit, :fast] begin
+    using Unitful
+
+    # The ⁴³Ca⁺ static remainders are anchored to the RCC totals of
+    # [YuSahoo2025], Table I (see species_data.jl), so the assembled static
+    # limit must reproduce them: α₀(4s) = 74.62, α₀(3d₅/₂) = 30.59,
+    # α₂(3d₅/₂) = −24.50, α₀(3d₃/₂) = 33.36 and α₂(3d₃/₂) = −17.17 a.u.
+    au = Levels.POLARIZABILITY_AU
+    dc = 0.0u"s^-1"
+    @test scalar_polarisability(ca43, "S_1/2", dc) / au ≈ 74.62 rtol = 1e-3
+    @test scalar_polarisability(ca43, "D_5/2", dc) / au ≈ 30.59 rtol = 1e-3
+    @test tensor_polarisability(ca43, "D_5/2", dc) / au ≈ -24.50 rtol = 1e-3
+    @test scalar_polarisability(ca43, "D_3/2", dc) / au ≈ 33.36 rtol = 1e-3
+    @test tensor_polarisability(ca43, "D_3/2", dc) / au ≈ -17.17 rtol = 1e-3
+    @test iszero(tensor_polarisability(ca43, "S_1/2", dc))
+    @test iszero(vector_polarisability(ca43, "D_5/2", dc))
+
+    # Anchoring to those totals is only legitimate because they agree with
+    # experiment: the differential static scalar polarisability of the 729 nm
+    # clock transition has been measured to −44.07(1) a.u. via the magic trap
+    # drive frequency (Y. Huang, H. Guan, M. Zeng, L. Tang, and K. Gao,
+    # "⁴⁰Ca⁺ ion optical clock with micromotion-induced shifts below 1×10⁻¹⁸",
+    # Phys. Rev. A 99, 011401(R) (2019), doi:10.1103/PhysRevA.99.011401),
+    # 0.1% from the [YuSahoo2025] −44.02(47) reproduced here.
+    Δα =
+        scalar_polarisability(ca43, "D_5/2", dc) -
+        scalar_polarisability(ca43, "S_1/2", dc)
+    @test Δα / au ≈ -44.07 rtol = 2e-3
+end
+
+@testitem "ca43 reduced dipoles vs their source Einstein A coefficients" tags=[
+    :unit,
+    :fast,
+] begin
+    using Unitful
+
+    # Unlike for sr88, the ca43 reduced dipoles are *derived* from the stored
+    # (measured) Einstein A coefficients, so the relation
+    # A = ω³ |⟨j'‖d‖j⟩|² / (3π ε₀ ħ c³ (2j'+1)) must hold to the rounding of
+    # the stored digits — this pins the derivation against accidental drift if
+    # either side is ever updated on its own.
+    for (lower, upper) in (
+        ("S_1/2", "P_1/2"),
+        ("S_1/2", "P_3/2"),
+        ("D_5/2", "P_3/2"),
+        ("D_3/2", "P_1/2"),
+        ("D_3/2", "P_3/2"),
+    )
+        d = level_polarisability(ca43, lower).reduced_dipoles[convert(
+            NoHyperfineNumberSpec,
+            upper,
+        )]
+        ω = Levels.transition_frequency(ca43, lower, upper)
+        j_upper = convert(NoHyperfineNumberSpec, upper).j
+        a = ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1))
+        @test uconvert(u"µs^-1", a) ≈ einstein_a(ca43, lower, upper) rtol = 2e-4
+    end
+end
+
+@testitem "ca43 dynamic polarisabilities vs Tang (2013)" tags=[:unit, :fast] begin
+    using Unitful
+
+    # Dynamic values against the DFCP magic-wavelength tables of Y.-B. Tang,
+    # H.-X. Qiao, T.-Y. Shi, and J. Mitroy, Phys. Rev. A 87, 042517 (2013)
+    # ([Tang2013] in species_data.jl), Tables VII, VIII, X and XI. The 4s
+    # values track to better than 1% across 690–1338 nm: the residual is the
+    # matrix-element difference (theirs 2.879/4.073 vs the measured-lifetime
+    # 2.8927/4.115 here) against the smaller [YuSahoo2025]-anchored remainder.
+    ħω(x) = uconvert(u"s^-1", x * 2 * u"R∞" * u"c" * 2π) # a.u. → angular
+    au = Levels.POLARIZABILITY_AU
+    for (x, ref) in (
+        (0.0340414, 82.1167), # 1338.474 nm
+        (0.0424109, 86.4837), # 1074.336 nm
+        (0.0659561, 110.0849), # 690.817 nm
+        (0.0677517, 113.0150), # 672.508 nm
+    )
+        @test scalar_polarisability(ca43, "S_1/2", ħω(x)) / au ≈ ref rtol = 1e-2
+    end
+
+    # At the same tabulated points the 3d₅/₂ sublevel value equals the 4s one
+    # by the magic-wavelength construction (linear polarisation,
+    # α = α₀ + α₂ (3m² − j(j+1))/(j(2j−1))). Here the agreement is only ≈5%:
+    # the 3d–4p dipoles are the least certain part of the DFCP model (theirs
+    # 3.356 vs the measured-lifetime 3.300 here, which matches MBPT-SD), and
+    # the lumped f-channel remainder ([Tang2013] Table X) is undispersed.
+    α0 = scalar_polarisability(ca43, "D_5/2", ħω(0.0424109)) / au
+    α2 = tensor_polarisability(ca43, "D_5/2", ħω(0.0424109)) / au
+    @test α0 + α2 * (3 * (3//2)^2 - 35//4) / 10 ≈ 86.4837 rtol = 7e-2
+end
+
 @testitem "674 nm clock light shift vs Lindvall (2025)" tags=[:unit, :fast] begin
     using Unitful
 
@@ -1213,15 +1303,15 @@ end
 
     # One-shot form against the precomputed coefficients. The two use different
     # channel references (centroid interval vs the named zero-field F pair),
-    # which the driven-mode differences must be independent of. (E1 data is
-    # absent for ca43, so the background rows are NaN, but the channel
-    # machinery must work regardless.)
+    # which the driven-mode differences must be independent of.
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     c = LightShiftCoefficients(ca43, basis, laser; B)
     resonant = driven_light_shift(c, s => d, intensity, ε; n, parts=:resonant)
     @test driven_light_shift(ca43, s, d, intensity, ε; n, B, parts=:resonant) ≈ resonant rtol =
         1e-9
-    @test_throws ArgumentError driven_light_shift(c, s => d, intensity, ε; n)
+    # The total is the (hyperfine-resolved) E1 background plus the channels.
+    @test driven_light_shift(c, s => d, intensity, ε; n) ≈
+          driven_light_shift(c, s => d, intensity, ε; n, parts=:background) + resonant
 
     # Unlike the fine-structure case ([Lindvall2025] Sec. III F 2), the ±m
     # Zeeman-pair average does *not* cancel for linear polarisation: the

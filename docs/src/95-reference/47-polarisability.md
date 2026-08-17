@@ -12,8 +12,8 @@ evaluating a shift for a particular intensity and polarisation afterwards is
 cheap enough to sit inside the inner loop of a laser-parameter fit. Which
 levels the background is available for depends on the
 [`LevelPolarisability`](@ref) data of the species (for [`sr88`](@ref), the
-S``_{1/2}`` ↔ D``_{5/2}`` clock levels); the channels need only the Einstein A
-coefficient.
+S``_{1/2}`` and D``_{5/2}`` clock levels; for [`ca43`](@ref), additionally
+D``_{3/2}``); the channels need only the Einstein A coefficient.
 
 Note that, unlike the electric-quadrupole coupling, an E1 light shift does not
 depend on the beam direction — only on the polarisation. The two therefore
