@@ -63,35 +63,49 @@ const sr88 = NoHyperfineOneElectronSpecies(;
             ("S_1/2", "D_3/2") => 2.299u"s^-1", # …(21) [Sansonetti2012]
             ("D_3/2", "P_1/2") => 7.46u"µs^-1", # …(14) [Likforman2016]
             ("D_3/2", "P_3/2") => 1.0u"µs^-1", # …(2) [Sansonetti2012]
-            ("D_5/2", "P_3/2") => 8.7u"µs^-1", # …(15) [Sansonetti2012]
+            # Given as the matrix element: the all-order ⟨4d₅/₂‖d‖5p₃/₂⟩ =
+            # 4.187 e a₀ of [Jiang2009] (equivalent to A = 8.06 µs⁻¹) is far
+            # better determined than the 8.7(15) µs⁻¹ compilation value of
+            # [Sansonetti2012] (with which it is consistent, at 0.4σ), being
+            # corroborated at the percent level — through its dominant share
+            # of α₀(4d₅/₂) — by the measured static differential
+            # polarisability of the clock transition (see
+            # test-polarisability.jl).
+            ("D_5/2", "P_3/2") => ReducedDipole(4.187DIPOLE_AU),
         ]
     ),
     polarisabilities=Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
-            # All reduced matrix elements and static remainders below are the
-            # relativistic all-order values of [Jiang2009], Tables 1 and 3.
-            #
-            # The remainders lump together every contribution that paper lists but
-            # that is not given explicitly here, evaluated in the static limit. That
-            # is a good approximation because they all involve transitions far above
-            # the lasers of interest: the closest, 4d–5f at 71066 cm⁻¹, is enhanced
-            # by only 5% at 674 nm, against 12% for the explicitly kept 4d–4f.
-            "S_1/2" => LevelPolarisability(
-                ["P_1/2" => 3.078DIPOLE_AU, "P_3/2" => 4.351DIPOLE_AU];
-                # Core 5.81 + valence-core −0.26 + tail 0.02 + 6p…8p 0.016.
-                static_scalar=5.586POLARIZABILITY_AU,
+            # The 4d₅/₂ → 4f matrix elements and the static totals below are
+            # the relativistic all-order values of [Jiang2009], Tables 1 and
+            # 3; the S/D → P channel dipoles are derived from the einstein_as
+            # above (cf. ImplicitPolarisability — the measured rates for the
+            # S → P channels agree with the [Jiang2009] dipoles to ≈0.1%,
+            # and D_5/2 → P_3/2 is [Jiang2009]-sourced there), and the
+            # lumped static remainders follow by subtracting the explicit
+            # channels from the totals. Those remainders cover every
+            # contribution of that paper not explicit here — dominated by
+            # the ionic core (5.81) plus, for D_5/2, the 5f…12f tail —
+            # evaluated in the static limit. That is a good approximation
+            # because they all involve transitions far above the lasers of
+            # interest: the closest, 4d–5f at 71066 cm⁻¹, is enhanced by
+            # only 5% at 674 nm, against 12% for the explicitly kept 4d–4f.
+            "S_1/2" => ImplicitPolarisability(
+                ["P_1/2", "P_3/2"];
+                static_scalar=91.30POLARISABILITY_AU, # [Jiang2009]
             ),
-            "D_5/2" => LevelPolarisability(
+            "D_5/2" => ImplicitPolarisability(
                 [
-                    "P_3/2" => 4.187DIPOLE_AU,
-                    "F_5/2" => 0.789DIPOLE_AU,
-                    "F_7/2" => 3.528DIPOLE_AU,
+                    "P_3/2",
+                    # Explicit dipoles: these channels stay out of
+                    # einstein_as, where the (dominant) 4f₅/₂ → 4d₃/₂ decay
+                    # is not tabulated, so partial entries would corrupt the
+                    # 4f level lifetimes.
+                    "F_5/2" => 0.789DIPOLE_AU, # [Jiang2009]
+                    "F_7/2" => 3.528DIPOLE_AU, # [Jiang2009]
                 ];
-                # Core 5.81 + valence-core −0.40 + tail 2.06 + 6p…8p 0.016
-                # + 5f…12f 3.480.
-                static_scalar=10.966POLARIZABILITY_AU,
-                # Tail −0.59 + 6p…8p −0.016 + 5f…12f −0.996.
-                static_tensor=-1.602POLARIZABILITY_AU,
+                static_scalar=62.0POLARISABILITY_AU, # [Jiang2009]
+                static_tensor=-47.7POLARISABILITY_AU, # [Jiang2009]
             ),
         ]
     ),
@@ -259,61 +273,51 @@ const ca43 = HyperfineOneElectronSpecies(;
     ),
     polarisabilities=Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
-            # Unlike for ⁸⁸Sr⁺, the explicit reduced dipoles are not taken from
-            # a sum-over-states table but derived from the measured Einstein A
-            # coefficients above via A = ω³ d² / (3π ε₀ ħ c³ (2J' + 1)) — i.e.
-            # from [Hettrich2015]/[Ramm2013] for the decays from P_1/2 and
-            # [Meir2020]/[Gerritsma2008] for those from P_3/2 — so background
-            # and near-resonant channels share one source. The static
-            # remainders are then fixed such that the α₀/α₂ static totals
-            # reproduce the RCC values of [YuSahoo2025], Table I: α₀(S_1/2) =
-            # 74.62(41), α₀(D_5/2) = 30.59(6), α₂(D_5/2) = −24.50(12),
-            # α₀(D_3/2) = 33.36(31), α₂(D_3/2) = −17.17(10) (all in a.u.),
-            # whose differential α₀(D_5/2) − α₀(S_1/2) = −44.02(47) agrees
-            # with the measured −44.07(1) (Huang 2019; both pinned down in
-            # test-polarisability.jl).
-            "S_1/2" => LevelPolarisability(
-                [
-                    # …(54); equals the directly measured 2.8928(43) e a₀ of
-                    # [Hettrich2015], whose τ(P_1/2) the A value above rests on.
-                    "P_1/2" => 2.8927DIPOLE_AU,
-                    "P_3/2" => 4.115DIPOLE_AU, # …(13)
-                ];
-                # [YuSahoo2025] static total 74.62 less the 73.04 a.u. of the
-                # explicit channels. This leaves less than the ionic core
-                # alone (3.26, plus ≈0.19 of 5p/tail; [Tang2013] Table VII):
-                # the [YuSahoo2025] total sits ≈1.9 a.u. (≈3σ) below measured
-                # channels plus core, the RCC-family totals generally running
-                # low against the 75.3–76.1 of the DFCP/CICP/MBPT-SD/f-sum
-                # cluster ([Tang2013] Table VI). Of no consequence at optical
-                # detunings, where the explicit channels dominate — and
-                # largely common-mode with D_5/2 below, so the measured static
-                # differential stays anchored regardless.
-                static_scalar=1.577POLARIZABILITY_AU,
+            # Unlike for ⁸⁸Sr⁺, no independent sum-over-states table is
+            # entered here. The explicit channel dipoles are derived (by the
+            # species constructor, cf. ImplicitPolarisability) from the
+            # measured Einstein A coefficients above — i.e. from
+            # [Hettrich2015]/[Ramm2013] for the decays from P_1/2 and
+            # [Meir2020]/[Gerritsma2008] for those from P_3/2; the derived
+            # ⟨S_1/2‖d‖P_1/2⟩ = 2.8927 e a₀ equals the directly measured
+            # 2.8928(43) of [Hettrich2015] — so background and near-resonant
+            # channels share one source. The static totals given below are
+            # the RCC values of [YuSahoo2025], Table I, whose differential
+            # α₀(D_5/2) − α₀(S_1/2) = −44.02(47) agrees with the measured
+            # −44.07(1) (Huang 2019); both are pinned down in
+            # test-polarisability.jl.
+            "S_1/2" => ImplicitPolarisability(
+                ["P_1/2", "P_3/2"];
+                # The implied remainder (1.58 a.u.) is less than the ionic
+                # core alone (3.26, plus ≈0.19 of 5p/tail; [Tang2013] Table
+                # VII): the [YuSahoo2025] total sits ≈1.9 a.u. (≈3σ) below
+                # measured channels plus core, the RCC-family totals
+                # generally running low against the 75.3–76.1 of the
+                # DFCP/CICP/MBPT-SD/f-sum cluster ([Tang2013] Table VI). Of
+                # no consequence at optical detunings, where the explicit
+                # channels dominate — and largely common-mode with D_5/2
+                # below, so the measured static differential stays anchored
+                # regardless.
+                static_scalar=74.62POLARISABILITY_AU, # …(41) [YuSahoo2025]
             ),
-            "D_5/2" => LevelPolarisability(
-                ["P_3/2" => 3.300DIPOLE_AU]; # …(12)
-                # [YuSahoo2025] static totals less the explicit channel (22.69
-                # scalar, −22.69 tensor). Unlike for ⁸⁸Sr⁺, the 4f/5f/higher-f
-                # channels (≈54 000 cm⁻¹ up) are lumped in here; their
-                # dispersion enhancement is 7% at 729 nm and 24% at 422 nm,
-                # and the DFCP decomposition puts ≈6 a.u. of static f-channel
-                # content here ([Tang2013] Table X — more than this whole
-                # non-core remainder, cf. the S_1/2 note above), bounding the
-                # lumping error at ≈0.4/1.4 a.u. at those wavelengths.
-                static_scalar=7.901POLARIZABILITY_AU,
-                static_tensor=-1.811POLARIZABILITY_AU,
+            "D_5/2" => ImplicitPolarisability(
+                ["P_3/2"];
+                # Unlike for ⁸⁸Sr⁺, the 4f/5f/higher-f channels
+                # (≈54 000 cm⁻¹ up) are lumped into the implied remainder;
+                # their dispersion enhancement is 7% at 729 nm and 24% at
+                # 422 nm, and the DFCP decomposition puts ≈6 a.u. of static
+                # f-channel content here ([Tang2013] Table X — more than the
+                # whole non-core part of the remainder, cf. the S_1/2 note
+                # above), bounding the lumping error at ≈0.4/1.4 a.u. at
+                # those wavelengths.
+                static_scalar=30.59POLARISABILITY_AU, # …(6) [YuSahoo2025]
+                static_tensor=-24.50POLARISABILITY_AU, # …(12) [YuSahoo2025]
             ),
-            "D_3/2" => LevelPolarisability(
-                [
-                    "P_1/2" => 2.4464DIPOLE_AU, # …(48)
-                    "P_3/2" => 1.0988DIPOLE_AU, # …(48)
-                ];
-                # [YuSahoo2025] static totals less the explicit channels (22.72
-                # scalar, −15.97 tensor); the 3d → 4f lumping note above
-                # applies equally.
-                static_scalar=10.637POLARIZABILITY_AU,
-                static_tensor=-1.204POLARIZABILITY_AU,
+            "D_3/2" => ImplicitPolarisability(
+                ["P_1/2", "P_3/2"];
+                # The 3d → 4f lumping note above applies equally.
+                static_scalar=33.36POLARISABILITY_AU, # …(31) [YuSahoo2025]
+                static_tensor=-17.17POLARISABILITY_AU, # …(10) [YuSahoo2025]
             ),
         ]
     ),

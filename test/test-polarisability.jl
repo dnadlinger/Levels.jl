@@ -1,14 +1,20 @@
 @testitem "Static polarisabilities vs Jiang (2009)" tags=[:unit, :fast] begin
     using Unitful
 
-    # The stored data is a reduction of Tables 1 and 3 of [Jiang2009] (see
-    # species_data.jl), so the static limit must reproduce that paper's totals:
-    # α₀(5s) = 91.30, α₀(4d₅/₂) = 62.0 and α₂(4d₅/₂) = −47.7 a.u.
-    au = Levels.POLARIZABILITY_AU
+    # The stored data is given as ImplicitPolarisability specs anchored to the
+    # static totals of [Jiang2009], Table 3 (see species_data.jl): α₀(5s) =
+    # 91.30, α₀(4d₅/₂) = 62.0 and α₂(4d₅/₂) = −47.7 a.u. The species
+    # constructor fixes the lumped remainders by subtracting the explicit
+    # channels' statics through the same channel formulas the evaluation
+    # uses, so reproducing the anchors here checks the resolution
+    # bookkeeping (each channel subtracted exactly once, against the same
+    # energies) and pins the data entry; the physics is pinned by the
+    # measured differential below.
+    au = Levels.POLARISABILITY_AU
     dc = 0.0u"s^-1"
-    @test scalar_polarisability(sr88, "S_1/2", dc) / au ≈ 91.30 rtol = 1e-3
-    @test scalar_polarisability(sr88, "D_5/2", dc) / au ≈ 62.0 rtol = 1e-3
-    @test tensor_polarisability(sr88, "D_5/2", dc) / au ≈ -47.7 rtol = 1e-3
+    @test scalar_polarisability(sr88, "S_1/2", dc) / au ≈ 91.30 rtol = 1e-10
+    @test scalar_polarisability(sr88, "D_5/2", dc) / au ≈ 62.0 rtol = 1e-10
+    @test tensor_polarisability(sr88, "D_5/2", dc) / au ≈ -47.7 rtol = 1e-10
 
     # S₁/₂ has no oriented sublevels, hence no tensor polarisability, and the
     # vector polarisability vanishes in the static limit for every level.
@@ -29,17 +35,21 @@ end
 @testitem "ca43 static polarisabilities vs Yu & Sahoo (2025)" tags=[:unit, :fast] begin
     using Unitful
 
-    # The ⁴³Ca⁺ static remainders are anchored to the RCC totals of
-    # [YuSahoo2025], Table I (see species_data.jl), so the assembled static
-    # limit must reproduce them: α₀(4s) = 74.62, α₀(3d₅/₂) = 30.59,
-    # α₂(3d₅/₂) = −24.50, α₀(3d₃/₂) = 33.36 and α₂(3d₃/₂) = −17.17 a.u.
-    au = Levels.POLARIZABILITY_AU
+    # The ⁴³Ca⁺ data is given as ImplicitPolarisability specs anchored to the
+    # RCC static totals of [YuSahoo2025], Table I (see species_data.jl):
+    # α₀(4s) = 74.62, α₀(3d₅/₂) = 30.59, α₂(3d₅/₂) = −24.50, α₀(3d₃/₂) =
+    # 33.36 and α₂(3d₃/₂) = −17.17 a.u. The species constructor fixes the
+    # lumped remainders by subtracting the explicit channels' statics through
+    # the same channel formulas the evaluation uses, so reproducing the
+    # anchors here checks the resolution bookkeeping and pins the data
+    # entry; the physics is pinned by the measured differential below.
+    au = Levels.POLARISABILITY_AU
     dc = 0.0u"s^-1"
-    @test scalar_polarisability(ca43, "S_1/2", dc) / au ≈ 74.62 rtol = 1e-3
-    @test scalar_polarisability(ca43, "D_5/2", dc) / au ≈ 30.59 rtol = 1e-3
-    @test tensor_polarisability(ca43, "D_5/2", dc) / au ≈ -24.50 rtol = 1e-3
-    @test scalar_polarisability(ca43, "D_3/2", dc) / au ≈ 33.36 rtol = 1e-3
-    @test tensor_polarisability(ca43, "D_3/2", dc) / au ≈ -17.17 rtol = 1e-3
+    @test scalar_polarisability(ca43, "S_1/2", dc) / au ≈ 74.62 rtol = 1e-10
+    @test scalar_polarisability(ca43, "D_5/2", dc) / au ≈ 30.59 rtol = 1e-10
+    @test tensor_polarisability(ca43, "D_5/2", dc) / au ≈ -24.50 rtol = 1e-10
+    @test scalar_polarisability(ca43, "D_3/2", dc) / au ≈ 33.36 rtol = 1e-10
+    @test tensor_polarisability(ca43, "D_3/2", dc) / au ≈ -17.17 rtol = 1e-10
     @test iszero(tensor_polarisability(ca43, "S_1/2", dc))
     @test iszero(vector_polarisability(ca43, "D_5/2", dc))
 
@@ -56,32 +66,187 @@ end
     @test Δα / au ≈ -44.07 rtol = 2e-3
 end
 
-@testitem "ca43 reduced dipoles vs their source Einstein A coefficients" tags=[
-    :unit,
-    :fast,
-] begin
+@testitem "ca43 derived reduced dipoles" tags=[:unit, :fast] begin
     using Unitful
 
-    # Unlike for sr88, the ca43 reduced dipoles are *derived* from the stored
-    # (measured) Einstein A coefficients, so the relation
-    # A = ω³ |⟨j'‖d‖j⟩|² / (3π ε₀ ħ c³ (2j'+1)) must hold to the rounding of
-    # the stored digits — this pins the derivation against accidental drift if
-    # either side is ever updated on its own.
-    for (lower, upper) in (
-        ("S_1/2", "P_1/2"),
-        ("S_1/2", "P_3/2"),
-        ("D_5/2", "P_3/2"),
-        ("D_3/2", "P_1/2"),
-        ("D_3/2", "P_3/2"),
+    # Unlike for sr88, the ca43 reduced dipoles are *derived* (at species
+    # construction, from the stored measured Einstein A coefficients via
+    # A = ω³ |⟨j'‖d‖j⟩|² / (3π ε₀ ħ c³ (2j'+1))); pin the derived values, so
+    # an inadvertent change to the input A coefficients or the derivation
+    # itself cannot pass silently.
+    for (lower, upper, ref) in (
+        ("S_1/2", "P_1/2", 2.8927),
+        ("S_1/2", "P_3/2", 4.115),
+        ("D_5/2", "P_3/2", 3.300),
+        ("D_3/2", "P_1/2", 2.4464),
+        ("D_3/2", "P_3/2", 1.0988),
     )
         d = level_polarisability(ca43, lower).reduced_dipoles[convert(
             NoHyperfineNumberSpec,
             upper,
         )]
-        ω = Levels.transition_frequency(ca43, lower, upper)
-        j_upper = convert(NoHyperfineNumberSpec, upper).j
-        a = ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1))
-        @test uconvert(u"µs^-1", a) ≈ einstein_a(ca43, lower, upper) rtol = 2e-4
+        @test d / Levels.DIPOLE_AU ≈ ref rtol = 2e-4
+    end
+
+    # The S₁/₂ → P₁/₂ dipole must reproduce the 2.8928(43) e a₀ [Hettrich2015]
+    # quotes for its own τ(P_1/2) measurement (the source of the A coefficient
+    # used here) — a check of the A ↔ dipole conversion against the
+    # literature's, far inside the measurement uncertainty.
+    d = level_polarisability(ca43, "S_1/2").reduced_dipoles[convert(
+        NoHyperfineNumberSpec,
+        "P_1/2",
+    )]
+    @test d / Levels.DIPOLE_AU ≈ 2.8928 atol = 0.0005
+end
+
+@testitem "ImplicitPolarisability resolution" tags=[:unit, :fast] begin
+    using Unitful
+
+    au = Levels.POLARISABILITY_AU
+    nh(level) = convert(NoHyperfineNumberSpec, level)
+    with_polarisabilities(p; energies=sr88.energies) = NoHyperfineOneElectronSpecies(;
+        mass=sr88.mass,
+        energies,
+        einstein_as=sr88.einstein_as,
+        polarisabilities=p,
+    )
+
+    # A dictionary mixing explicit LevelPolarisability data with an
+    # ImplicitPolarisability spec resolves per entry: the former passes through
+    # untouched, the latter is built from the species' own Einstein A
+    # coefficients and energies.
+    s_data = level_polarisability(sr88, "S_1/2")
+    toy = with_polarisabilities(
+        Dict(
+            nh("S_1/2") => s_data,
+            nh("D_5/2") => ImplicitPolarisability(
+                ["P_3/2"];
+                static_scalar=62.0au,
+                static_tensor=-47.7au,
+            ),
+        ),
+    )
+    @test level_polarisability(toy, "S_1/2") === s_data
+
+    # The derived dipole satisfies the defining Einstein A relation
+    # A = ω³ |⟨j'‖d‖j⟩|² / (3π ε₀ ħ c³ (2j'+1)).
+    d = level_polarisability(toy, "D_5/2").reduced_dipoles[nh("P_3/2")]
+    ω = Levels.transition_frequency(toy, "D_5/2", "P_3/2")
+    a = ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * 4)
+    @test uconvert(u"µs^-1", a) ≈ einstein_a(toy, "D_5/2", "P_3/2") rtol = 1e-12
+
+    # Unanchored (static_scalar = nothing) resolution keeps no static
+    # remainder at all: the explicit channels are the whole model.
+    unanchored = with_polarisabilities(
+        Dict(
+            nh("S_1/2") =>
+                ImplicitPolarisability(["P_1/2", "P_3/2"]; static_scalar=nothing),
+        ),
+    )
+    data = level_polarisability(unanchored, "S_1/2")
+    @test iszero(data.static_scalar)
+    @test iszero(data.static_tensor)
+    @test data.reduced_dipoles == s_data.reduced_dipoles
+
+    # A channel without a known Einstein A coefficient cannot be derived
+    # (sr88 has no rates for the 4f levels)…
+    @test_throws ArgumentError with_polarisabilities(
+        Dict(nh("D_5/2") => ImplicitPolarisability(["F_5/2"]; static_scalar=0.0au)),
+    )
+
+    # …but an explicit level => dipole channel works without one, and its
+    # matrix element is stored verbatim.
+    explicit = with_polarisabilities(
+        Dict(
+            nh("D_5/2") => ImplicitPolarisability(
+                ["F_5/2" => 1.23Levels.DIPOLE_AU];
+                static_scalar=0.0au,
+            ),
+        ),
+    )
+    @test level_polarisability(explicit, "D_5/2").reduced_dipoles[nh("F_5/2")] ≈
+          1.23Levels.DIPOLE_AU
+
+    # An explicit dipole for a pair whose strength an einstein_as entry
+    # already fixes would give the transition two independent strengths — the
+    # very duplication the spec exists to rule out.
+    @test_throws ArgumentError with_polarisabilities(
+        Dict(
+            nh("S_1/2") => ImplicitPolarisability(
+                ["P_1/2" => 2.9Levels.DIPOLE_AU];
+                static_scalar=0.0au,
+            ),
+        ),
+    )
+
+    # A channel must be an electric-dipole pair: S_1/2 → D_5/2 is E2, and its
+    # einstein_as rate must not be pushed through the E1 dipole conversion.
+    @test_throws ArgumentError with_polarisabilities(
+        Dict(nh("S_1/2") => ImplicitPolarisability(["D_5/2"]; static_scalar=0.0au)),
+    )
+
+    # Listing a channel twice would double-count its static subtraction.
+    @test_throws ArgumentError with_polarisabilities(
+        Dict(
+            nh("S_1/2") =>
+                ImplicitPolarisability(["P_1/2", "P_1/2"]; static_scalar=0.0au),
+        ),
+    )
+
+    # Both the level itself and every channel must have known energies.
+    no_f = delete!(copy(sr88.energies), nh("F_5/2"))
+    @test_throws ArgumentError with_polarisabilities(
+        Dict(nh("F_5/2") => ImplicitPolarisability(["D_5/2"]; static_scalar=0.0au));
+        energies=no_f,
+    )
+    @test_throws ArgumentError with_polarisabilities(
+        Dict(
+            nh("D_5/2") => ImplicitPolarisability(
+                ["F_5/2" => 1.23Levels.DIPOLE_AU];
+                static_scalar=0.0au,
+            ),
+        );
+        energies=no_f,
+    )
+end
+
+@testitem "ReducedDipole resolution" tags=[:unit, :fast] begin
+    using Unitful
+
+    # An einstein_as entry given as a ReducedDipole matrix element resolves to
+    # the Einstein A coefficient A = ω³ d² / (3π ε₀ ħ c³ (2j'+1)) at species
+    # construction, with ω from the level energies.
+    d = 4.0Levels.DIPOLE_AU
+    replaced =
+        Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Any}(sr88.einstein_as)
+    key =
+        convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, ("D_5/2", "P_3/2"))
+    replaced[key] = ReducedDipole(d)
+    toy = NoHyperfineOneElectronSpecies(;
+        mass=sr88.mass,
+        energies=sr88.energies,
+        einstein_as=replaced,
+    )
+    ω = Levels.transition_frequency(toy, "D_5/2", "P_3/2")
+    @test einstein_a(toy, "D_5/2", "P_3/2") ≈
+          uconvert(u"µs^-1", ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * 4)) rtol = 1e-12
+
+    # Rates given directly pass through unchanged.
+    @test einstein_a(toy, "S_1/2", "P_1/2") == einstein_a(sr88, "S_1/2", "P_1/2")
+
+    # The conversion is electric-dipole physics, so an E2 pair is rejected, as
+    # is a key in the wrong energy order.
+    for bad in (("S_1/2", "D_5/2"), ("P_3/2", "D_5/2"))
+        broken = Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Any}(
+            sr88.einstein_as,
+        )
+        broken[convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, bad)] =
+            ReducedDipole(d)
+        @test_throws ArgumentError NoHyperfineOneElectronSpecies(;
+            mass=sr88.mass,
+            energies=sr88.energies,
+            einstein_as=broken,
+        )
     end
 end
 
@@ -95,7 +260,7 @@ end
     # matrix-element difference (theirs 2.879/4.073 vs the measured-lifetime
     # 2.8927/4.115 here) against the smaller [YuSahoo2025]-anchored remainder.
     ħω(x) = uconvert(u"s^-1", x * 2 * u"R∞" * u"c" * 2π) # a.u. → angular
-    au = Levels.POLARIZABILITY_AU
+    au = Levels.POLARISABILITY_AU
     for (x, ref) in (
         (0.0340414, 82.1167), # 1338.474 nm
         (0.0424109, 86.4837), # 1074.336 nm
@@ -176,7 +341,7 @@ end
     Δα =
         scalar_polarisability(sr88, "D_5/2", λ_repump) -
         scalar_polarisability(sr88, "S_1/2", λ_repump)
-    @test Δα / Levels.POLARIZABILITY_AU ≈ 329 rtol = 2e-2
+    @test Δα / Levels.POLARISABILITY_AU ≈ 329 rtol = 2e-2
 end
 
 @testitem "Light shift vs scalar/vector/tensor decomposition" tags=[:unit, :fast] begin
@@ -1117,43 +1282,45 @@ end
     for m in (-1//2, 1//2)
         state = StateSpec("S_1/2", m)
         plain = light_shift(sr88, state, absolute, intensity, ε)
-        # The tolerance floor here is not the split itself but the atomic
-        # data: the channel amplitude comes from the Einstein A coefficient,
-        # the background from the [Jiang2009] reduced dipole, and the two
-        # sources agree to ~0.5% for S₁/₂ → P₁/₂ (cf. the reduced-dipole test).
-        @test light_shift(c, state, intensity, ε) ≈ plain rtol = 5e-3
+        # The channel amplitudes and the background dipole both derive from
+        # the same Einstein A coefficient, so the only residual is the Zeeman
+        # structure the plain evaluation cannot resolve, ~Zeeman/δ ≈ 1e-5.
+        @test light_shift(c, state, intensity, ε) ≈ plain rtol = 1e-4
         # The resonant part carries essentially the whole reference channel.
         @test abs(light_shift(c, state, intensity, ε; parts=:resonant)) >
               abs(light_shift(c, state, intensity, ε; parts=:background))
     end
 end
 
-@testitem "Reduced dipole matrix elements vs Einstein A coefficients" tags=[
-    :unit,
-    :fast,
-] begin
+@testitem "sr88 derived reduced dipoles" tags=[:unit, :fast] begin
     using Unitful
 
-    # The polarisability matrix elements come from a different literature source
-    # ([Jiang2009]) than the Einstein A coefficients of the same species, so the
-    # two can be cross-checked against each other via
-    # A = ω³ |⟨j'‖d‖j⟩|² / (3π ε₀ ħ c³ (2j'+1)).
-    #
-    # The tolerances are those of the stored A coefficients: the two P → S decays
-    # are known to ≈1%, and agree to better than that, whereas D₅/₂ → P₃/₂ is
-    # only 8.7(15) µs⁻¹ in [Sansonetti2012] — for that channel the matrix element
-    # is by far the better determined of the two.
-    for (lower, upper, tolerance) in
-        (("S_1/2", "P_1/2", 0.01), ("S_1/2", "P_3/2", 0.015), ("D_5/2", "P_3/2", 0.18))
-        d = level_polarisability(sr88, lower).reduced_dipoles[convert(
+    dipole(lower, upper) =
+        level_polarisability(sr88, lower).reduced_dipoles[convert(
             NoHyperfineNumberSpec,
             upper,
-        )]
-        ω = Levels.transition_frequency(sr88, lower, upper)
-        j_upper = convert(NoHyperfineNumberSpec, upper).j
-        a = ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1))
-        @test uconvert(u"µs^-1", a) ≈ einstein_a(sr88, lower, upper) rtol = tolerance
-    end
+        )] / Levels.DIPOLE_AU
+
+    # The S₁/₂ → P dipoles are derived from the measured Einstein A
+    # coefficients at species construction; they agree with the independent
+    # [Jiang2009] all-order values (3.078 and 4.351 e a₀) to ≈0.1%, i.e. well
+    # within the ≈1% uncertainties of the stored rates.
+    @test dipole("S_1/2", "P_1/2") ≈ 3.078 rtol = 2e-3
+    @test dipole("S_1/2", "P_3/2") ≈ 4.351 rtol = 3e-3
+
+    # The D₅/₂ → P₃/₂ strength is instead sourced from the [Jiang2009] matrix
+    # element (a ReducedDipole einstein_as entry), so the background dipole
+    # round-trips to it exactly, and the implied Einstein A coefficient of
+    # 8.06 µs⁻¹ must stay consistent with the far less precise directly
+    # compiled 8.7(15) µs⁻¹ of [Sansonetti2012].
+    @test dipole("D_5/2", "P_3/2") ≈ 4.187 rtol = 1e-12
+    @test einstein_a(sr88, "D_5/2", "P_3/2") ≈ 8.056u"µs^-1" rtol = 1e-3
+    @test abs(einstein_a(sr88, "D_5/2", "P_3/2") - 8.7u"µs^-1") < 1.5u"µs^-1"
+
+    # The 4d₅/₂ → 4f channels are explicit [Jiang2009] dipoles (no einstein_as
+    # entries exist for them), passed through unchanged.
+    @test dipole("D_5/2", "F_5/2") ≈ 0.789 rtol = 1e-12
+    @test dipole("D_5/2", "F_7/2") ≈ 3.528 rtol = 1e-12
 end
 
 @testitem "F-basis light shifts" tags=[:unit] begin

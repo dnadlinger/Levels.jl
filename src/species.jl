@@ -24,7 +24,7 @@ Atomic unit of the electric polarisability, ``e^2 a_0^2 / E_h``.
 Polarisabilities are conventionally quoted in these units in the literature; see
 [`LevelPolarisability`](@ref).
 """
-const POLARIZABILITY_AU = uconvert(u"C*m^2/V", DIPOLE_AU^2 / (2 * u"R∞" * u"h" * u"c"))
+const POLARISABILITY_AU = uconvert(u"C*m^2/V", DIPOLE_AU^2 / (2 * u"R∞" * u"h" * u"c"))
 
 """
 Electric-dipole data for the ac Stark shift (light shift) of one level.
@@ -87,6 +87,272 @@ function LevelPolarisability(
 end
 
 """
+Returns the Einstein A coefficient of the electric-dipole transition with
+(angular) frequency `ω`, upper-level angular momentum `j_upper` and absolute
+reduced dipole matrix element `d`,
+``A = ω^3 d^2 / (3 π ε_0 ħ c^3 (2 j_\\mathrm{upper} + 1))``.
+"""
+einstein_a_from_dipole(d, ω, j_upper) =
+    uconvert(u"µs^-1", ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1)))
+
+"""
+Returns the absolute reduced dipole matrix element implied by the Einstein A
+coefficient `a` (the inverse of [`Levels.einstein_a_from_dipole`](@ref)).
+"""
+dipole_from_einstein_a(a, ω, j_upper) =
+    uconvert(u"C*m", sqrt(3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1) * a / ω^3))
+
+"""
+The strength of an electric-dipole transition, specified through the absolute
+reduced dipole matrix element ``|⟨\\mathrm{upper}‖d‖\\mathrm{lower}⟩|`` rather
+than the Einstein A coefficient itself.
+
+Accepted as a value in the `einstein_as` table by the species keyword
+constructors, which convert it to the equivalent Einstein A coefficient
+([`Levels.einstein_a_from_dipole`](@ref), with the frequency from the level
+energies) — for pairs whose best-determined literature quantity is the matrix
+element (typically from a many-body calculation) rather than a directly
+measured rate. Downstream, only the converted rate exists; there is one
+strength per transition, however it was specified.
+"""
+struct ReducedDipole
+    "The absolute reduced dipole matrix element."
+    d::typeof(1.0u"C*m")
+end
+
+"""
+    ReducedDipole(d)
+
+Creates the strength specification from a matrix element in any dipole-moment
+units, so literature values can be written as e.g.
+`ReducedDipole(4.187 * Levels.DIPOLE_AU)`.
+"""
+ReducedDipole(d::Quantity) = ReducedDipole(uconvert(u"C*m", d))
+
+resolve_rate(rate, pair, energies) = rate
+
+function resolve_rate(spec::ReducedDipole, (lower, upper)::Tuple, energies)
+    Δ = energies[upper] - energies[lower]
+    if Δ <= zero(Δ)
+        throw(
+            ArgumentError(
+                "'$lower' is not below '$upper'; einstein_as keys are " *
+                "(lower, upper) pairs",
+            ),
+        )
+    end
+    if multipole_rank(lower, upper) != 1 || abs(upper.j - lower.j) > 1
+        throw(
+            ArgumentError(
+                "A ReducedDipole strength applies only to electric-dipole " *
+                "pairs, which '$lower' → '$upper' is not",
+            ),
+        )
+    end
+    einstein_a_from_dipole(spec.d, Δ / u"ħ", upper.j)
+end
+
+"""
+Resolves any [`ReducedDipole`](@ref) entries in an `einstein_as` table into
+the equivalent Einstein A coefficients, passing rate entries through
+unchanged.
+"""
+function resolve_einstein_as(einstein_as, energies)
+    Dict(pair => resolve_rate(rate, pair, energies) for (pair, rate) in einstein_as)
+end
+
+"""
+Electric-dipole light-shift data for one level, specified through the
+quantities that are genuinely independent rather than the assembled
+[`LevelPolarisability`](@ref) numbers: the intermediate levels whose channels
+are treated explicitly, and the level's **total** static polarisabilities,
+from which the lumped static remainder follows by subtracting the explicit
+channels' static contributions.
+
+A channel given as a bare level has its reduced dipole matrix element
+**derived from the species' Einstein A coefficient** for the pair
+([`Levels.dipole_from_einstein_a`](@ref)); a `level => dipole` pair carries an
+explicit matrix element, and is accepted only for channels absent from the
+`einstein_as` table (which must stay complete per upper level, as it defines
+the level [`lifetime`](@ref)s) — a pair must never carry two independent
+strengths.
+
+The species constructors resolve this into a [`LevelPolarisability`](@ref) —
+the one place the required `energies` and `einstein_as` tables are both in
+hand — so a channel strength is stored exactly once per species, and an update
+to a measured rate propagates into the light-shift background automatically.
+
+Note that the resolved static remainder is a bookkeeping quantity rather than
+a physical tail contribution: it is whatever the anchor totals exceed the
+explicit channels by, and so also absorbs any tension between the channel
+dipoles used here and the matrix elements underlying the anchors (cf. the
+⁴³Ca⁺ S``_{1/2}`` remainder commentary in `species_data.jl`).
+"""
+struct ImplicitPolarisability
+    """
+    The intermediate levels whose channels are treated explicitly, each with
+    an explicit reduced dipole matrix element, or with `nothing` for one
+    derived from the species' Einstein A coefficient for the pair.
+    """
+    channels::Vector{Pair{NoHyperfineNumberSpec,Union{Nothing,typeof(1.0u"C*m")}}}
+
+    """
+    Total static scalar polarisability ``α_0(0)`` of the level, anchoring the
+    lumped static remainder — or `nothing` if no total is known, leaving the
+    explicit channels as the whole model (zero remainder).
+    """
+    static_scalar::Union{Nothing,typeof(1.0u"C*m^2/V")}
+
+    """
+    Total static tensor polarisability ``α_2(0)`` of the level (in the
+    convention of [`tensor_polarisability`](@ref)), or `nothing` for no anchor
+    as for `static_scalar`.
+    """
+    static_tensor::Union{Nothing,typeof(1.0u"C*m^2/V")}
+end
+
+"""
+    ImplicitPolarisability(channels; static_scalar, static_tensor = nothing)
+
+Creates the light-shift specification for one level from a collection of
+intermediate levels — each a bare level (in spectroscopic notation or as a
+[`NoHyperfineNumberSpec`](@ref); dipole derived from the Einstein A
+coefficient) or a `level => dipole` pair — and the total static
+polarisabilities.
+
+All quantities are converted to the stored units, so literature values can be
+written as e.g. `74.62 * Levels.POLARISABILITY_AU`. An anchor total given as
+`nothing` keeps the corresponding static remainder at zero — for datasets
+whose only known inputs are the explicit channels; `static_scalar` has no
+default, so leaving out the anchor is always an explicit choice. (For a level
+whose channels carry no tensor content — any ``j = 1/2`` one — the default
+`static_tensor = nothing` is indistinguishable from a zero total.)
+"""
+function ImplicitPolarisability(channels; static_scalar, static_tensor=nothing)
+    normalise(channel::Pair) =
+        convert(NoHyperfineNumberSpec, channel.first) =>
+            uconvert(u"C*m", channel.second)
+    normalise(channel) = convert(NoHyperfineNumberSpec, channel) => nothing
+    anchor(total) = isnothing(total) ? nothing : uconvert(u"C*m^2/V", total)
+    ImplicitPolarisability(
+        [normalise(c) for c in channels],
+        anchor(static_scalar),
+        anchor(static_tensor),
+    )
+end
+
+resolve_polarisability(data::LevelPolarisability, level, energies, einstein_as) = data
+
+"""
+Resolves an [`ImplicitPolarisability`](@ref) specification for `level` into the
+[`LevelPolarisability`](@ref) it implies, given the species' `energies` and
+`einstein_as` tables (cf. the species keyword constructors).
+"""
+function resolve_polarisability(
+    data::ImplicitPolarisability,
+    level::NoHyperfineNumberSpec,
+    energies,
+    einstein_as,
+)
+    j = level.j
+    e_level = energies[level]
+    dipoles = Pair{NoHyperfineNumberSpec,typeof(1.0u"C*m")}[]
+    channels_scalar = 0.0u"C*m^2/V"
+    channels_tensor = 0.0u"C*m^2/V"
+    for (channel, dipole) in data.channels
+        if any(p -> p.first == channel, dipoles)
+            throw(
+                ArgumentError("Duplicate '$level' → '$channel' polarisability channel"),
+            )
+        end
+        if !haskey(energies, channel)
+            throw(
+                ArgumentError(
+                    "No known energy for the '$level' → '$channel' " *
+                    "polarisability channel",
+                ),
+            )
+        end
+        if multipole_rank(level, channel) != 1 || abs(channel.j - j) > 1
+            throw(
+                ArgumentError(
+                    "'$level' → '$channel' is not an electric-dipole pair, so " *
+                    "it cannot be a polarisability channel",
+                ),
+            )
+        end
+        Δ = energies[channel] - e_level
+        pair = Δ > zero(Δ) ? (level, channel) : (channel, level)
+        d = if isnothing(dipole)
+            a = get(einstein_as, pair, nothing)
+            if isnothing(a)
+                throw(
+                    ArgumentError(
+                        "No known Einstein A coefficient between '$level' and " *
+                        "'$channel', which deriving that polarisability channel " *
+                        "requires (a channel absent from einstein_as can be " *
+                        "given as an explicit level => dipole pair)",
+                    ),
+                )
+            end
+            dipole_from_einstein_a(a, abs(Δ) / u"ħ", pair[2].j)
+        else
+            if haskey(einstein_as, pair)
+                throw(
+                    ArgumentError(
+                        "An explicit dipole for '$level' → '$channel' would " *
+                        "duplicate the strength its einstein_as entry already " *
+                        "fixes; give the channel as a bare level to derive it " *
+                        "from that",
+                    ),
+                )
+            end
+            dipole
+        end
+        push!(dipoles, channel => d)
+        # The channels' static contributions, via the same helpers the
+        # evaluation side uses (polarisability.jl — included later, but loaded
+        # by species-construction time, cf. src/Levels.jl), so the resolved
+        # data reproduces the anchor totals exactly.
+        channels_scalar += channel_scalar_polarisability(d, j, Δ, zero(Δ))
+        if j > 1//2
+            channels_tensor +=
+                channel_tensor_polarisability(d, j, channel.j, Δ, zero(Δ))
+        end
+    end
+    # Whatever the anchor totals exceed the explicit channels by becomes the
+    # lumped remainder; an unanchored (nothing) total leaves none at all.
+    remainder(total, channels) = isnothing(total) ? zero(channels) : total - channels
+    LevelPolarisability(
+        dipoles;
+        static_scalar=remainder(data.static_scalar, channels_scalar),
+        static_tensor=remainder(data.static_tensor, channels_tensor),
+    )
+end
+
+"""
+Resolves any [`ImplicitPolarisability`](@ref) entries in a level →
+polarisability-data dictionary, passing [`LevelPolarisability`](@ref) entries
+through unchanged.
+"""
+function resolve_polarisabilities(polarisabilities, energies, einstein_as)
+    resolved = Dict{NoHyperfineNumberSpec,LevelPolarisability}()
+    for (level, data) in polarisabilities
+        spec = convert(NoHyperfineNumberSpec, level)
+        if !haskey(energies, spec)
+            throw(
+                ArgumentError(
+                    "No known energy for level '$spec', for which " *
+                    "polarisability data was given",
+                ),
+            )
+        end
+        resolved[spec] = resolve_polarisability(data, spec, energies, einstein_as)
+    end
+    resolved
+end
+
+"""
 Atomic species with only one (relevant) electron, i.e. all configurations
 spin-1/2.
 
@@ -103,8 +369,8 @@ abstract type OneElectronSpecies <: Species end
 Atomic species with only one (relevant) electron – all configurations spin-1/2 –
 and no hyperfine structure.
 """
-Base.@kwdef struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
-                   OneElectronSpecies
+struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
+       OneElectronSpecies
     """
     The mass of the ion.
 
@@ -136,8 +402,32 @@ Base.@kwdef struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quan
 
     Levels missing from this dictionary have no [`light_shift`](@ref) defined.
     """
-    polarisabilities::Dict{NoHyperfineNumberSpec,LevelPolarisability} =
-        Dict{NoHyperfineNumberSpec,LevelPolarisability}()
+    polarisabilities::Dict{NoHyperfineNumberSpec,LevelPolarisability}
+end
+
+"""
+    NoHyperfineOneElectronSpecies(; mass, energies, einstein_as, polarisabilities = Dict())
+
+Creates the species from its level data.
+
+`einstein_as` entries may be given as [`ReducedDipole`](@ref) matrix elements,
+and `polarisabilities` may mix [`LevelPolarisability`](@ref) values with
+[`ImplicitPolarisability`](@ref) specifications; both are resolved against the
+level energies (and, for the latter, the resolved A coefficients) here.
+"""
+function NoHyperfineOneElectronSpecies(;
+    mass,
+    energies,
+    einstein_as,
+    polarisabilities=Dict{NoHyperfineNumberSpec,LevelPolarisability}(),
+)
+    resolved_as = resolve_einstein_as(einstein_as, energies)
+    NoHyperfineOneElectronSpecies(
+        mass,
+        energies,
+        resolved_as,
+        resolve_polarisabilities(polarisabilities, energies, resolved_as),
+    )
 end
 
 """
@@ -176,7 +466,7 @@ rates (each hyperfine sublevel decays at the full fine-structure rate, so there
 are never ``F``-resolved entries). The hyperfine structure itself is described
 by `nuclear_spin`, `nuclear_g` and the per-level `hyperfine` coupling constants.
 """
-Base.@kwdef struct HyperfineOneElectronSpecies{
+struct HyperfineOneElectronSpecies{
     M<:Quantity,
     E<:Quantity,
     A<:Quantity,
@@ -223,16 +513,48 @@ Base.@kwdef struct HyperfineOneElectronSpecies{
     Measured electronic g-factors overriding the LS-coupling Landé formula in
     [`lande_g`](@ref), where available.
     """
-    lande_g_overrides::Dict{NoHyperfineNumberSpec,Float64} =
-        Dict{NoHyperfineNumberSpec,Float64}()
+    lande_g_overrides::Dict{NoHyperfineNumberSpec,Float64}
 
     """
     Light-shift data for the levels it is known for, if any.
 
     Levels missing from this dictionary have no [`light_shift`](@ref) defined.
     """
-    polarisabilities::Dict{NoHyperfineNumberSpec,LevelPolarisability} =
-        Dict{NoHyperfineNumberSpec,LevelPolarisability}()
+    polarisabilities::Dict{NoHyperfineNumberSpec,LevelPolarisability}
+end
+
+"""
+    HyperfineOneElectronSpecies(; mass, nuclear_spin, nuclear_g, energies, hyperfine,
+        einstein_as, lande_g_overrides = Dict(), polarisabilities = Dict())
+
+Creates the species from its level data.
+
+As for [`NoHyperfineOneElectronSpecies`](@ref), `einstein_as` entries may be
+given as [`ReducedDipole`](@ref) matrix elements, and `polarisabilities` may
+mix [`LevelPolarisability`](@ref) values with [`ImplicitPolarisability`](@ref)
+specifications; both are resolved here.
+"""
+function HyperfineOneElectronSpecies(;
+    mass,
+    nuclear_spin,
+    nuclear_g,
+    energies,
+    hyperfine,
+    einstein_as,
+    lande_g_overrides=Dict{NoHyperfineNumberSpec,Float64}(),
+    polarisabilities=Dict{NoHyperfineNumberSpec,LevelPolarisability}(),
+)
+    resolved_as = resolve_einstein_as(einstein_as, energies)
+    HyperfineOneElectronSpecies(
+        mass,
+        nuclear_spin,
+        nuclear_g,
+        energies,
+        hyperfine,
+        resolved_as,
+        lande_g_overrides,
+        resolve_polarisabilities(polarisabilities, energies, resolved_as),
+    )
 end
 
 """
@@ -392,8 +714,10 @@ export Species,
     HyperfineOneElectronSpecies,
     HyperfineConstants,
     LevelPolarisability,
+    ImplicitPolarisability,
+    ReducedDipole,
     einstein_a,
     lifetime,
     level_polarisability,
     saturation_intensity
-public transition_frequency, BOHR_RADIUS, DIPOLE_AU, POLARIZABILITY_AU, level_energy
+public transition_frequency, BOHR_RADIUS, DIPOLE_AU, POLARISABILITY_AU, level_energy

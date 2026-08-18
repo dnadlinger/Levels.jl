@@ -12,6 +12,35 @@ function dipole_cg(j, m, q, j_upper)
 end
 
 """
+Returns the scalar polarisability contribution of one explicit
+electric-dipole channel — reduced dipole `d` from a level of angular momentum
+`j` to a level `Δ` above it (signed) — at photon energy `ħω` (zero for the
+static limit).
+
+Both [`scalar_polarisability`](@ref) and the static-remainder subtraction of
+the [`ImplicitPolarisability`](@ref) resolution
+([`Levels.resolve_polarisability`](@ref)) are built on this, so the resolved
+data reproduces the anchor totals exactly by construction.
+"""
+channel_scalar_polarisability(d, j, Δ, ħω) =
+    uconvert(u"C*m^2/V", d^2 / (3 * (2j + 1)) * 2Δ / (Δ^2 - ħω^2))
+
+"""
+Returns the tensor polarisability contribution of one explicit
+electric-dipole channel to a level of angular momentum `j_channel`, in the
+convention of [`tensor_polarisability`](@ref); the other arguments (and the
+shared use) are as for [`Levels.channel_scalar_polarisability`](@ref).
+
+The weight extracts ``α_2`` from the π-polarised shift of the stretched state
+``m = j``, which is exactly ``α_0 + α_2``, as the tensor angular factor is
+unity there.
+"""
+function channel_tensor_polarisability(d, j, j_channel, Δ, ħω)
+    weight = dipole_cg(j, j, 0, j_channel)^2 / (2 * j_channel + 1) - 1 / (3 * (2j + 1))
+    uconvert(u"C*m^2/V", d^2 * weight * 2Δ / (Δ^2 - ħω^2))
+end
+
+"""
     polarisation_weights(ε)
 
 Returns the fractions ``w_q = |ε_{-q}|^2`` of the beam intensity driving each of
@@ -1229,7 +1258,7 @@ function scalar_polarisability(species, level, laser)
     α = data.static_scalar
     for (upper, d) in data.reduced_dipoles
         Δ = species.energies[upper] - e_level
-        α += uconvert(u"C*m^2/V", d^2 / (3 * (2 * spec.j + 1)) * 2Δ / (Δ^2 - ħω^2))
+        α += channel_scalar_polarisability(d, spec.j, Δ, ħω)
     end
     α
 end
@@ -1289,10 +1318,7 @@ function tensor_polarisability(species, level, laser)
     α = data.static_tensor
     for (upper, d) in data.reduced_dipoles
         Δ = species.energies[upper] - e_level
-        # The π-polarised shift of the stretched state m = j is exactly
-        # α_0 + α_2, as the tensor angular factor is unity there.
-        weight = dipole_cg(j, j, 0, upper.j)^2 / (2 * upper.j + 1) - 1 / (3 * (2j + 1))
-        α += uconvert(u"C*m^2/V", d^2 * weight * 2Δ / (Δ^2 - ħω^2))
+        α += channel_tensor_polarisability(d, j, upper.j, Δ, ħω)
     end
     α
 end
