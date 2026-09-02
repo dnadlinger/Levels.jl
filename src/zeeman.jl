@@ -32,8 +32,8 @@ end
 Returns the Landé g-factor of the given level.
 
 For a fine-structure level this is ``g_J`` — a measured value where the species
-provides one (`lande_g_overrides` of a [`HyperfineOneElectronSpecies`](@ref)),
-the LS-coupling expression of [`Levels.ls_lande_g`](@ref) otherwise. For a
+provides one (its `lande_g_overrides`), the LS-coupling expression of
+[`Levels.ls_lande_g`](@ref) otherwise. For a
 hyperfine ``F`` level it is the **low-field** ``g_F``,
 
 ```math
@@ -56,7 +56,9 @@ function lande_g(species::NoHyperfineOneElectronSpecies, level)
             ),
         )
     end
-    ls_lande_g(species.mass, spec.l, spec.j)
+    get(species.lande_g_overrides, spec) do
+        ls_lande_g(species.mass, spec.l, spec.j)
+    end
 end
 
 function lande_g(species::HyperfineOneElectronSpecies, level)

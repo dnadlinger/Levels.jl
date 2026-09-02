@@ -398,6 +398,12 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
     einstein_as::Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
     """
+    Measured electronic g-factors overriding the LS-coupling Landé formula in
+    [`lande_g`](@ref), where available.
+    """
+    lande_g_overrides::Dict{NoHyperfineNumberSpec,Float64}
+
+    """
     Light-shift data for the levels it is known for, if any.
 
     Levels missing from this dictionary have no [`light_shift`](@ref) defined.
@@ -406,7 +412,8 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
 end
 
 """
-    NoHyperfineOneElectronSpecies(; mass, energies, einstein_as, polarisabilities = Dict())
+    NoHyperfineOneElectronSpecies(; mass, energies, einstein_as,
+        lande_g_overrides = Dict(), polarisabilities = Dict())
 
 Creates the species from its level data.
 
@@ -419,6 +426,7 @@ function NoHyperfineOneElectronSpecies(;
     mass,
     energies,
     einstein_as,
+    lande_g_overrides=Dict{NoHyperfineNumberSpec,Float64}(),
     polarisabilities=Dict{NoHyperfineNumberSpec,LevelPolarisability}(),
 )
     resolved_as = resolve_einstein_as(einstein_as, energies)
@@ -426,6 +434,7 @@ function NoHyperfineOneElectronSpecies(;
         mass,
         energies,
         resolved_as,
+        lande_g_overrides,
         resolve_polarisabilities(polarisabilities, energies, resolved_as),
     )
 end

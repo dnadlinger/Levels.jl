@@ -31,6 +31,20 @@ photon energy.
   "Blackbody-radiation shift in a ⁸⁸Sr⁺ ion optical frequency standard", J. Phys. B
   **42**, 154020 (2009),
   [doi:10.1088/0953-4075/42/15/154020](https://doi.org/10.1088/0953-4075/42/15/154020).
+- `[Muraz2026]`: B. Muraz, M. Pepin, C. Guimard, M. Brune, B. Bakkali-Hassani,
+  and S. Gleyzes, "Measuring the Sr⁺ 5s₁/₂ Landé g-factor Using Singlet-Triplet
+  Oscillations in a Circular Rydberg State of Strontium",
+  [arXiv:2608.26784](https://arxiv.org/abs/2608.26784) (2026).
+- `[Barwood2012]`: the ⁸⁸Sr⁺ S₁/₂/D₅/₂ g-factor ratio 1.668057 reported by NPL
+  at CPEM 2012 (conference presentation; no published uncertainty).
+- `[Hoffman2013]`: M. R. Hoffman, T. W. Noel, C. Auchter, A. Jayakumar,
+  S. R. Williams, B. B. Blinov, and E. N. Fortson, "Radio frequency spectroscopy
+  measurement of the Landé g factor of the 5D₅/₂ state of Ba⁺ with a single trapped
+  ion", Phys. Rev. A **88**, 025401 (2013),
+  [doi:10.1103/PhysRevA.88.025401](https://doi.org/10.1103/PhysRevA.88.025401).
+- `[Marx1998]`: G. Marx, G. Tommaseo, and G. Werth, "Precise g_J- and g_I-factor
+  measurements of Ba⁺ isotopes", Eur. Phys. J. D **4**, 279 (1998),
+  [doi:10.1007/s100530050210](https://doi.org/10.1007/s100530050210).
 """
 const sr88 = NoHyperfineOneElectronSpecies(;
     # Mass of the actual ion: the neutral-atom mass 87.905612253(6) u [AME2020]
@@ -74,6 +88,24 @@ const sr88 = NoHyperfineOneElectronSpecies(;
             ("D_5/2", "P_3/2") => ReducedDipole(4.187DIPOLE_AU),
         ]
     ),
+    lande_g_overrides=Dict(
+        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+            "S_1/2" => 2.002290, # …(1) [Muraz2026]
+            # As of 2026-09, there is no good published value for the D_5/2 g-factor
+            # (or, alternatively, the S_1/2 to D_5/2 ratio). Instead, we try to get a
+            # better value by naive extrapolation from ⁴⁰Ca⁺: There, the measured
+            # S_1/2 / D_5/2 g-factor ratio [McMahon2026] exceeds its lowest-order
+            # LS-coupling value (reduced-mass-corrected g_L, free-electron g_s, cf.
+            # ls_lande_g, with the ⁴⁰Ca⁺ mass) 1.6679699 by 1.1791e-4; applying the
+            # same offset to the ⁸⁸Sr⁺ LS-coupling ratio 1.6679616 gives 1.6680795,
+            # i.e. g_D = 2.002290 / 1.6680795 = 1.200356 with the [Muraz2026] g_S.
+            # This estimate is probably accurate to a few 1e-5. (The ratio 1.668057
+            # reported by NPL at CPEM 2012 [Barwood2012] would instead give 1.2003727,
+            # but no uncertainty was reported, and the number may in fact have just
+            # been 1 / 0.5995. It also does not fit experimental data nearly as well.)
+            "D_5/2" => 1.200356,
+        ]
+    ),
     polarisabilities=Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
             # The 4d₅/₂ → 4f matrix elements and the static totals below are
@@ -115,10 +147,14 @@ const sr88 = NoHyperfineOneElectronSpecies(;
 ⁴³Ca⁺ ion (nuclear spin ``I = 7/2``).
 
 Hyperfine centroids are referenced to the S``_{1/2}`` centroid; all hyperfine
-``A``/``B`` constants are entered as stated in the cited measurements (the signs
-follow from ``μ_I < 0``). The electronic g-factors and Einstein A coefficients
-marked as such are ⁴⁰Ca⁺ measurements; their isotope dependence is far below the
-quoted uncertainties.
+``A``/``B`` constants are entered as stated in the cited measurements (the signs follow
+from ``μ_I < 0``). The electronic g-factors and Einstein A coefficients marked as such
+are ⁴⁰Ca⁺ measurements, entered uncorrected. For the Einstein A coefficients and
+g(S``_{1/2}``) the isotope dependence is far below the quoted uncertainties; for
+g(D``_{5/2}``), known to 5 × 10⁻⁸ in ⁴⁰Ca⁺, the leading-order reduced-mass shift (cf.
+[`Levels.ls_lande_g`](@ref)) is not, but is deliberately not applied: the many-electron
+recoil corrections are unknown at that level, so will have to be measured together with
+the hyperfine constants anyway.
 
 # References
 
@@ -152,6 +188,17 @@ quoted uncertainties.
 - `[Chwalla2009]`: M. Chwalla et al., "Absolute frequency measurement of the
   ⁴⁰Ca⁺ 4s ²S₁/₂ – 3d ²D₅/₂ clock transition", Phys. Rev. Lett. **102**, 023002
   (2009), [doi:10.1103/PhysRevLett.102.023002](https://doi.org/10.1103/PhysRevLett.102.023002).
+- `[Ma2024]`: Z. Ma, B. Zhang, Y. Huang, R. Hu, M. Zeng, K. Gao, and H. Guan,
+  "Precision determination of the oscillating-magnetic-field-induced second-order
+  Zeeman shift of a single-⁴⁰Ca⁺-ion optical clock", Phys. Rev. A **110**, 063102
+  (2024), [doi:10.1103/PhysRevA.110.063102](https://doi.org/10.1103/PhysRevA.110.063102).
+- `[Zhang2026]`: B. Zhang et al., "Liquid-Nitrogen-Cooled ⁴⁰Ca⁺ Ion Optical Clock
+  with a Systematic Uncertainty of 4.4 × 10⁻¹⁹", Phys. Rev. Lett. **136**, 053202
+  (2026), [doi:10.1103/vngc-c1xv](https://doi.org/10.1103/vngc-c1xv).
+- `[McMahon2026]`: B. J. McMahon, V. S. Sandhu, J. M. Gray, C. D. Herold,
+  K. R. Brown, and B. C. Sawyer, "Dual-Platform Precision Measurement of the
+  3²D₅/₂ to 4²S₁/₂ g-Factor Ratio in ⁴⁰Ca⁺",
+  [arXiv:2607.07929](https://arxiv.org/abs/2607.07929) (2026).
 - `[Hanley2021]`: R. K. Hanley, D. T. C. Allcock, T. P. Harty, M. A. Sepiol, and
   D. M. Lucas, "Precision measurement of the ⁴³Ca⁺ nuclear magnetic moment",
   Phys. Rev. A **104**, 052804 (2021),
@@ -241,12 +288,24 @@ const ca43 = HyperfineOneElectronSpecies(;
             ),
         ]
     ),
-    lande_g_overrides=Dict(
-        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
-            "S_1/2" => 2.00225664, # …(9), measured in ⁴⁰Ca⁺ [Tommaseo2003]
-            "D_5/2" => 1.2003340, # …(3), measured in ⁴⁰Ca⁺ [Chwalla2009]
-        ]
-    ),
+    lande_g_overrides=let g_s = 2.00225664 # …(9), measured in ⁴⁰Ca⁺ [Tommaseo2003]
+        Dict(
+            convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+                "S_1/2" => g_s,
+                # From the ratio g(D_5/2)/g(S_1/2) = 0.599 488 813 3(2) measured in
+                # ⁴⁰Ca⁺ [McMahon2026] (Penning trap; their rf-trap value
+                # 0.599 488 813(6) and the 0.599 488 79(2) of [Ma2024] concur, as does
+                # the 0.599 488 818(9) of the [Zhang2026] clock evaluation — from its
+                # Supplemental Material, as the raw ratio at the operating conditions,
+                # whose 3e-8 excess over [Ma2024] is attributed to the trap-rf ac
+                # field), i.e. 1.200 330 46(5), the uncertainty being that of g_s. This
+                # supersedes the 1.2003340(3) of [Chwalla2009], whose ratio
+                # 0.599 490 58(15) lies more than 10σ from all three recent
+                # measurements.
+                "D_5/2" => 0.5994888133 * g_s,
+            ]
+        )
+    end,
     einstein_as=Dict(
         convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
         (k, v) in [

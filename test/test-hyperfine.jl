@@ -27,7 +27,7 @@
 
     # Measured g_J overrides apply; other levels fall back to the LS formula.
     @test lande_g(ca43, "S_1/2") == 2.00225664
-    @test lande_g(ca43, "D_5/2") == 1.2003340
+    @test lande_g(ca43, "D_5/2") ≈ 1.20033046 atol = 1e-8 # [McMahon2026] × [Tommaseo2003]
     @test lande_g(ca43, "P_1/2") ≈ 2//3 rtol = 2e-3
 
     # Low-field g_F from the Landé projection formula, including the nuclear

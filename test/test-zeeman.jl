@@ -1,8 +1,14 @@
 @testitem "Landé g-factors" tags=[:unit, :fast] begin
-    # LS-coupling values with the reduced-mass-corrected g_L for ⁸⁸Sr⁺, as used in
-    # hoa2-common (free-electron g_s, M from AME2020).
-    @test lande_g(sr88, "S_1/2") ≈ 2.0023193043618 rtol = 1e-10
-    @test lande_g(sr88, "D_5/2") ≈ 1.2004588684586 rtol = 1e-10
+    # Overrides in the sr88 species data: g_S measured [Muraz2026], g_D the
+    # Ca⁺-anchored estimate (see species_data.jl).
+    @test lande_g(sr88, "S_1/2") ≈ 2.002290 rtol = 1e-6
+    @test lande_g(sr88, "D_5/2") ≈ 1.200356 rtol = 1e-6
+
+    # The LS-coupling fallback with the reduced-mass-corrected g_L for ⁸⁸Sr⁺,
+    # as hard-coded in hoa2-common (free-electron g_s, M from AME2020) — what
+    # lande_g returns for levels without an override.
+    @test Levels.ls_lande_g(sr88.mass, 0, 1 // 2) ≈ 2.0023193043618 rtol = 1e-10
+    @test Levels.ls_lande_g(sr88.mass, 2, 5 // 2) ≈ 1.2004588684586 rtol = 1e-10
 
     # Uncorrected Landé values (g_s = 2, g_l = 1) as coarse sanity checks.
     @test lande_g(sr88, "P_1/2") ≈ 2 / 3 rtol = 2e-3
@@ -22,9 +28,10 @@ end
     @test zeeman_shift(sr88, StateSpec("S_1/2", -1//2), 0.5u"mT") ≈ -shift
 
     # χ of the strongest S ↔ D transition, in the (non-angular) units of thesis
-    # fig. 5.12: (g_D·5/2 − g_S·1/2)·μ_B/h = 27.9923 MHz/mT.
+    # fig. 5.12: (g_D·5/2 − g_S·1/2)·μ_B/h — 27.9889 MHz/mT with the g-factor
+    # overrides (27.9923 with the Landé values the thesis used).
     χ = zeeman_sensitivity(sr88, s_up, d_up)
-    @test uconvert(u"MHz/mT", χ / 2π) ≈ 27.9923u"MHz/mT" rtol = 1e-5
+    @test uconvert(u"MHz/mT", χ / 2π) ≈ 27.98892u"MHz/mT" rtol = 1e-5
     @test zeeman_sensitivity(sr88, s_up => d_up) == χ
 
     # The eight quadrupole components sorted by sensitivity: ±{11.2, 22.4, 28.0,
