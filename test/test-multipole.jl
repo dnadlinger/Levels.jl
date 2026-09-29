@@ -268,3 +268,27 @@ end
     @test abs(Γ[2+3]) ≈ 1.0
     @test all(abs(Γ[q+3]) < 1e-15 for q in -1:1)
 end
+
+@testitem "Static and plain 3-vectors agree" tags=[:unit, :fast] begin
+    using StaticArrays: SVector
+    using Unitful
+
+    # Directions and polarisations are SVector{3}s; every consumer accepts any
+    # 3-element vector and gives identical results.
+    n, ε = beam_vectors(0.4, 0.6, 0.3)
+    @test n isa SVector{3,Float64}
+    @test ε isa SVector{3,ComplexF64}
+    @test dipole_geometry(ε) isa SVector{3,ComplexF64}
+    @test quadrupole_geometry(ε, n) isa SVector{5,ComplexF64}
+    @test dipole_geometry(collect(ε)) == dipole_geometry(ε)
+    @test quadrupole_geometry(collect(ε), collect(n)) == quadrupole_geometry(ε, n)
+    @test Levels.polarisation_weights(collect(ε)) == Levels.polarisation_weights(ε)
+    @test Levels.quadrupole_weights(collect(ε), collect(n)) ==
+          Levels.quadrupole_weights(ε, n)
+    basis = StateBasis(["S_1/2", "D_5/2"])
+    @test quadrupole_couplings(basis, "S_1/2", "D_5/2", collect(ε), collect(n)) ==
+          quadrupole_couplings(basis, "S_1/2", "D_5/2", ε, n)
+    B = [12.0, -3.0, 40.0] .* u"µT"
+    @test zeeman_hamiltonian(sr88, basis, SVector{3}(B)) ==
+          zeeman_hamiltonian(sr88, basis, B)
+end

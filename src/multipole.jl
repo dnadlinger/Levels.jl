@@ -1,10 +1,12 @@
+using StaticArrays: SVector
 using WignerSymbols
 
 """
     beam_vectors(φ_k, γ_pol, η_pol = 0.0) -> (n, ε)
 
 Returns the unit propagation direction `n` and (complex) polarisation vector `ε`
-for a beam at angle `φ_k` to the quantisation axis ẑ, with k in the x–z plane.
+(as `SVector{3}`s) for a beam at angle `φ_k` to the quantisation axis ẑ, with k
+in the x–z plane.
 
 `γ_pol` rotates the polarisation from the in-(k, z)-plane vector towards ŷ;
 `η_pol` is the relative phase of the two components (`0`: linear polarisation,
@@ -14,10 +16,10 @@ gives ``ε = (x̂ + i ŷ)/\\sqrt{2}``, a σ⁺ beam along the quantisation axis
 (driving ``Δm = +1``).
 """
 function beam_vectors(φ_k, γ_pol, η_pol=0.0)
-    n = [sin(φ_k), 0.0, cos(φ_k)]
+    n = SVector{3,Float64}(sin(φ_k), 0.0, cos(φ_k))
     ε =
-        cos(γ_pol) .* [complex(cos(φ_k)), 0.0, complex(-sin(φ_k))] .+
-        (cis(η_pol) * sin(γ_pol)) .* [0.0, 1.0, 0.0]
+        cos(γ_pol) .* SVector{3,ComplexF64}(cos(φ_k), 0.0, -sin(φ_k)) .+
+        (cis(η_pol) * sin(γ_pol)) .* SVector{3,ComplexF64}(0.0, 1.0, 0.0)
     n, ε
 end
 
@@ -28,13 +30,17 @@ Returns the geometric amplitudes ``d_q`` of the electric-dipole coupling for the
 ``Δm = q`` transition channels for polarisation `ε` — the coefficients of the
 atomic operators ``r C^{(1)}_q`` in ``ε · r``, i.e. ``d_q = (-1)^q ε_{-q}`` in
 terms of the (unconjugated) spherical components of the polarisation — as a
-length-3 complex vector indexed by `q + 2` for ``q = -1, 0, 1``.
+length-3 complex `SVector` indexed by `q + 2` for ``q = -1, 0, 1``.
 
 A σ⁺-polarised beam, ``ε = (x̂ + i ŷ)/\\sqrt{2}``, thus carries its full weight
 in the ``Δm = +1`` channel. The components are kept complex so that the relative
 phases between the ``Δm`` channels are preserved.
 """
-dipole_geometry(ε) = [(-1.0)^q * spherical_component(ε, -q) for q in -1:1]
+dipole_geometry(ε) = SVector{3,ComplexF64}(
+    -spherical_component(ε, 1),
+    spherical_component(ε, 0),
+    -spherical_component(ε, -1),
+)
 
 """
 The Clebsch–Gordan coefficients ``⟨1 μ; 1 ν | 2 (μ + ν)⟩`` coupling two rank-1
@@ -58,7 +64,7 @@ the ``Δm = q`` transition channels for polarisation `ε` and beam direction `n`
 the coefficients of the atomic operators ``r^2 (r̂ ⊗ r̂)^{(2)}_q`` in
 ``(ε · r)(n · r)``, i.e. ``Γ_q = (-1)^q (ε ⊗ n)^{(2)}_{-q}`` in terms of the
 irreducible tensor product of polarisation and beam direction — as a length-5
-complex vector indexed by `q + 3` for ``q = -2, …, 2``.
+complex `SVector` indexed by `q + 3` for ``q = -2, …, 2``.
 
 A σ⁺-polarised beam along the quantisation axis thus carries its full weight in
 the ``Δm = +1`` channel. The components are kept complex so that the relative
@@ -75,7 +81,7 @@ function quadrupole_geometry(ε, n)
             spherical_component(ε, μ) *
             spherical_component(n, ν)
     end
-    Γ
+    SVector{5,ComplexF64}(Γ)
 end
 
 """
