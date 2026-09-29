@@ -53,6 +53,14 @@ end
     @test iszero(tensor_polarisability(ca43, "S_1/2", dc))
     @test iszero(vector_polarisability(ca43, "D_5/2", dc))
 
+    # The polarisability specs are shared with ⁴⁰Ca⁺ and resolved against its
+    # (slightly isotope-shifted) level energies; the static anchors are exact
+    # by construction there too, and the derived channels agree to the
+    # 1e-5 relative isotope shift of the intervals.
+    @test scalar_polarisability(ca40, "S_1/2", dc) / au ≈ 74.62 rtol = 1e-10
+    @test scalar_polarisability(ca40, "D_5/2", dc) / au ≈ 30.59 rtol = 1e-10
+    @test tensor_polarisability(ca40, "D_3/2", dc) / au ≈ -17.17 rtol = 1e-10
+
     # Anchoring to those totals is only legitimate because they agree with
     # experiment: the differential static scalar polarisability of the 729 nm
     # clock transition has been measured to −44.07(1) a.u. via the magic trap

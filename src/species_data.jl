@@ -143,21 +143,123 @@ const sr88 = NoHyperfineOneElectronSpecies(;
     ),
 )
 
+# --- Ca⁺ isotopes ------------------------------------------------------------
+#
+# The electronic g-factors, Einstein A coefficients and polarisability data of the
+# Ca⁺ isotopes are ⁴⁰Ca⁺ measurements, shared between `ca40` and `ca43` (see their
+# docstrings for the isotope-dependence caveats). Only the masses and the level
+# energies (isotope shifts of 0.7–4 GHz on the optical intervals) are per isotope.
+
 """
-⁴³Ca⁺ ion (nuclear spin ``I = 7/2``).
+Mass of a Ca⁺ ion from the neutral-atom mass: less one electron, plus the Ca I first
+ionisation energy 49305.919611(4) cm⁻¹ [Pak2022] as its mass-equivalent binding
+correction (NB: as this is well below the [AME2020] mass uncertainties, the usefulness
+of this is questionable already, so the isotope shifts on the ionisation energy are
+especially negligible here).
+"""
+ca_ion_mass(neutral_mass) = uconvert(
+    u"u",
+    neutral_mass - Unitful.me + σ_to_energy(49305.919611 / u"cm") / u"c"^2,
+)
 
-Hyperfine centroids are referenced to the S``_{1/2}`` centroid; all hyperfine
-``A``/``B`` constants are entered as stated in the cited measurements (the signs follow
-from ``μ_I < 0``). The electronic g-factors and Einstein A coefficients marked as such
-are ⁴⁰Ca⁺ measurements, entered uncorrected. For the Einstein A coefficients and
-g(S``_{1/2}``) the isotope dependence is far below the quoted uncertainties; for
-g(D``_{5/2}``), known to 5 × 10⁻⁸ in ⁴⁰Ca⁺, the leading-order reduced-mass shift (cf.
-[`Levels.ls_lande_g`](@ref)) is not, but is deliberately not applied: the many-electron
-recoil corrections are unknown at that level, so will have to be measured together with
-the hyperfine constants anyway.
+"""
+Einstein A coefficients of the Ca⁺ ion; all lifetimes and branching fractions were
+measured in ⁴⁰Ca⁺, the isotope dependence being far below the quoted uncertainties.
+"""
+const CA_EINSTEIN_AS = Dict(
+    convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
+    (k, v) in [
+        # τ(D_5/2) = 1.1649(44) s [Shao2017]; the E2 decay to S_1/2 is the only relevant
+        # channel (D_5/2 → D_3/2 M1 is ~µHz).
+        ("S_1/2", "D_5/2") => 1 / 1.1649u"s",
+        # τ(D_3/2) from the directly measured lifetime ratio τ(D_3/2)/τ(D_5/2) =
+        # 1.0257(43) [Shao2018] times the [Shao2017] τ(D_5/2), i.e. 1.1948(66) s,
+        # consistent with the direct measurement 1.195(8) s [Shao2016]; both supersede
+        # the 1176(11) ms of [Kreuter2005].
+        ("S_1/2", "D_3/2") => 1 / (1.0257 * 1.1649u"s"),
+        # τ(P_1/2) = 6.904(26) ns [Hettrich2015], split by the branching
+        # fractions 0.93565(7)/0.06435(7) of [Ramm2013].
+        ("S_1/2", "P_1/2") => 0.93565 / 6.904u"ns",
+        ("D_3/2", "P_1/2") => 0.06435 / 6.904u"ns",
+        # τ(P_3/2) = 6.639(42) ns [Meir2020] (in 6σ tension with the older 6.924(19) ns
+        # of Jin & Church 1993, which [Meir2020] argues to be superseded), split by the
+        # branching fractions 0.9347(3)/0.0587(2)/ 0.00661(4) of [Gerritsma2008].
+        ("S_1/2", "P_3/2") => 0.9347 / 6.639u"ns",
+        ("D_5/2", "P_3/2") => 0.0587 / 6.639u"ns",
+        ("D_3/2", "P_3/2") => 0.00661 / 6.639u"ns",
+    ]
+)
 
-# References
+"""
+Measured electronic g-factors of the Ca⁺ ion (⁴⁰Ca⁺ measurements).
+"""
+const CA_LANDE_G_OVERRIDES = let g_s = 2.00225664 # …(9), measured in ⁴⁰Ca⁺ [Tommaseo2003]
+    Dict(
+        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+            "S_1/2" => g_s,
+            # From the ratio g(D_5/2)/g(S_1/2) = 0.599 488 813 3(2) measured in ⁴⁰Ca⁺
+            # [McMahon2026] (Penning trap; their rf-trap value 0.599 488 813(6) and the
+            # 0.599 488 79(2) of [Ma2024] concur, as does the 0.599 488 818(9) of the
+            # [Zhang2026] clock evaluation — from its Supplemental Material, as the raw
+            # ratio at the operating conditions, whose 3e-8 excess over [Ma2024] is
+            # attributed to the trap-rf ac field), i.e. 1.200 330 46(5), the uncertainty
+            # being that of g_s. This supersedes the 1.2003340(3) of [Chwalla2009],
+            # whose ratio 0.599 490 58(15) lies more than 10σ from all three recent
+            # measurements.
+            "D_5/2" => 0.5994888133 * g_s,
+        ]
+    )
+end
 
+"""
+Electric-dipole light-shift data of the Ca⁺ ion (cf. [`ImplicitPolarisability`](@ref);
+resolved per isotope against its level energies and the shared Einstein A coefficients).
+"""
+const CA_POLARISABILITIES = Dict(
+    convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+        # Unlike for ⁸⁸Sr⁺, no independent sum-over-states table is entered here. The
+        # explicit channel dipoles are derived (by the species constructor, cf.
+        # ImplicitPolarisability) from the measured Einstein A coefficients above — i.e.
+        # from [Hettrich2015]/[Ramm2013] for the decays from P_1/2 and
+        # [Meir2020]/[Gerritsma2008] for those from P_3/2; the derived ⟨S_1/2‖d‖P_1/2⟩ =
+        # 2.8927 e a₀ equals the directly measured 2.8928(43) of [Hettrich2015] — so
+        # background and near-resonant channels share one source. The static totals
+        # given below are the RCC values of [YuSahoo2025], Table I, whose differential
+        # α₀(D_5/2) − α₀(S_1/2) = −44.02(47) agrees with the measured −44.07(1) (Huang
+        # 2019); both are pinned down in test-polarisability.jl.
+        "S_1/2" => ImplicitPolarisability(
+            ["P_1/2", "P_3/2"];
+            # The implied remainder (1.58 a.u.) is less than the ionic core alone (3.26,
+            # plus ≈0.19 of 5p/tail; [Tang2013] Table VII): the [YuSahoo2025] total sits
+            # ≈1.9 a.u. (≈3σ) below measured channels plus core, the RCC-family totals
+            # generally running low against the 75.3–76.1 of the DFCP/CICP/MBPT-SD/f-sum
+            # cluster ([Tang2013] Table VI). Of no consequence at optical detunings,
+            # where the explicit channels dominate — and largely common-mode with D_5/2
+            # below, so the measured static differential stays anchored regardless.
+            static_scalar=74.62POLARISABILITY_AU, # …(41) [YuSahoo2025]
+        ),
+        "D_5/2" => ImplicitPolarisability(
+            ["P_3/2"];
+            # Unlike for ⁸⁸Sr⁺, the 4f/5f/higher-f channels (≈54 000 cm⁻¹ up) are lumped
+            # into the implied remainder; their dispersion enhancement is 7% at 729 nm
+            # and 24% at 422 nm, and the DFCP decomposition puts ≈6 a.u. of static
+            # f-channel content here ([Tang2013] Table X — more than the whole non-core
+            # part of the remainder, cf. the S_1/2 note above), bounding the lumping
+            # error at ≈0.4/1.4 a.u. at those wavelengths.
+            static_scalar=30.59POLARISABILITY_AU, # …(6) [YuSahoo2025]
+            static_tensor=-24.50POLARISABILITY_AU, # …(12) [YuSahoo2025]
+        ),
+        "D_3/2" => ImplicitPolarisability(
+            ["P_1/2", "P_3/2"];
+            # The 3d → 4f lumping note above applies equally.
+            static_scalar=33.36POLARISABILITY_AU, # …(31) [YuSahoo2025]
+            static_tensor=-17.17POLARISABILITY_AU, # …(10) [YuSahoo2025]
+        ),
+    ]
+)
+
+# Literature shared between the Ca⁺ isotopes, interpolated into their docstrings.
+const CA_REFERENCES = """
 - `[AME2020]`: M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi, "The
   AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
   C **45**, 030003 (2021),
@@ -166,22 +268,6 @@ the hyperfine constants anyway.
   potential of calcium using frequency-comb-based Rydberg spectroscopy", Phys. Rev. A
   **106**, 062818 (2022),
   [doi:10.1103/PhysRevA.106.062818](https://doi.org/10.1103/PhysRevA.106.062818).
-- `[Kramida2020]`: A. Kramida, "Isotope shifts in neutral and singly-ionized
-  calcium", At. Data Nucl. Data Tables **133–134**, 101322 (2020),
-  [doi:10.1016/j.adt.2019.101322](https://doi.org/10.1016/j.adt.2019.101322).
-- `[Arbes1994]`: F. Arbes, M. Benzing, Th. Gudjons, F. Kurth, and G. Werth,
-  "Precise determination of the ground state hyperfine structure splitting of
-  ⁴³Ca II", Z. Phys. D **31**, 27 (1994),
-  [doi:10.1007/BF01426573](https://doi.org/10.1007/BF01426573).
-- `[Nortershauser1998]`: W. Nörtershäuser et al., "Isotope shifts and hyperfine
-  structure in the 3d ²D_J → 4p ²P_J transitions in calcium II", Eur. Phys. J. D
-  **2**, 33 (1998), [doi:10.1007/s100530050107](https://doi.org/10.1007/s100530050107).
-- `[Benhelm2007]`: J. Benhelm, G. Kirchmair, U. Rapol, T. Körber, C. F. Roos, and
-  R. Blatt, "Measurement of the hyperfine structure of the S₁/₂–D₅/₂ transition in
-  ⁴³Ca⁺", Phys. Rev. A **75**, 032506 (2007),
-  [doi:10.1103/PhysRevA.75.032506](https://doi.org/10.1103/PhysRevA.75.032506); the
-  signs of the D``_{5/2}`` constants per the erratum, Phys. Rev. A **75**, 049901
-  (2007), [doi:10.1103/PhysRevA.75.049901](https://doi.org/10.1103/PhysRevA.75.049901).
 - `[Tommaseo2003]`: G. Tommaseo, T. Pfeil, G. Revalde, G. Werth, P. Indelicato,
   and J. P. Desclaux, "The g_J-factor in the ground state of Ca⁺", Eur. Phys. J. D
   **25**, 113 (2003), [doi:10.1140/epjd/e2003-00096-6](https://doi.org/10.1140/epjd/e2003-00096-6).
@@ -199,14 +285,18 @@ the hyperfine constants anyway.
   K. R. Brown, and B. C. Sawyer, "Dual-Platform Precision Measurement of the
   3²D₅/₂ to 4²S₁/₂ g-Factor Ratio in ⁴⁰Ca⁺",
   [arXiv:2607.07929](https://arxiv.org/abs/2607.07929) (2026).
-- `[Hanley2021]`: R. K. Hanley, D. T. C. Allcock, T. P. Harty, M. A. Sepiol, and
-  D. M. Lucas, "Precision measurement of the ⁴³Ca⁺ nuclear magnetic moment",
-  Phys. Rev. A **104**, 052804 (2021),
-  [doi:10.1103/PhysRevA.104.052804](https://doi.org/10.1103/PhysRevA.104.052804).
+- `[Shao2016]`: H. Shao, Y. Huang, H. Guan, Y. Qian, and K. Gao, "Precision
+  measurement of the 3d ²D₃/₂-state lifetime in a single trapped ⁴⁰Ca⁺", Phys. Rev.
+  A **94**, 042507 (2016),
+  [doi:10.1103/PhysRevA.94.042507](https://doi.org/10.1103/PhysRevA.94.042507).
 - `[Shao2017]`: H. Shao, Y. Huang, H. Guan, C. Li, T. Shi, and K. Gao, "Precise
   determination of the quadrupole transition matrix element of ⁴⁰Ca⁺ via
   branching-fraction and lifetime measurements", Phys. Rev. A **95**, 053415
   (2017), [doi:10.1103/PhysRevA.95.053415](https://doi.org/10.1103/PhysRevA.95.053415).
+- `[Shao2018]`: H. Shao, Y. Huang, H. Guan, and K. Gao, "Direct measurement of the
+  3d ²D₃/₂ to 3d ²D₅/₂ lifetime ratio in a single trapped ⁴⁰Ca⁺", J. Phys. B
+  **51**, 045002 (2018),
+  [doi:10.1088/1361-6455/aaa191](https://doi.org/10.1088/1361-6455/aaa191).
 - `[Hettrich2015]`: M. Hettrich et al., "Measurement of dipole matrix elements
   with a single trapped ion", Phys. Rev. Lett. **115**, 143003 (2015),
   [doi:10.1103/PhysRevLett.115.143003](https://doi.org/10.1103/PhysRevLett.115.143003).
@@ -235,16 +325,103 @@ the hyperfine constants anyway.
   (2013),
   [doi:10.1103/PhysRevA.87.042517](https://doi.org/10.1103/PhysRevA.87.042517).
 """
-const ca43 = HyperfineOneElectronSpecies(;
-    # Mass of the actual ion: the neutral-atom mass 42.95876638(24) u [AME2020]
-    # less one electron, plus the Ca I first ionisation energy 49305.919611(4) cm⁻¹
-    # [Pak2022] as its mass-equivalent binding correction (NB: as this is well below the
-    # [AME2020] mass uncertainty, the usefulness of this questionable already, so the
-    # isotope shifts on the ionisation energy are especially negligible here).
-    mass=uconvert(
-        u"u",
-        42.95876638u"u" - Unitful.me + σ_to_energy(49305.919611 / u"cm") / u"c"^2,
+
+"""
+⁴⁰Ca⁺ ion (no nuclear spin).
+
+The level energies are the directly measured ⁴⁰Ca⁺ transition frequencies from
+S``_{1/2}``: the 729 nm clock transition `[Zhang2023]`, from which D``_{3/2}`` follows
+via the frequency-comb Raman measurement of the 3d fine-structure interval
+`[Solaro2018]`, and the 397 nm `[Gebert2015]` and 393 nm `[Shi2017]` lines. As a
+consistency check, the 866, 850 and 854 nm intervals implied by these four levels
+agree with the collinear-spectroscopy values of `[Muller2020]` (Table III) to within
+≤ 0.15 MHz (1σ): 346 000 235.14 vs 346 000 235.13(14) MHz, 352 682 481.84 vs
+352 682 481.93(13) MHz and 350 862 882.82 vs 350 862 882.63(13) MHz; Müller's own D1/D2
+values (755 222 765.66(14) and 761 905 012.53(16) MHz) agree with the ones used within
+1.5σ. The Einstein A coefficients, g-factors and polarisability data are shared with
+[`ca43`](@ref), all being ⁴⁰Ca⁺ measurements in the first place.
+
+# References
+
+- `[Zhang2023]`: H. Zhang et al., "Absolute frequency measurements with a robust,
+  transportable ⁴⁰Ca⁺ optical clock", Metrologia **60**, 035004 (2023),
+  [doi:10.1088/1681-7575/acd05d](https://doi.org/10.1088/1681-7575/acd05d).
+- `[Solaro2018]`: C. Solaro, S. Meyer, K. Fisher, M. V. DePalatis, and M. Drewsen,
+  "Direct Frequency-Comb-Driven Raman Transitions in the Terahertz Range", Phys.
+  Rev. Lett. **120**, 253601 (2018),
+  [doi:10.1103/PhysRevLett.120.253601](https://doi.org/10.1103/PhysRevLett.120.253601).
+- `[Gebert2015]`: F. Gebert, Y. Wan, F. Wolf, C. N. Angstmann, J. C. Berengut, and
+  P. O. Schmidt, "Precision Isotope Shift Measurements in Calcium Ions Using Quantum
+  Logic Detection Schemes", Phys. Rev. Lett. **115**, 053003 (2015),
+  [doi:10.1103/PhysRevLett.115.053003](https://doi.org/10.1103/PhysRevLett.115.053003).
+- `[Shi2017]`: C. Shi et al., "Unexpectedly large difference of the electron density
+  at the nucleus in the 4p ²P₁/₂,₃/₂ fine-structure doublet of Ca⁺", Appl. Phys. B
+  **123**, 2 (2017), [doi:10.1007/s00340-016-6572-z](https://doi.org/10.1007/s00340-016-6572-z).
+- `[Muller2020]`: P. Müller, K. König, P. Imgram, J. Krämer, and W. Nörtershäuser,
+  "Collinear laser spectroscopy of Ca⁺: Solving the field-shift puzzle of the
+  4s ²S₁/₂ → 4p ²P₁/₂,₃/₂ transitions", Phys. Rev. Research **2**, 043351 (2020),
+  [doi:10.1103/PhysRevResearch.2.043351](https://doi.org/10.1103/PhysRevResearch.2.043351).
+$(CA_REFERENCES)
+"""
+const ca40 = NoHyperfineOneElectronSpecies(;
+    mass=ca_ion_mass(39.962590850u"u"), # …(22) [AME2020]
+    energies=Dict(
+        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+            "S_1/2" => 0u"J",
+            # 729 nm clock transition, 411 042 129 776 400.26(13) Hz [Zhang2023] (the
+            # GNSS-linked 2026 remeasurement, 400.15(22) Hz, concurs), less the
+            # 3d ²D_3/2–²D_5/2 fine-structure interval 1 819 599 021 534(8) Hz
+            # [Solaro2018].
+            "D_3/2" =>
+                u"h" * (411_042_129_776_400.26u"Hz" - 1_819_599_021_534u"Hz"),
+            "D_5/2" => u"h" * 411_042_129_776_400.26u"Hz", # …(13) [Zhang2023]
+            "P_1/2" => u"h" * 755_222_765.896u"MHz", # …(88) 397 nm [Gebert2015]
+            "P_3/2" => u"h" * 761_905_012.599u"MHz", # …(82) 393 nm [Shi2017]
+        ]
     ),
+    einstein_as=CA_EINSTEIN_AS,
+    lande_g_overrides=CA_LANDE_G_OVERRIDES,
+    polarisabilities=CA_POLARISABILITIES,
+)
+
+"""
+⁴³Ca⁺ ion (nuclear spin ``I = 7/2``).
+
+Hyperfine centroids are referenced to the S``_{1/2}`` centroid; all hyperfine
+``A``/``B`` constants are entered as stated in the cited measurements (the signs follow
+from ``μ_I < 0``). The electronic g-factors and Einstein A coefficients marked as such
+are ⁴⁰Ca⁺ measurements, entered uncorrected. For the Einstein A coefficients and
+g(S``_{1/2}``) the isotope dependence is far below the quoted uncertainties; for
+g(D``_{5/2}``), known to 5 × 10⁻⁸ in ⁴⁰Ca⁺, the leading-order reduced-mass shift (cf.
+[`Levels.ls_lande_g`](@ref)) is not, but is deliberately not applied: the many-electron
+recoil corrections are unknown at that level, so will have to be measured together with
+the hyperfine constants anyway.
+
+# References
+- `[Kramida2020]`: A. Kramida, "Isotope shifts in neutral and singly-ionized
+  calcium", At. Data Nucl. Data Tables **133–134**, 101322 (2020),
+  [doi:10.1016/j.adt.2019.101322](https://doi.org/10.1016/j.adt.2019.101322).
+- `[Arbes1994]`: F. Arbes, M. Benzing, Th. Gudjons, F. Kurth, and G. Werth,
+  "Precise determination of the ground state hyperfine structure splitting of
+  ⁴³Ca II", Z. Phys. D **31**, 27 (1994),
+  [doi:10.1007/BF01426573](https://doi.org/10.1007/BF01426573).
+- `[Nortershauser1998]`: W. Nörtershäuser et al., "Isotope shifts and hyperfine
+  structure in the 3d ²D_J → 4p ²P_J transitions in calcium II", Eur. Phys. J. D
+  **2**, 33 (1998), [doi:10.1007/s100530050107](https://doi.org/10.1007/s100530050107).
+- `[Benhelm2007]`: J. Benhelm, G. Kirchmair, U. Rapol, T. Körber, C. F. Roos, and
+  R. Blatt, "Measurement of the hyperfine structure of the S₁/₂–D₅/₂ transition in
+  ⁴³Ca⁺", Phys. Rev. A **75**, 032506 (2007),
+  [doi:10.1103/PhysRevA.75.032506](https://doi.org/10.1103/PhysRevA.75.032506); the
+  signs of the D``_{5/2}`` constants per the erratum, Phys. Rev. A **75**, 049901
+  (2007), [doi:10.1103/PhysRevA.75.049901](https://doi.org/10.1103/PhysRevA.75.049901).
+- `[Hanley2021]`: R. K. Hanley, D. T. C. Allcock, T. P. Harty, M. A. Sepiol, and
+  D. M. Lucas, "Precision measurement of the ⁴³Ca⁺ nuclear magnetic moment",
+  Phys. Rev. A **104**, 052804 (2021),
+  [doi:10.1103/PhysRevA.104.052804](https://doi.org/10.1103/PhysRevA.104.052804).
+$(CA_REFERENCES)
+"""
+const ca43 = HyperfineOneElectronSpecies(;
+    mass=ca_ion_mass(42.958766381u"u"), # …(244) [AME2020]
     nuclear_spin=7//2,
     # μ_I/μ_N = −1.315350(9)(1), the effective moment of the nucleus bound in the
     # ion, i.e. *not* corrected for diamagnetic shielding — the appropriate value
@@ -288,98 +465,9 @@ const ca43 = HyperfineOneElectronSpecies(;
             ),
         ]
     ),
-    lande_g_overrides=let g_s = 2.00225664 # …(9), measured in ⁴⁰Ca⁺ [Tommaseo2003]
-        Dict(
-            convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
-                "S_1/2" => g_s,
-                # From the ratio g(D_5/2)/g(S_1/2) = 0.599 488 813 3(2) measured in
-                # ⁴⁰Ca⁺ [McMahon2026] (Penning trap; their rf-trap value
-                # 0.599 488 813(6) and the 0.599 488 79(2) of [Ma2024] concur, as does
-                # the 0.599 488 818(9) of the [Zhang2026] clock evaluation — from its
-                # Supplemental Material, as the raw ratio at the operating conditions,
-                # whose 3e-8 excess over [Ma2024] is attributed to the trap-rf ac
-                # field), i.e. 1.200 330 46(5), the uncertainty being that of g_s. This
-                # supersedes the 1.2003340(3) of [Chwalla2009], whose ratio
-                # 0.599 490 58(15) lies more than 10σ from all three recent
-                # measurements.
-                "D_5/2" => 0.5994888133 * g_s,
-            ]
-        )
-    end,
-    einstein_as=Dict(
-        convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
-        (k, v) in [
-            # All lifetimes and branching fractions measured in ⁴⁰Ca⁺; the
-            # isotope dependence is far below the quoted uncertainties.
-            #
-            # τ(D_5/2) = 1.1649(44) s [Shao2017]; the E2 decay to S_1/2 is the
-            # only relevant channel (D_5/2 → D_3/2 M1 is ~µHz).
-            ("S_1/2", "D_5/2") => 1 / 1.1649u"s",
-            # τ(D_3/2) = 1176(11) ms [Kreuter2005].
-            ("S_1/2", "D_3/2") => 1 / 1176u"ms",
-            # τ(P_1/2) = 6.904(26) ns [Hettrich2015], split by the branching
-            # fractions 0.93565(7)/0.06435(7) of [Ramm2013].
-            ("S_1/2", "P_1/2") => 0.93565 / 6.904u"ns",
-            ("D_3/2", "P_1/2") => 0.06435 / 6.904u"ns",
-            # τ(P_3/2) = 6.639(42) ns [Meir2020] (in 6σ tension with the older
-            # 6.924(19) ns of Jin & Church 1993, which [Meir2020] argues to be
-            # superseded), split by the branching fractions 0.9347(3)/0.0587(2)/
-            # 0.00661(4) of [Gerritsma2008].
-            ("S_1/2", "P_3/2") => 0.9347 / 6.639u"ns",
-            ("D_5/2", "P_3/2") => 0.0587 / 6.639u"ns",
-            ("D_3/2", "P_3/2") => 0.00661 / 6.639u"ns",
-        ]
-    ),
-    polarisabilities=Dict(
-        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
-            # Unlike for ⁸⁸Sr⁺, no independent sum-over-states table is
-            # entered here. The explicit channel dipoles are derived (by the
-            # species constructor, cf. ImplicitPolarisability) from the
-            # measured Einstein A coefficients above — i.e. from
-            # [Hettrich2015]/[Ramm2013] for the decays from P_1/2 and
-            # [Meir2020]/[Gerritsma2008] for those from P_3/2; the derived
-            # ⟨S_1/2‖d‖P_1/2⟩ = 2.8927 e a₀ equals the directly measured
-            # 2.8928(43) of [Hettrich2015] — so background and near-resonant
-            # channels share one source. The static totals given below are
-            # the RCC values of [YuSahoo2025], Table I, whose differential
-            # α₀(D_5/2) − α₀(S_1/2) = −44.02(47) agrees with the measured
-            # −44.07(1) (Huang 2019); both are pinned down in
-            # test-polarisability.jl.
-            "S_1/2" => ImplicitPolarisability(
-                ["P_1/2", "P_3/2"];
-                # The implied remainder (1.58 a.u.) is less than the ionic
-                # core alone (3.26, plus ≈0.19 of 5p/tail; [Tang2013] Table
-                # VII): the [YuSahoo2025] total sits ≈1.9 a.u. (≈3σ) below
-                # measured channels plus core, the RCC-family totals
-                # generally running low against the 75.3–76.1 of the
-                # DFCP/CICP/MBPT-SD/f-sum cluster ([Tang2013] Table VI). Of
-                # no consequence at optical detunings, where the explicit
-                # channels dominate — and largely common-mode with D_5/2
-                # below, so the measured static differential stays anchored
-                # regardless.
-                static_scalar=74.62POLARISABILITY_AU, # …(41) [YuSahoo2025]
-            ),
-            "D_5/2" => ImplicitPolarisability(
-                ["P_3/2"];
-                # Unlike for ⁸⁸Sr⁺, the 4f/5f/higher-f channels
-                # (≈54 000 cm⁻¹ up) are lumped into the implied remainder;
-                # their dispersion enhancement is 7% at 729 nm and 24% at
-                # 422 nm, and the DFCP decomposition puts ≈6 a.u. of static
-                # f-channel content here ([Tang2013] Table X — more than the
-                # whole non-core part of the remainder, cf. the S_1/2 note
-                # above), bounding the lumping error at ≈0.4/1.4 a.u. at
-                # those wavelengths.
-                static_scalar=30.59POLARISABILITY_AU, # …(6) [YuSahoo2025]
-                static_tensor=-24.50POLARISABILITY_AU, # …(12) [YuSahoo2025]
-            ),
-            "D_3/2" => ImplicitPolarisability(
-                ["P_1/2", "P_3/2"];
-                # The 3d → 4f lumping note above applies equally.
-                static_scalar=33.36POLARISABILITY_AU, # …(31) [YuSahoo2025]
-                static_tensor=-17.17POLARISABILITY_AU, # …(10) [YuSahoo2025]
-            ),
-        ]
-    ),
+    lande_g_overrides=CA_LANDE_G_OVERRIDES,
+    einstein_as=CA_EINSTEIN_AS,
+    polarisabilities=CA_POLARISABILITIES,
 )
 
-export sr88, ca43
+export sr88, ca40, ca43
