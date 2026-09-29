@@ -43,7 +43,7 @@ end
         ε,
         n,
     )
-    @test Ω ≈ a * sqrt(intensity / (2 * isat)) rtol = 1e-9
+    @test abs(Ω) ≈ a * sqrt(intensity / (2 * isat)) rtol = 1e-9
 
     # Unknown transitions are rejected.
     @test_throws ArgumentError rabi_frequency(
@@ -90,17 +90,21 @@ end
     k = ω / u"c"
     Ω_james = u"q" * E0 / (u"ħ" * sqrt(u"c" * α)) * sqrt(a / k^3) * σ
     Ω = rabi_frequency(sr88, lower, upper, intensity, ε, n)
-    @test Ω ≈ Ω_james rtol = 1e-9
+    @test abs(Ω) ≈ Ω_james rtol = 1e-9
 
     # Equivalent compact form Ω = Λ g √(15 A λ³ I/(2π h c)) with the geometry
     # factor g⁽±²⁾ = (1/√6)|cos(γ) sin(2φ)/2 + i sin(γ) sin(φ)| = 1/√12 and
     # Clebsch–Gordan factor Λ = 1 [Roos, PhD thesis, Innsbruck (2000)].
     λ = 2π * u"c" / ω
-    @test Ω ≈ sqrt(15 * a * λ^3 * intensity / (2π * u"h" * u"c")) / sqrt(12) rtol = 1e-9
+    @test abs(Ω) ≈ sqrt(15 * a * λ^3 * intensity / (2π * u"h" * u"c")) / sqrt(12) rtol =
+        1e-9
 
-    # Only the directions of ε and n matter; the field amplitude is fixed by
-    # the intensity, so any scale (and an overall phase) must drop out.
-    @test rabi_frequency(sr88, lower, upper, intensity, cis(0.3) * 5ε, 3n) ≈ Ω
+    # Only the directions of ε and n matter for the magnitude; the field
+    # amplitude is fixed by the intensity, so any scale must drop out, while an
+    # overall phase of the polarisation is the field phase and is kept.
+    @test rabi_frequency(sr88, lower, upper, intensity, cis(0.3) * 5ε, 3n) ≈
+          cis(0.3) * Ω
+    @test abs(rabi_frequency(sr88, lower, upper, intensity, cis(0.3) * 5ε, 3n)) ≈ abs(Ω)
 end
 
 @testitem "Rabi frequencies vs coupling-matrix pipeline" tags=[:unit, :fast] begin
@@ -119,8 +123,34 @@ end
     L = rabi_normalised(C, basis, probe, Ω0)
     for (lower, upper) in state_pairs("S_1/2", "D_5/2"; Δm=-2:2)
         @test abs(L[stateindex(basis, upper), stateindex(basis, lower)]) ≈
+              abs(rabi_frequency(sr88, lower, upper, intensity, ε, n)) atol =
+            1e-12 * abs(Ω0)
+    end
+
+    # The absolute coupling matrix carries the same magnitudes with the phases
+    # of the individual components (CG sign × complex channel amplitude), so it
+    # is the normalised relative matrix up to one overall phase.
+    M = coupling_matrix(sr88, basis, "S_1/2" => "D_5/2", intensity, ε, n)
+    @test abs.(M) ≈ abs.(L) atol = 1e-12 * abs(Ω0)
+    for (lower, upper) in state_pairs("S_1/2", "D_5/2"; Δm=-2:2)
+        @test M[stateindex(basis, upper), stateindex(basis, lower)] ≈
               rabi_frequency(sr88, lower, upper, intensity, ε, n) atol = 1e-12 * abs(Ω0)
     end
+    phases = [
+        M[k, i] / L[k, i] for
+        i in 1:length(basis), k in 1:length(basis) if !iszero(L[k, i])
+    ]
+    @test all(p -> p ≈ phases[1], phases)
+    @test all(iszero, M[1:2, :]) # lower⟨row| block empty
+    # A plain-vector geometry gives the same result as the `beam_vectors` one.
+    @test coupling_matrix(
+        sr88,
+        basis,
+        "S_1/2" => "D_5/2",
+        intensity,
+        collect(ε),
+        collect(n),
+    ) == M
 end
 
 @testitem "Rabi normalisation" tags=[:unit, :fast] begin
@@ -282,7 +312,7 @@ end
         sqrt(20π * u"c"^2 * intensity * a / (u"ħ" * ω^3)) *
         abs(transition_amplitude(ca43, s, d) * geometry),
     )
-    @test rabi_frequency(ca43, s, d, intensity, ε, n) ≈ expected rtol = 1e-12
+    @test abs(rabi_frequency(ca43, s, d, intensity, ε, n)) ≈ expected rtol = 1e-12
 
     # The at-field form scales the plain one by the exact at-field amplitude
     # ratio, and for a fine-structure species it is the identical (already
@@ -290,7 +320,7 @@ end
     B = 0.5u"mT"
     @test rabi_frequency(ca43, s, d, intensity, ε, n, B) ≈
           rabi_frequency(ca43, s, d, intensity, ε, n) *
-          abs(transition_amplitude(ca43, s, d, B) / transition_amplitude(ca43, s, d)) rtol =
+          (transition_amplitude(ca43, s, d, B) / transition_amplitude(ca43, s, d)) rtol =
         1e-12
     @test rabi_frequency(
         sr88,
@@ -481,7 +511,7 @@ end
                     ε,
                     n,
                 )
-                @test Ω ≈ expected rtol = 1e-9 atol = 1e-10u"µs^-1"
+                @test abs(Ω) ≈ expected rtol = 1e-9 atol = 1e-10u"µs^-1"
             end
         end
     end

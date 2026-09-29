@@ -758,7 +758,7 @@ end
             other = StateSpec("S_1/2", m)
             Ω = rabi_frequency(sr88, other, upper, intensity, ε, n)
             shift -=
-                Ω^2 /
+                abs2(Ω) /
                 (4 * (zeeman_shift(sr88, other, B) - zeeman_shift(sr88, lower, B)))
         end
         for m in (-5//2):(5//2)
@@ -766,7 +766,7 @@ end
             other = StateSpec("D_5/2", m)
             Ω = rabi_frequency(sr88, lower, other, intensity, ε, n)
             shift -=
-                Ω^2 /
+                abs2(Ω) /
                 (4 * (zeeman_shift(sr88, upper, B) - zeeman_shift(sr88, other, B)))
         end
         shift
@@ -918,7 +918,7 @@ end
     reference = (2.6u"mW/m^2", 1.7u"mW/m^2", 1.9u"mW/m^2")
     intensities = map((1//2, 3//2, 5//2)) do m
         Ω = rabi_frequency(sr88, lower, StateSpec("D_5/2", m), 1.0u"W/m^2", ε, n)
-        1.0u"W/m^2" * (2π * 5.0u"Hz" / Ω)^2
+        1.0u"W/m^2" * (2π * 5.0u"Hz" / abs(Ω))^2
     end
     for (intensity, quoted) in zip(intensities, reference)
         @test intensity ≈ quoted rtol = 2e-2
@@ -933,7 +933,7 @@ end
         LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], 674.025u"nm"; B=4.8u"µT")
     shifts = map(zip((1//2, 3//2, 5//2), intensities)) do (m, intensity)
         upper = StateSpec("D_5/2", m)
-        area = 1.1π / rabi_frequency(sr88, lower, upper, intensity, ε, n)
+        area = 1.1π / abs(rabi_frequency(sr88, lower, upper, intensity, ε, n))
         scaled = intensity * (area / 100u"ms")^2
         driven_light_shift(coefficients, lower => upper, scaled, ε; n, parts=:resonant)
     end
@@ -1587,7 +1587,8 @@ end
 
     # Intensity that gives the probed component the carrier Rabi frequency Ω0.
     ref_intensity = 1.0u"W/m^2"
-    intensity = ref_intensity * (Ω0 / rabi_frequency(ca43, s, d, ref_intensity, ε, n))^2
+    intensity =
+        ref_intensity * (Ω0 / abs(rabi_frequency(ca43, s, d, ref_intensity, ε, n)))^2
 
     expected = driven_light_shift(ca43, s, d, intensity, ε; n, B, parts=:resonant)
 

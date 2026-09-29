@@ -277,27 +277,34 @@ end
     rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, ε, n)
     rabi_frequency(species, lower::StateSpec, upper::StateSpec, intensity, ε, n, B)
 
-Returns the Rabi frequency (in angular units, such that the excitation
-probability oscillates as ``\\sin^2(Ω t / 2)`` on resonance) for driving the
-given transition with a running wave of the given intensity, polarisation `ε`
-and propagation direction `n` (cf. [`beam_vectors`](@ref); `n` only enters for
-quadrupole transitions).
+Returns the complex Rabi frequency ``Ω`` of the given transition driven by a
+running wave of the given intensity, polarisation `ε` and propagation direction
+`n` (cf. [`beam_vectors`](@ref); `n` only enters for quadrupole transitions),
+in angular units: the rotating-frame coupling is
+``(ħ/2)(Ω |\\mathrm{upper}⟩⟨\\mathrm{lower}| + Ω^* |\\mathrm{lower}⟩⟨\\mathrm{upper}|)``,
+so the excitation probability oscillates as ``\\sin^2(|Ω| t / 2)`` on
+resonance.
 
 The coupling strength is obtained from the Einstein A coefficient of the
 transition following `[James1998]`,
 
-``Ω = \\sqrt{6 π c^2 I A / (ħ ω^3)} \\, |⟨j m; 1 Δm | j' m'⟩ \\, d_{Δm}|``
+``Ω = \\sqrt{6 π c^2 I A / (ħ ω^3)} \\, ⟨j m; 1 Δm | j' m'⟩ \\, d_{Δm}``
 
 for electric-dipole and
 
-``Ω = \\sqrt{20 π c^2 I A / (ħ ω^3)} \\, |⟨j m; 2 Δm | j' m'⟩ \\, Γ_{Δm}|``
+``Ω = \\sqrt{20 π c^2 I A / (ħ ω^3)} \\, ⟨j m; 2 Δm | j' m'⟩ \\, Γ_{Δm}``
 
 for electric-quadrupole transitions, with ``d_q`` and ``Γ_q`` the geometric
 channel amplitudes from [`dipole_geometry`](@ref) and
-[`quadrupole_geometry`](@ref).
+[`quadrupole_geometry`](@ref). The phase of ``Ω`` — the Condon–Shortley
+Clebsch–Gordan sign times the complex channel amplitude, including the overall
+phase of `ε` — is what fixes the relative phases between the ``Δm`` components
+one beam drives (and hence e.g. which superposition is dark), so it is kept:
+build coupling matrices from these values directly (cf.
+[`coupling_matrix`](@ref)) and take `abs` where only the magnitude is meant.
 
-Only the directions of `ε` and `n` matter — both are normalised internally, as
-the field amplitude is fixed by the intensity.
+Only the directions of `ε` and `n` matter for the magnitude — both are
+normalised internally, as the field amplitude is fixed by the intensity.
 
 For hyperfine states of a [`HyperfineOneElectronSpecies`](@ref), the Einstein A
 coefficient is that of the fine-structure transition, the angular factor is
@@ -381,15 +388,88 @@ function rabi_from_amplitude(
         20.0, quadrupole_geometry(ε, n)[Int(Δm)+3] / (ε_scale * n_scale)
     end
     scale = prefactor * π * u"c"^2 * intensity * a / (u"ħ" * ω^3)
-    uconvert(u"µs^-1", sqrt(scale) * abs(angular * geometry))
+    uconvert(u"µs^-1", sqrt(scale) * (angular * geometry))
+end
+
+# The levels a level argument stands for in a basis of the species' kind: the
+# single fine-structure level, or — for a hyperfine species — a single F level
+# or all F levels of a fine-structure manifold.
+level_list(::NoHyperfineOneElectronSpecies, level) =
+    [convert(NoHyperfineNumberSpec, level)]
+level_list(species::HyperfineOneElectronSpecies, level) =
+    hyperfine_level_list(species, level)
+
+# Returns a function (lower, upper) -> transition amplitude for the coupling
+# matrix, pre-solving the hyperfine manifolds once for the at-field case.
+amplitude_evaluator(species, lower_levels, upper_levels, ::Nothing) =
+    (lo, hi) -> transition_amplitude(species, lo, hi)
+amplitude_evaluator(species, lower_levels, upper_levels, B) =
+    (lo, hi) -> transition_amplitude(species, lo, hi, B)
+function amplitude_evaluator(
+    species::HyperfineOneElectronSpecies,
+    lower_levels,
+    upper_levels,
+    B,
+)
+    iszero(B) &&
+        return amplitude_evaluator(species, lower_levels, upper_levels, nothing)
+    fs_lo = fine_structure(first(lower_levels))
+    fs_hi = fine_structure(first(upper_levels))
+    m_lo = hyperfine_manifold(species, fs_lo, B)
+    m_hi = fs_hi == fs_lo ? m_lo : hyperfine_manifold(species, fs_hi, B)
+    (lo, hi) -> transition_amplitude(m_lo, m_hi, lo, hi)
+end
+
+"""
+    coupling_matrix(species, basis::StateBasis, lower => upper, intensity, ε, n[, B])
+
+Returns the matrix of complex carrier Rabi frequencies ([`rabi_frequency`](@ref),
+angular units) with which a running wave of the given intensity, polarisation
+`ε` and direction `n` couples the Zeeman states of the `lower` and `upper`
+levels in `basis`, in the upper⟨row|lower⟩⟨col| block (zero elsewhere) — the
+``ħ Ω/2`` coupling operator is `(C + C') / 2`.
+
+For a [`HyperfineOneElectronSpecies`](@ref), `lower` and `upper` may each be a
+single ``F`` level or a whole fine-structure manifold (all its ``F`` levels
+present in the basis contribute), and the trailing static flux density `B`
+evaluates the amplitudes exactly at that field (the basis states then denote
+the adiabatically-labelled eigenstates, cf. [`transition_amplitude`](@ref)),
+solving each manifold once. For a fine-structure species the `B` form is the
+identical (already exact) result.
+"""
+function coupling_matrix(
+    species,
+    basis::StateBasis,
+    pair::Pair,
+    intensity,
+    ε,
+    n,
+    B=nothing,
+)
+    lower_levels = level_list(species, pair.first)
+    upper_levels = level_list(species, pair.second)
+    amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)
+    N = length(basis)
+    C = zeros(typeof(complex(1.0) * u"µs^-1"), N, N)
+    for (i, lo) in enumerate(basis)
+        lo.level in lower_levels || continue
+        for (k, hi) in enumerate(basis)
+            hi.level in upper_levels || continue
+            a = amplitude(lo, hi)
+            iszero(a) && continue
+            C[k, i] = rabi_from_amplitude(species, lo, hi, intensity, ε, n, a)
+        end
+    end
+    C
 end
 
 """
     rabi_normalised(couplings, basis::StateBasis, transition::Pair, Ω0)
 
 Scales the given relative coupling matrix such that the entry for the
-`lower => upper` `transition` has magnitude `Ω0` (its carrier Rabi frequency, in
-angular units), fixing the physical scale of all the couplings.
+`lower => upper` `transition` has magnitude `abs(Ω0)` (its carrier Rabi
+frequency, in angular units; a complex [`rabi_frequency`](@ref) contributes its
+magnitude only), fixing the physical scale of all the couplings.
 
 An error is raised if the amplitude for the given transition (nearly) vanishes in
 `couplings`, as the normalisation would then be ill-defined.
@@ -412,8 +492,8 @@ function rabi_normalised(
             ),
         )
     end
-    (Ω0 / abs(c)) .* couplings
+    (abs(Ω0) / abs(c)) .* couplings
 end
 
-export transition_amplitude, rabi_frequency, rabi_normalised
+export transition_amplitude, rabi_frequency, coupling_matrix, rabi_normalised
 public clebsch_gordan, multipole_rank, hyperfine_reduction
