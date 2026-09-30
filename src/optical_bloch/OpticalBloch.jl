@@ -9,11 +9,11 @@ levels kept, the [`LaserBeam`](@ref)s (each a [`RelativeFrequency`](@ref)
 detuning from a zero-field line centre, an intensity, a polarisation, a
 direction and optionally a linewidth) and the static magnetic field.
 [`lindblad_model`](@ref) turns it into a [`LindbladModel`](@ref): the
-rotating-frame Hamiltonian — each fine-structure level given one frame frequency
-(cf. [`RotatingFrame`](@ref)) such that every beam coupling is time-independent
-where the beam graph allows it, with beat notes kept as harmonic terms
-otherwise — plus the spontaneous-emission and laser-phase-diffusion jump
-operators. Everything is species-kind agnostic: for a
+rotating-frame Hamiltonian — each fine-structure level (or, on request, each
+state) given one frame frequency (cf. [`RotatingFrame`](@ref)) such that every
+beam coupling is time-independent where the beam graph allows it, with beat
+notes kept as harmonic terms otherwise — plus the spontaneous-emission and
+laser-phase-diffusion jump operators. Everything is species-kind agnostic: for a
 [`Levels.HyperfineOneElectronSpecies`](@ref) the basis states denote the
 adiabatically-labelled eigenstates at the static field (cf.
 [`hyperfine_manifold`](@ref)), with exact at-field coupling and decay
