@@ -405,6 +405,12 @@ amplitude_evaluator(species, lower_levels, upper_levels, ::Nothing) =
     (lo, hi) -> transition_amplitude(species, lo, hi)
 amplitude_evaluator(species, lower_levels, upper_levels, B) =
     (lo, hi) -> transition_amplitude(species, lo, hi, B)
+amplitude_evaluator(
+    species::HyperfineOneElectronSpecies,
+    lower_levels,
+    upper_levels,
+    ::Nothing,
+) = (lo, hi) -> transition_amplitude(species, lo, hi)
 function amplitude_evaluator(
     species::HyperfineOneElectronSpecies,
     lower_levels,

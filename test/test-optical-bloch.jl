@@ -161,19 +161,26 @@ end
     b422 = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε, n)
     b1092 = LaserBeam("D_3/2" => "P_1/2", Δ2, I0, ε, n)
     S, P, D = (convert(NoHyperfineNumberSpec, l) for l in ("S_1/2", "P_1/2", "D_3/2"))
+    offset(frame, level) = frame_offset(frame, basis, level)
+    traversal(frame, level) = frame.traversals[first(staterange(basis, level)), :]
 
     # Reference P (default): the lower levels sit at minus their beams' detunings.
     frame =
         rotating_frame(sr88, LaserScheme(basis, [b422, b1092]; static_field=0.5u"mT"))
+    @test frame.kind == :levels
     @test frame.reference == P
-    @test frame.frame_offsets[P] == 0.0u"µs^-1"
-    @test frame.frame_offsets[S] ≈ -Δ1
-    @test frame.frame_offsets[D] ≈ -Δ2
+    @test offset(frame, P) == 0.0u"µs^-1"
+    @test offset(frame, S) ≈ -Δ1
+    @test offset(frame, D) ≈ -Δ2
     @test frame.tree_beams == [1, 2]
     @test isempty(frame.beats)
-    @test frame.traversals[P] == [0, 0] &&
-          frame.traversals[S] == [-1, 0] &&
-          frame.traversals[D] == [0, -1]
+    @test traversal(frame, P) == [0, 0] &&
+          traversal(frame, S) == [-1, 0] &&
+          traversal(frame, D) == [0, -1]
+    # All states of a level share the frame; per-state queries agree.
+    for state in basis
+        @test frame_offset(frame, basis, state) == offset(frame, state.level)
+    end
 
     # Reference S: same frame up to a common shift; the path to D runs up the
     # 422 nm beam and down the 1092 nm one.
@@ -186,16 +193,17 @@ end
             frame_reference="S_1/2",
         ),
     )
-    @test frame_s.frame_offsets[S] == 0.0u"µs^-1"
-    @test frame_s.frame_offsets[P] ≈ Δ1
-    @test frame_s.frame_offsets[D] ≈ Δ1 - Δ2
-    @test frame_s.traversals[D] == [1, -1]
+    @test offset(frame_s, S) == 0.0u"µs^-1"
+    @test offset(frame_s, P) ≈ Δ1
+    @test offset(frame_s, D) ≈ Δ1 - Δ2
+    @test traversal(frame_s, D) == [1, -1]
     for l in (S, P, D)
-        @test frame_s.frame_offsets[l] - frame.frame_offsets[l] ≈ Δ1
+        @test offset(frame_s, l) - offset(frame, l) ≈ Δ1
     end
 
     # A second beam on an already connected pair beats at the detuning
-    # difference; an identical-frequency one does not (and adds coherently).
+    # difference (one beat entry per coupling component); an identical-frequency
+    # one does not (and adds coherently).
     Δ3 = 2π * 26.0u"MHz"
     b422b = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε, n)
     frame_b = rotating_frame(
@@ -203,14 +211,20 @@ end
         LaserScheme(basis, [b422, b1092, b422b]; static_field=0.5u"mT"),
     )
     @test frame_b.tree_beams == [1, 2]
-    @test length(frame_b.beats) == 1 && frame_b.beats[1][1] == 3
-    @test frame_b.beats[1][2] ≈ Δ3 - Δ1
+    @test !isempty(frame_b.beats) && all(t -> t[1] == 3, frame_b.beats)
+    @test all(t -> t[4] ≈ Δ3 - Δ1, frame_b.beats)
+    @test length(frame_b.beats) ==
+          count(!iszero, coupling_matrix(sr88, basis, "S_1/2" => "P_1/2", I0, ε, n))
     model_b = lindblad_model(
         sr88,
         LaserScheme(basis, [b422, b1092, b422b]; static_field=0.5u"mT"),
     )
     @test length(model_b.harmonics) == 1
     @test model_b.harmonics[1][1] ≈ Δ3 - Δ1
+    s_range, p_range = staterange(basis, "S_1/2"), staterange(basis, "P_1/2")
+    @test model_b.harmonics[1][2][p_range, s_range] ≈
+          coupling_matrix(sr88, basis, "S_1/2" => "P_1/2", I0, ε, n)[p_range, s_range] ./
+          2
     model_1 =
         lindblad_model(sr88, LaserScheme(basis, [b422, b1092]; static_field=0.5u"mT"))
     model_2 = lindblad_model(
@@ -218,7 +232,6 @@ end
         LaserScheme(basis, [b422, b1092, b422]; static_field=0.5u"mT"),
     )
     @test isempty(model_2.harmonics)
-    s_range, p_range = staterange(basis, "S_1/2"), staterange(basis, "P_1/2")
     @test model_2.hamiltonian[p_range, s_range] ≈
           2 .* model_1.hamiltonian[p_range, s_range]
     @test model_2.hamiltonian[s_range, s_range] ≈ model_1.hamiltonian[s_range, s_range]
@@ -234,23 +247,78 @@ end
         LaserScheme(basis4, [b422, b1092, b408, b1004]; static_field=0.5u"mT"),
     )
     @test frame_4.tree_beams == [1, 2, 3]
-    @test length(frame_4.beats) == 1 && frame_4.beats[1][1] == 4
-    @test frame_4.beats[1][2] ≈ Δ5 + Δ1 - Δ4 - Δ2
+    @test !isempty(frame_4.beats) && all(t -> t[1] == 4, frame_4.beats)
+    @test all(t -> t[4] ≈ Δ5 + Δ1 - Δ4 - Δ2, frame_4.beats)
 
     # A level no beam reaches keeps its centroid as frame frequency.
     basis5 = StateBasis(["S_1/2", "P_1/2", "D_3/2", "D_5/2"])
     frame_5 =
         rotating_frame(sr88, LaserScheme(basis5, [b422, b1092]; static_field=0.5u"mT"))
-    @test frame_5.frame_offsets[convert(NoHyperfineNumberSpec, "D_5/2")] == 0.0u"µs^-1"
+    @test frame_offset(frame_5, basis5, "D_5/2") == 0.0u"µs^-1"
 
     # Hyperfine reference levels: the frame offset across a beam includes the
     # zero-field hyperfine shifts of its reference F levels.
     hb = StateBasis(ca43, "S_1/2", "P_1/2")
     beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=3", Δ1, I0, ε, n)
     frame_hf = rotating_frame(ca43, LaserScheme(hb, [beam]; static_field=0.5u"mT"))
-    @test frame_hf.frame_offsets[S] ≈ -(
+    @test frame_offset(frame_hf, hb, S) ≈ -(
         Δ1 + Levels.hyperfine_shift(ca43, "P_1/2 F=3") -
         Levels.hyperfine_shift(ca43, "S_1/2 F=4")
+    )
+
+    # Per-state frame: a σ⁺ pump along ẑ (S₋ → P₊ only) and a π probe (S₊ → P₊,
+    # S₋ → P₋) of different frequency beat in the per-level frame, but form a
+    # tree over the states — the EIT configuration is static there, and the
+    # grouped decay operators stay time-independent (the loop closes).
+    sp = StateBasis(["S_1/2", "P_1/2"])
+    n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
+    n_x, ε_π = beam_vectors(π / 2, 0.0)
+    pump = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε_σ, n_z)
+    probe = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε_π, n_x)
+    levels_frame =
+        rotating_frame(sr88, LaserScheme(sp, [pump, probe]; static_field=0.5u"mT"))
+    @test length(levels_frame.beats) == 2   # the two π components
+    states_frame = rotating_frame(
+        sr88,
+        LaserScheme(
+            sp,
+            [pump, probe];
+            static_field=0.5u"mT",
+            frame_kind=:states,
+            frame_reference="S_1/2",
+        ),
+    )
+    @test states_frame.kind == :states
+    @test isempty(states_frame.beats)
+    @test states_frame.tree_beams == [1, 2] || states_frame.tree_beams == [2, 1]
+    # The tree is rooted at the first state of the reference level, S₋.
+    s_p, s_m = stateindex(sp, "S_1/2", 1 // 2), stateindex(sp, "S_1/2", -1 // 2)
+    p_p, p_m = stateindex(sp, "P_1/2", 1 // 2), stateindex(sp, "P_1/2", -1 // 2)
+    @test states_frame.offsets[s_m] == 0.0u"µs^-1"
+    @test states_frame.offsets[p_p] ≈ Δ1           # S₋ → P₊ via the pump
+    @test states_frame.offsets[s_p] ≈ Δ1 - Δ3      # P₊ ← S₊ via the probe
+    @test states_frame.offsets[p_m] ≈ Δ3           # S₋ → P₋ via the probe
+    @test states_frame.traversals[s_p, :] == [1, -1]
+    @test states_frame.traversals[p_m, :] == [0, 1]
+    @test_throws ArgumentError frame_offset(states_frame, sp, "S_1/2")
+    eit = lindblad_model(
+        sr88,
+        LaserScheme(sp, [pump, probe]; static_field=0.5u"mT", frame_kind=:states);
+        open_channels=:drop,
+    )
+    @test isempty(eit.harmonics)
+    @test length(decay_operators(eit)[1]) == 3
+    # Two π beams of different frequency couple the same state pairs: a beat in
+    # either frame, and a grouped decay operator is then no longer static in the
+    # per-state frame either.
+    probe2 = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε_π, n_x)
+    two_pi = LaserScheme(sp, [probe, probe2]; static_field=0.5u"mT", frame_kind=:states)
+    @test !isempty(rotating_frame(sr88, two_pi).beats)
+    @test_throws ArgumentError LaserScheme(
+        sp,
+        [pump];
+        static_field=0.5u"mT",
+        frame_kind=:other,
     )
 end
 

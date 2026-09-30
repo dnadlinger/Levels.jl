@@ -155,27 +155,23 @@ function motional_coupling(
     recoil_moment=:exact,
 )
     basis = scheme.basis
-    B = scheme.static_field
     n = length(basis)
 
-    # Sideband Hamiltonian: coefficient of (a + a†) from e^{ik·r} ≈ 1 + iη(a + a†).
+    # Sideband Hamiltonian: coefficient of (a + a†) from e^{ik·r} ≈ 1 + iη(a + a†),
+    # i.e. iη C/2 + h.c. per beam, split into static and beat-note parts like the
+    # carrier couplings of the model.
     η = [lamb_dicke(species, mode, beam) for beam in scheme.beams]
     H_sb = zeros(eltype(model.hamiltonian), n, n)
-    beat_of = Dict(b => w for (b, w) in model.frame.beats)
     harmonics = Tuple{typeof(1.0 * ANGULAR_UNIT),typeof(H_sb)}[]
-    for (b, beam) in enumerate(scheme.beams)
-        lo, hi = beam_levels(beam)
-        C = coupling_matrix(species, basis, lo => hi, beam.intensity, beam.ε, beam.n, B)
-        term = (η[b] * im) .* (C .- C') ./ 2
-        w = get(beat_of, b, zero(1.0 * ANGULAR_UNIT))
-        if iszero(w)
-            H_sb .+= term
-        elseif w > zero(w)
-            push!(harmonics, (w, (η[b] * im) .* C ./ 2))
-        else
-            push!(harmonics, (-w, (η[b] * im) .* Matrix(C') ./ 2))
+    for (b, C) in enumerate(beam_couplings(species, scheme))
+        static, parts = split_beam_coupling(model.frame, b, C)
+        H_sb .+= (η[b] * im) .* (static .- static') ./ 2
+        for (w, part) in parts
+            X = (η[b] * im) .* part ./ 2
+            w > zero(w) ? push!(harmonics, (w, X)) : push!(harmonics, (-w, Matrix(X')))
         end
     end
+    harmonics = merge_harmonics(harmonics)
 
     # Recoil: the unprojected Lamb–Dicke parameter of each decay transition,
     # weighted by the emission-pattern second moment along the mode.

@@ -34,10 +34,10 @@ H(t) = H_0 + \\sum_j \\left( M_j e^{-i w_j t} + M_j^† e^{+i w_j t} \\right),
 
 over the states of `basis`: `hamiltonian` is the static ``H_0`` (Hermitian,
 µs⁻¹) — the frame diagonal plus the couplings ``(C + C^†)/2`` of all
-time-independent beams, with `C` from [`coupling_matrix`](@ref) — and
-`harmonics` the ``(w_j, M_j)`` pairs of the beams left with a beat note (empty
-for a static model). `jump_operators` (µs⁻¹ᐟ²) are labelled by `jump_labels`
-([`DecayLabel`](@ref), [`DephasingLabel`](@ref)).
+time-independent beam components, with `C` from [`coupling_matrix`](@ref) — and
+`harmonics` the ``(w_j, M_j)`` pairs of the components left with a beat note
+(empty for a static model). `jump_operators` (µs⁻¹ᐟ²) are labelled by
+`jump_labels` ([`DecayLabel`](@ref), [`DephasingLabel`](@ref)).
 
 For a hyperfine species the basis states denote the adiabatically-labelled
 eigenstates at the static field, with exact at-field amplitudes throughout.
@@ -51,9 +51,6 @@ struct LindbladModel{B<:StateBasis,F<:RotatingFrame,H<:Quantity,W<:Quantity,J<:Q
     jump_operators::Vector{Matrix{J}}
     jump_labels::Vector{Union{DecayLabel,DephasingLabel}}
 end
-
-const ANGULAR_UNIT = u"µs^-1"
-const JUMP_UNIT = u"µs^(-1/2)"
 
 # Energies of the basis states at the static field relative to the zero-field
 # centroids of their fine-structure levels — the one place the species kind is
@@ -101,30 +98,35 @@ Assembles the [`LindbladModel`](@ref) of the scheme from the atomic data.
 
 **Hamiltonian.** The frame diagonal holds each state's energy at the static
 field relative to its level's zero-field centroid (Zeeman shift, or the exact
-hyperfine + Zeeman eigen-energy) minus the level's frame frequency of
+hyperfine + Zeeman eigen-energy) minus its frame frequency of
 [`rotating_frame`](@ref); every beam adds ``(C + C^†)/2`` with the complex Rabi
 frequencies of [`coupling_matrix`](@ref) over the two fine-structure manifolds it
 connects (all their ``F`` levels for a hyperfine species) — into the static part
-if its beat frequency vanishes, as a harmonic term otherwise.
+for its time-independent components, as harmonic terms for those with a beat
+note.
 
 **Spontaneous emission.** For every pair of basis levels with an Einstein A
 coefficient (rank ``k`` from [`multipole_rank`](@ref)), one jump operator per
 emitted spherical component ``q = -k…k``,
 ``L_q = \\sqrt{A} \\sum_{m' - m = q} ⟨\\mathrm{up}|T^k_q|\\mathrm{lo}⟩_\\mathrm{rel} \\,
 |\\mathrm{lo}⟩⟨\\mathrm{up}|`` with the relative amplitudes of
-[`Levels.transition_amplitude`](@ref) (exact at the static field) — the grouping
-appropriate when the Zeeman (hyperfine) splittings are unresolved against the
-photon bandwidth, ``\\sum_q L_q^† L_q = A \\, P_\\mathrm{upper}``. `decay = :resolved`
-instead gives one operator per state pair (appropriate for well-resolved
-hyperfine structure). An upper level with decay channels to levels missing
-from the basis raises an error naming them, unless `open_channels = :drop`
-discards those channels (the level then lives longer than its physical
-lifetime).
+[`Levels.transition_amplitude`](@ref) (exact at the static field) — the
+grouping appropriate when the Zeeman (hyperfine) splittings are unresolved
+against the photon bandwidth, ``\\sum_q L_q^† L_q = A \\, P_\\mathrm{upper}``.
+`decay = :resolved` instead gives one operator per state pair (appropriate for
+well-resolved hyperfine structure; in a per-state frame — `frame_kind =
+:states` — it is also what makes an operator whose components see different
+frame differences time-independent, at the price of the coherence-transfer
+terms between them, and is then required). An upper level with decay channels
+to levels missing from the basis raises an error naming them, unless
+`open_channels = :drop` discards those channels (the level then lives longer
+than its physical lifetime); a basis holding only part of a level's states
+likewise silently drops the channels into the missing states.
 
 **Laser linewidth.** A beam with non-zero `linewidth` ``γ`` (FWHM) adds the
-phase-diffusion operator ``\\sqrt{γ} \\sum_i n_{l,i} P_i`` with ``P_i`` the level
-projectors and ``n_{l,i}`` the signed traversal counts of the beam on the frame
-tree, so that a coherence between two levels decays at half the summed
+phase-diffusion operator ``\\sqrt{γ} \\sum_i n_{b,i} P_i`` with ``P_i`` the state
+projectors and ``n_{b,i}`` the signed traversal counts of the beam on the frame
+tree, so that a coherence between two states decays at half the summed
 linewidths of the beams whose frequencies define their relative frame — a
 result independent of the frame reference. Linewidths of beams outside the
 frame tree are not representable this way and raise an error.
@@ -144,41 +146,26 @@ function lindblad_model(
     basis = scheme.basis
     B = scheme.static_field
     n = length(basis)
-    frame = rotating_frame(species, scheme)
+    couplings = beam_couplings(species, scheme)
+    frame = rotating_frame(species, scheme, couplings)
     levels = frame.levels
 
     # --- Hamiltonian ---------------------------------------------------------
     energies = centroid_energies(species, basis, B)
     H = zeros(typeof(complex(1.0) * ANGULAR_UNIT), n, n)
-    for (i, state) in enumerate(basis)
-        H[i, i] =
-            complex(1.0) *
-            (energies[i] - frame.frame_offsets[fine_structure(state.level)])
+    for i in 1:n
+        H[i, i] = complex(1.0) * (energies[i] - frame.offsets[i])
     end
-    beat_of = Dict(b => w for (b, w) in frame.beats)
     harmonics = Tuple{typeof(1.0 * ANGULAR_UNIT),typeof(H)}[]
-    for (b, beam) in enumerate(scheme.beams)
-        lo, hi = beam_levels(beam)
-        C = coupling_matrix(species, basis, lo => hi, beam.intensity, beam.ε, beam.n, B)
-        w = get(beat_of, b, zero(1.0 * ANGULAR_UNIT))
-        if iszero(w)
-            H .+= (C .+ C') ./ 2
-        elseif w > zero(w)
-            push!(harmonics, (w, C ./ 2))
-        else
-            push!(harmonics, (-w, Matrix(C') ./ 2))
+    for (b, C) in enumerate(couplings)
+        static, parts = split_beam_coupling(frame, b, C)
+        H .+= (static .+ static') ./ 2
+        for (w, part) in parts
+            w > zero(w) ? push!(harmonics, (w, part ./ 2)) :
+            push!(harmonics, (-w, Matrix(part') ./ 2))
         end
     end
-    # Merge harmonics at one beat frequency into a single term.
-    merged = Tuple{typeof(1.0 * ANGULAR_UNIT),typeof(H)}[]
-    for (w, M) in harmonics
-        k = findfirst(t -> isapprox(t[1], w; rtol=1e-9), merged)
-        if isnothing(k)
-            push!(merged, (w, M))
-        else
-            merged[k] = (merged[k][1], merged[k][2] .+ M)
-        end
-    end
+    harmonics = merge_harmonics(harmonics)
 
     # --- Spontaneous emission ------------------------------------------------
     J = typeof(complex(1.0) * JUMP_UNIT)
@@ -200,12 +187,12 @@ function lindblad_model(
     for (lo, hi) in pairs
         rank = multipole_rank(lo, hi)
         a = einstein_a(species, lo, hi)
-        lower_levels = [l for l in basis.levels if fine_structure(l) == lo] |> unique!
-        upper_levels = [l for l in basis.levels if fine_structure(l) == hi] |> unique!
+        lower_levels = unique!([l for l in basis.levels if fine_structure(l) == lo])
+        upper_levels = unique!([l for l in basis.levels if fine_structure(l) == hi])
         amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)
         for q in (-rank):rank
             L = zeros(J, n, n)
-            components = Pair{StateSpec,StateSpec}[]
+            components = Tuple{Int,Int}[]
             for (i, s_lo) in enumerate(basis)
                 fine_structure(s_lo.level) == lo || continue
                 for (k, s_hi) in enumerate(basis)
@@ -221,11 +208,24 @@ function lindblad_model(
                         push!(jump_labels, DecayLabel(lo, hi, q, s_lo => s_hi))
                     else
                         L[i, k] = value
-                        push!(components, s_lo => s_hi)
+                        push!(components, (i, k))
                     end
                 end
             end
             if decay == :grouped && !isempty(components)
+                # All components of one operator must see the same frame
+                # difference, or the operator would be time-dependent.
+                diffs = [frame.offsets[i] - frame.offsets[k] for (i, k) in components]
+                if !all(d -> isapprox(d, diffs[1]; atol=1e-9 * oneunit(d)), diffs)
+                    throw(
+                        ArgumentError(
+                            "The per-state frame makes the grouped decay operator " *
+                            "'$lo' ← '$hi' (q = $q) time-dependent; use " *
+                            "decay = :resolved (dropping the coherence transfer " *
+                            "between its components) or frame_kind = :levels",
+                        ),
+                    )
+                end
                 push!(jump_operators, L)
                 push!(jump_labels, DecayLabel(lo, hi, q, nothing))
             end
@@ -246,15 +246,14 @@ function lindblad_model(
         end
         L = zeros(J, n, n)
         γ = uconvert(JUMP_UNIT, sqrt(beam.linewidth))
-        for (i, state) in enumerate(basis)
-            count = frame.traversals[fine_structure(state.level)][b]
-            L[i, i] = complex(count) * γ
+        for i in 1:n
+            L[i, i] = complex(frame.traversals[i, b]) * γ
         end
         push!(jump_operators, L)
         push!(jump_labels, DephasingLabel(b))
     end
 
-    LindbladModel(basis, frame, H, merged, jump_operators, jump_labels)
+    LindbladModel(basis, frame, H, harmonics, jump_operators, jump_labels)
 end
 
 """

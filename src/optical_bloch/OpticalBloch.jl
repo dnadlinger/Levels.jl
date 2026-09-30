@@ -59,6 +59,9 @@ using ..Levels:
     transition_frequency,
     zeeman_shift
 
+const ANGULAR_UNIT = u"µs^-1"
+const JUMP_UNIT = u"µs^(-1/2)"
+
 include("scheme.jl")
 include("frame.jl")
 include("lindblad.jl")

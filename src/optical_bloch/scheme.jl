@@ -93,11 +93,13 @@ beams driving them, and the static magnetic field along the quantisation axis
 ẑ.
 
 `frame_reference` names the level whose rotating-frame frequency is its own
-zero-field centroid; the frame frequencies of the levels connected to it by
-beams follow from the beam frequencies (cf. [`RotatingFrame`](@ref)). It
-defaults to the upper level of the first beam. The choice does not affect any
-observable — it only fixes which level's states sit at their bare Zeeman
-(hyperfine) energies on the diagonal of the rotating-frame Hamiltonian.
+zero-field centroid; the frame frequencies of the levels (or, with
+`frame_kind = :states`, the individual states) connected to it by beams follow
+from the beam frequencies (cf. [`RotatingFrame`](@ref)). It defaults to the
+upper level of the first beam. The choice does not affect any observable — it
+only fixes which level's states sit at their bare Zeeman (hyperfine) energies
+on the diagonal of the rotating-frame Hamiltonian. `frame_kind` selects the
+per-level (default) or per-state frame construction.
 
 For a hyperfine species the field must be non-zero, as the basis states denote
 the adiabatically-labelled field eigenstates (cf. [`hyperfine_manifold`](@ref)).
@@ -110,10 +112,19 @@ struct LaserScheme{B<:StateBasis,F<:Quantity}
     beams::Vector{LaserBeam}
     static_field::F
     frame_reference::NoHyperfineNumberSpec
+    frame_kind::Symbol
 end
 
-function LaserScheme(basis::StateBasis, beams; static_field, frame_reference=nothing)
+function LaserScheme(
+    basis::StateBasis,
+    beams;
+    static_field,
+    frame_reference=nothing,
+    frame_kind::Symbol=:levels,
+)
     beams = LaserBeam[beams...]
+    frame_kind in (:levels, :states) ||
+        throw(ArgumentError("frame_kind must be :levels or :states, got $frame_kind"))
     isempty(basis) && throw(ArgumentError("The basis must contain at least one state"))
     if dimension(static_field) != dimension(1.0u"T")
         throw(
@@ -154,7 +165,7 @@ function LaserScheme(basis::StateBasis, beams; static_field, frame_reference=not
             ),
         )
     end
-    LaserScheme(basis, beams, static_field, reference)
+    LaserScheme(basis, beams, static_field, reference, frame_kind)
 end
 
 """
