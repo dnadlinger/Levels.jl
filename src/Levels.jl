@@ -24,5 +24,6 @@ include("polarisability.jl")
 include("species_data.jl")
 
 include("periodic_dynamics/PeriodicDynamics.jl")
+include("optical_bloch/OpticalBloch.jl")
 
 end # module

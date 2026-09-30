@@ -98,6 +98,14 @@ function hyperfine_shift(species::HyperfineOneElectronSpecies, level)
     uconvert(u"µs^-1", e / u"ħ")
 end
 
+# A fine-structure species has no hyperfine structure: the shift of any of its
+# levels from its own centroid is zero, which lets frequency bookkeeping (cf.
+# `Levels.OpticalBloch`) treat both species kinds alike.
+function hyperfine_shift(species::NoHyperfineOneElectronSpecies, level)
+    convert(NoHyperfineNumberSpec, level)
+    zero(1.0u"µs^-1")
+end
+
 """
     moment_operators(species, fs_level) -> (; x, y, z)
 
