@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning].
   `num_fock`, …), never bare `n`, which is reserved for the Fock index.
   Breaking: the `motional_model` truncation keyword is `num_fock` and the
   `steadystate(model)` harmonics keyword `num_harmonics` (both were `n_max`)
+- Scheme-building conveniences: `intensity_for_rabi` (the intensity giving a
+  target Rabi frequency on one component), `RelativeFrequency(species, lower
+  => upper, detuning, B)` (a detuning stated from a Zeeman or hyperfine
+  component at field) and `peak_intensity`
 
 <!-- Links -->
 

@@ -24,9 +24,6 @@
     const LAMBDA_BASIS = StateBasis(["S_1/2", "D_3/2", "P_1/2"])
     const B_LAMBDA = 3.922e-4u"T"
 
-    # Peak intensity of a Gaussian beam of power P and waist w.
-    peak_intensity(P, w) = uconvert(u"W/m^2", 2P / (π * w^2))
-
     # A 397 nm beam at 140° to the field (mixed π/σ± polarisation) plus an 866 nm
     # beam along the field (σ± only), as in a typical Λ dark-resonance scheme.
     function lambda_scheme(
@@ -83,6 +80,7 @@
     )
 
     strip_h(M) = ustrip.(u"µs^-1", M)
+
 end
 
 @testitem "LaserBeam, LaserScheme and MotionalMode validation" tags=[:unit, :fast] setup=[
@@ -688,4 +686,61 @@ end
     @test mcs[1].sideband_hamiltonian == mc.sideband_hamiltonian
     @test mcs[2].projected_lamb_dicke ≈
           [lamb_dicke(CA40_NONREL_G, modes[2], b) for b in scheme.beams]
+end
+
+@testitem "Scheme conveniences: intensity for a Rabi frequency, component detunings, peak intensity" tags=[
+    :unit,
+    :fast,
+] setup=[OpticalBlochSetup] begin
+    n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
+    lower, upper = StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)
+    Ω = 2π * 10.0u"MHz"
+    I0 = intensity_for_rabi(sr88, lower, upper, Ω, ε_σ, n_z)
+    @test dimension(I0) == dimension(1.0u"W/m^2")
+    @test abs(rabi_frequency(sr88, lower, upper, I0, ε_σ, n_z)) ≈ Ω
+    # Quadrupling the intensity doubles the Rabi frequency; a complex Ω counts by
+    # its magnitude.
+    @test intensity_for_rabi(sr88, lower, upper, 2Ω, ε_σ, n_z) ≈ 4I0
+    @test intensity_for_rabi(sr88, lower, upper, Ω * cis(0.3), ε_σ, n_z) ≈ I0
+    # A σ⁺ beam does not drive the π component.
+    @test_throws ArgumentError intensity_for_rabi(
+        sr88,
+        lower,
+        StateSpec("P_1/2", -1//2),
+        Ω,
+        ε_σ,
+        n_z,
+    )
+    # Hyperfine states, exact at field.
+    B = 0.5u"mT"
+    hf_lower, hf_upper = StateSpec("S_1/2 F=4", -4), StateSpec("P_1/2 F=4", -3)
+    I_hf = intensity_for_rabi(ca43, hf_lower, hf_upper, Ω, ε_σ, n_z, B)
+    @test abs(rabi_frequency(ca43, hf_lower, hf_upper, I_hf, ε_σ, n_z, B)) ≈ Ω
+
+    # Detuning from a Zeeman component at field: the offset carries the Zeeman
+    # shifts of the two states relative to the zero-field line centre.
+    δ = 2π * 1.5u"MHz"
+    rf = RelativeFrequency(sr88, lower => upper, δ, B)
+    @test rf.lower == convert(NoHyperfineNumberSpec, "S_1/2")
+    @test rf.upper == convert(NoHyperfineNumberSpec, "P_1/2")
+    @test rf.offset ≈ δ + zeeman_shift(sr88, upper, B) - zeeman_shift(sr88, lower, B)
+    # σ⁺ component: (g_P/2 + g_S/2) μ_B B ≈ (9.3 + 28.0)/2 MHz/mT × B with the
+    # measured ⁸⁸Sr⁺ sensitivities.
+    @test rf.offset ≈ δ + 2π * (28.0 + 9.3) / 2 * u"MHz/mT" * B rtol = 2e-3
+    # Hyperfine states: the exact at-field component frequency against the
+    # zero-field F-level interval (cancellation noise of the ~10¹⁵ s⁻¹ optical
+    # frequencies limits the comparison to ~1 s⁻¹).
+    rf_hf = RelativeFrequency(ca43, hf_lower => hf_upper, δ, B)
+    @test rf_hf.lower == hf_lower.level && rf_hf.upper == hf_upper.level
+    @test rf_hf.offset ≈
+          δ + Levels.transition_frequency(ca43, hf_lower, hf_upper, B) -
+          Levels.transition_frequency(ca43, hf_lower.level, hf_upper.level) rtol = 1e-6
+    @test_throws ArgumentError RelativeFrequency(sr88, lower => upper, 1.0u"m", B)
+    @test_throws ArgumentError RelativeFrequency(ca43, lower => upper, δ, B)   # F levels required
+
+    # Peak intensity of a Gaussian beam.
+    @test peak_intensity(1.0u"mW", 50.0u"µm") ≈
+          gauss_intensity(1.0u"mW", 50.0u"µm", 422u"nm")
+    @test uconvert(u"W/m^2", peak_intensity(1.0u"mW", 50.0u"µm")) ≈ 254647.9u"W/m^2" rtol =
+        1e-6
 end

@@ -84,4 +84,13 @@ function gauss_intensity(
     2 * power / (π * radius^2) * exp(-2 * (r_offset / radius)^2)
 end
 
-export GaussBeamParams, gauss_intensity
+"""
+    peak_intensity(power, waist)
+
+Returns the on-axis intensity ``2P/(πw^2)`` at the waist of a Gaussian beam of
+total `power` and ``1/e^2`` waist radius `waist` — the intensity an ion at the
+focus sees, cf. [`gauss_intensity`](@ref) for other positions.
+"""
+peak_intensity(power, waist) = 2 * power / (π * waist^2)
+
+export GaussBeamParams, gauss_intensity, peak_intensity

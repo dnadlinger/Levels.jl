@@ -58,6 +58,32 @@ function RelativeFrequency(pair::Pair, offset)
 end
 
 """
+    RelativeFrequency(species, lower::StateSpec => upper::StateSpec, detuning, B)
+
+Returns the laser frequency `detuning` (angular) away from the `lower` →
+`upper` Zeeman component at the static field `B` along ẑ, expressed as a
+[`RelativeFrequency`](@ref) of the two states' levels: the Zeeman shifts of
+the states ([`zeeman_shift`](@ref), exact at-field eigen-energies relative to
+the zero-field ``F`` levels for a hyperfine species) are folded into the
+offset, so the line centre still cancels downstream. This is how a detuning
+quoted "from the resonance" of one component of a scheme — a clock
+transition, a σ⁺ pump — is entered.
+"""
+function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detuning, B)
+    lower, upper = pair
+    if !(detuning isa Unitful.Frequency)
+        throw(
+            ArgumentError(
+                "The detuning must be an angular frequency (e.g. 2π * 1.5u\"MHz\"), " *
+                "got $detuning",
+            ),
+        )
+    end
+    component = zeeman_shift(species, upper, B) - zeeman_shift(species, lower, B)
+    RelativeFrequency(lower.level => upper.level, detuning + component)
+end
+
+"""
     photon_energy(laser)
     photon_energy(species, laser)
 

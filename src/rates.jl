@@ -501,5 +501,29 @@ function rabi_normalised(
     (abs(Ω0) / abs(c)) .* couplings
 end
 
+"""
+    intensity_for_rabi(species, lower::StateSpec, upper::StateSpec, Ω, ε, n[, B])
+
+Returns the intensity at which a running wave of polarisation `ε` and
+propagation direction `n` drives the `lower` → `upper` component with the
+Rabi frequency magnitude `abs(Ω)` (angular units) — the inverse of
+[`rabi_frequency`](@ref), whose arguments (including the optional static
+field `B` for exact at-field hyperfine amplitudes) it shares, since the Rabi
+frequency scales as the square root of the intensity. Raises if the geometry
+does not drive the component at all.
+"""
+function intensity_for_rabi(species, lower::StateSpec, upper::StateSpec, Ω, ε, n, B...)
+    reference = 1.0u"W/m^2"
+    Ω_ref = abs(rabi_frequency(species, lower, upper, reference, ε, n, B...))
+    iszero(Ω_ref) && throw(
+        ArgumentError(
+            "The component $lower → $upper is not driven by this polarisation " *
+            "and beam direction",
+        ),
+    )
+    uconvert(u"W/m^2", reference * abs2(uconvert(NoUnits, abs(Ω) / Ω_ref)))
+end
+
 export transition_amplitude, rabi_frequency, coupling_matrix, rabi_normalised
+export intensity_for_rabi
 public clebsch_gordan, multipole_rank, hyperfine_reduction
