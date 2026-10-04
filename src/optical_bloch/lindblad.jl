@@ -36,7 +36,11 @@ over the states of `basis`: `hamiltonian` is the static ``H_0`` (Hermitian,
 µs⁻¹) — the frame diagonal plus the couplings ``(C + C^†)/2`` of all
 time-independent beam components, with `C` from [`coupling_matrix`](@ref) — and
 `harmonics` the ``(w_j, M_j)`` pairs of the components left with a beat note
-(empty for a static model). `jump_operators` (µs⁻¹ᐟ²) are labelled by
+(empty for a static model). `couplings` keeps the complex coupling matrix
+``C_b`` of each beam (µs⁻¹, upper⟨row|lower⟩⟨col|, exact at the static field)
+as it entered the Hamiltonian, beat-note components included — the per-beam
+split that the motional layer needs, e.g. to attach each beam's displacement
+operator in [`motional_model`](@ref). `jump_operators` (µs⁻¹ᐟ²) are labelled by
 `jump_labels` ([`DecayLabel`](@ref), [`DephasingLabel`](@ref)).
 
 For a hyperfine species the basis states denote the adiabatically-labelled
@@ -47,6 +51,7 @@ struct LindbladModel{B<:StateBasis,F<:RotatingFrame,H<:Quantity,W<:Quantity,J<:Q
     basis::B
     frame::F
     hamiltonian::Matrix{H}
+    couplings::Vector{Matrix{H}}
     harmonics::Vector{Tuple{W,Matrix{H}}}
     jump_operators::Vector{Matrix{J}}
     jump_labels::Vector{Union{DecayLabel,DephasingLabel}}
@@ -253,7 +258,7 @@ function lindblad_model(
         push!(jump_labels, DephasingLabel(b))
     end
 
-    LindbladModel(basis, frame, H, harmonics, jump_operators, jump_labels)
+    LindbladModel(basis, frame, H, couplings, harmonics, jump_operators, jump_labels)
 end
 
 """

@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning].
   target Rabi frequency on one component), `RelativeFrequency(species, lower
   => upper, detuning, B)` (a detuning stated from a Zeeman or hyperfine
   component at field) and `peak_intensity`
+- `Levels.OpticalBloch` ingredients for laser cooling beyond the Lamb–Dicke
+  regime: `LindbladModel` keeps the per-beam `couplings`, `motional_coupling`
+  accepts `recoil_moment = :isotropic` and records the emission setting, and
+  `displacement_elements`, `emission_rule` (Gauss rules for the
+  emission-direction distributions of the multipole components) and
+  `fock_truncation` are exported
 
 <!-- Links -->
 

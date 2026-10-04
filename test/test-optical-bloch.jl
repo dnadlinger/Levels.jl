@@ -667,17 +667,32 @@ end
     end
     @test_throws ArgumentError recoil_moment(1, 2, [0, 0, 1.0])
     @test_throws ArgumentError recoil_moment(3, 0, [0, 0, 1.0])
-    # A constant moment replaces the pattern average.
+    # A constant moment replaces the pattern average; isotropic emission gives 1/3.
+    @test mc.emission == :exact
     mc_const =
         motional_coupling(CA40_NONREL_G, scheme, model, mode_z; recoil_moment=2 / 5)
     @test all(==(2 / 5), mc_const.recoil_moments)
-    @test_throws ArgumentError motional_coupling(
+    @test mc_const.emission == :constant
+    mc_iso = motional_coupling(
         CA40_NONREL_G,
         scheme,
         model,
         mode_z;
         recoil_moment=:isotropic,
     )
+    @test all(≈(1 / 3), mc_iso.recoil_moments)
+    @test mc_iso.emission == :isotropic
+    @test recoil_moment(0, 0, [0.3, -0.4, 0.5]) ≈ 1 / 3
+    @test_throws ArgumentError motional_coupling(
+        CA40_NONREL_G,
+        scheme,
+        model,
+        mode_z;
+        recoil_moment=:other,
+    )
+    # The model keeps the per-beam couplings the sideband Hamiltonian is built from.
+    @test length(model.couplings) == 2
+    @test all(strip_h(model.couplings[b]) ≈ strip_h(C[b]) for b in 1:2)
 
     # Several modes at once.
     modes = [mode_z, MotionalMode(2π * 2.0u"MHz", [1.0, 0, 1.0])]
@@ -686,6 +701,95 @@ end
     @test mcs[1].sideband_hamiltonian == mc.sideband_hamiltonian
     @test mcs[2].projected_lamb_dicke ≈
           [lamb_dicke(CA40_NONREL_G, modes[2], b) for b in scheme.beams]
+end
+
+@testitem "Displacement elements and emission rules" tags=[:unit, :fast] setup=[
+    OpticalBlochSetup,
+] begin
+    # Exact displacement elements against the matrix exponential in a larger
+    # space; finite orders against the exact elements of the truncated series.
+    num_fock = 30
+    a = zeros(num_fock + 40, num_fock + 40)
+    for m in 1:(num_fock+39)
+        a[m, m+1] = sqrt(m)
+    end
+    x = a + a'
+    for η in (0.05, 0.3, -0.7, 1.5)
+        D = exp(im * η * x)[1:num_fock, 1:num_fock]
+        @test displacement_elements(η, num_fock) ≈ D atol = 1e-12
+        @test displacement_elements(η, num_fock; order=1) ≈
+              I + im * η * x[1:num_fock, 1:num_fock]
+        @test displacement_elements(η, num_fock; order=2) ≈
+              I + im * η * x[1:num_fock, 1:num_fock] -
+              η^2 * (x^2)[1:num_fock, 1:num_fock] / 2
+        # A high finite order converges to the exact operator while the series
+        # is well conditioned (η√n ≲ 1).
+        abs(η) <= 0.3 &&
+            @test displacement_elements(η, num_fock; order=40) ≈ D atol = 1e-10
+    end
+    @test displacement_elements(0.0, 5) == I(5)
+    @test_throws ArgumentError displacement_elements(0.1, 5; order=0)
+    @test_throws ArgumentError displacement_elements(0.1, 5; order=1.5)
+    @test_throws ArgumentError displacement_elements(0.1, 0)
+    # The joint operator of two modes is the Kronecker product (exact) and the
+    # truncated series of the summed exponent (finite order).
+    joint = OpticalBloch.joint_displacement([0.2, -0.1], [6, 4])
+    @test Matrix(joint) ≈
+          kron(displacement_elements(0.2, 6), displacement_elements(-0.1, 4))
+    x1 = kron(x[1:6, 1:6], I(4))
+    x2 = kron(I(6), x[1:4, 1:4])
+    @test Matrix(OpticalBloch.joint_displacement([0.2, -0.1], [6, 4]; order=1)) ≈
+          I + im * (0.2 * x1 - 0.1 * x2)
+    # the second-order cross term −η₁η₂ x₁x₂ is kept (exact elements: use a
+    # larger space for the squares)
+    X = 0.2 * kron(x[1:8, 1:8], I(6)) - 0.1 * kron(I(8), x[1:6, 1:6])
+    keep = [(i - 1) * 6 + j for i in 1:6 for j in 1:4]
+    @test Matrix(OpticalBloch.joint_displacement([0.2, -0.1], [6, 4]; order=2)) ≈
+          (I+im*X-X^2/2)[keep, keep]
+
+    # Emission rules: normalised, inside [−1, 1], second moment = recoil_moment,
+    # odd moments vanish by the inversion symmetry of the patterns.
+    for (rank, q, dir) in (
+        (1, 0, [0, 0, 1.0]),
+        (1, 1, [1, 0, 0.0]),
+        (1, -1, [1, 2, 3.0]),
+        (2, 2, [0, 1, 1.0]),
+        (2, 0, [1, 0, 1.0]),
+        (0, 0, [0.5, 0, 1.0]),
+    )
+        h, w = emission_rule(rank, q, dir)
+        @test length(h) == 12 && sum(w) ≈ 1
+        @test all(abs.(h) .<= 1 + 1e-12) && all(w .>= 0)
+        @test sum(w .* h .^ 2) ≈ recoil_moment(rank, q, dir / norm(dir)) atol = 1e-12
+        @test abs(sum(w .* h)) < 1e-12
+        @test abs(sum(w .* h .^ 3)) < 1e-12
+    end
+    # Isotropic emission: ⟨h⁴⟩ = 1/5; a σ pattern along ẑ: ⟨h⁴⟩ = ∫ c⁴ (1 + c²)/2 / ∫ (1 + c²)/2 = 3/14... computed
+    h, w = emission_rule(0, 0, [0, 0, 1.0]; nodes=6)
+    @test sum(w .* h .^ 4) ≈ 1 / 5
+    h, w = emission_rule(1, 1, [0, 0, 1.0])
+    @test sum(w .* h .^ 4) ≈ (2 / 5 + 2 / 7) / (2 + 2 / 3) atol = 1e-12
+    @test_throws ArgumentError emission_rule(1, 2, [0, 0, 1.0])
+    @test_throws ArgumentError emission_rule(1, 0, [0, 0, 1.0]; nodes=0)
+    # Several directions: the joint second moments of a σ pattern are
+    # ⟨h_a h_b⟩ = a e_a·e_b + (⟨k_z²⟩ − a) e_az e_bz with a = (1 − ⟨k_z²⟩)/2.
+    es = [[0, 0, 1.0], normalize([1.0, 0, 1.0]), [0, 1.0, 0]]
+    H, w = emission_rule(1, 1, es; nodes=8)
+    @test size(H) == (length(w), 3) && sum(w) ≈ 1
+    kz2 = 2 / 5
+    α = (1 - kz2) / 2
+    for i in 1:3, j in 1:3
+        @test sum(w .* H[:, i] .* H[:, j]) ≈
+              α * dot(es[i], es[j]) + (kz2 - α) * es[i][3] * es[j][3] atol = 1e-12
+    end
+    @test sum(w .* H[:, 2] .^ 2) ≈ recoil_moment(1, 1, es[2])
+
+    # Fock truncation for a thermal tail.
+    @test fock_truncation(20.0) == 189
+    @test fock_truncation(0.0) == 2
+    @test fock_truncation(0.01; minimum=5) == 5
+    @test fock_truncation(1.0; tail=1e-2) == ceil(Int, log(1e-2) / log(0.5))
+    @test_throws ArgumentError fock_truncation(-1.0)
 end
 
 @testitem "Scheme conveniences: intensity for a Rabi frequency, component detunings, peak intensity" tags=[

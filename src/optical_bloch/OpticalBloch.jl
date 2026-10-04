@@ -33,6 +33,18 @@ normalised to µs⁻¹ (jump operators to µs⁻¹ᐟ²).
 module OpticalBloch
 
 using LinearAlgebra
+using FastGaussQuadrature: gausslegendre
+using SparseArrays:
+    SparseArrays,
+    SparseMatrixCSC,
+    dropzeros!,
+    droptol!,
+    nonzeros,
+    nzrange,
+    rowvals,
+    sparse,
+    spdiagm,
+    spzeros
 using StaticArrays: SVector
 using Unitful
 

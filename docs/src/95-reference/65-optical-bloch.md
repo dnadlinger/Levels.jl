@@ -34,11 +34,17 @@ Pages = ["lindblad.jl"]
 
 ## Motional layer
 
-The coupling of one motional mode to the internal dynamics, to first order in
-the Lamb–Dicke parameters. Note the distinction between the *projected*
-Lamb–Dicke factor of a beam (with the beam direction projected onto the mode)
-and the *unprojected* Lamb–Dicke parameter of a decay transition (whose
-emission direction is averaged into the recoil moment ``α``).
+The coupling of one motional mode to the internal dynamics: the first-order
+sideband Hamiltonian and recoil operators of the
+[`MotionalCoupling`](@ref Levels.OpticalBloch.MotionalCoupling),
+plus the ingredients of the models beyond first order in the Lamb–Dicke
+parameters — the displacement matrix elements of a plane wave on the Fock
+ladder and the emission-direction distributions of the multipole components as
+quadrature rules. Note the distinction between the *projected* Lamb–Dicke
+factor of a beam (with the beam direction projected onto the mode) and the
+*unprojected* Lamb–Dicke parameter of a decay transition (whose emission
+direction is averaged into the recoil moment ``α``, or integrated over with
+the emission rule).
 
 ```@autodocs
 Modules = [Levels.OpticalBloch]
