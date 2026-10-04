@@ -28,14 +28,23 @@ adds solver methods:
   `steadystate(model::LindbladModel; …)` — the internal-state Liouvillian and
   steady state (a model with a single beat-note harmonic is solved for its
   periodic steady state with `steadystate_fourier`, of which the
-  period-averaged component is returned);
+  period-averaged component is returned) — and the same two for a
+  [`MotionalModel`](@ref Levels.OpticalBloch.MotionalModel);
 - [`populations`](@ref Levels.OpticalBloch.populations),
   [`cooling_rates`](@ref Levels.OpticalBloch.cooling_rates) (adiabatic
   elimination of the internal dynamics for one or several modes),
   [`motional_model`](@ref Levels.OpticalBloch.motional_model) (the full
-  internal ⊗ motional operators),
-  [`mean_phonon_number`](@ref Levels.OpticalBloch.mean_phonon_number) and
-  [`cooling_time`](@ref Levels.OpticalBloch.cooling_time), documented on the
+  internal ⊗ motional master equation, to first or any order in the
+  Lamb–Dicke parameters, with an optional heating bath),
+  [`mean_phonon_number`](@ref Levels.OpticalBloch.mean_phonon_number),
+  [`fock_populations`](@ref Levels.OpticalBloch.fock_populations),
+  [`thermal_state`](@ref Levels.OpticalBloch.thermal_state),
+  [`cooling_time`](@ref Levels.OpticalBloch.cooling_time),
+  [`cooling_curve`](@ref Levels.OpticalBloch.cooling_curve) (`mesolve`
+  trajectories of the phonon numbers), the
+  [`BandLiouvillian`](@ref Levels.OpticalBloch.BandLiouvillian) and
+  [`IntegratedTransientSolver`](@ref Levels.OpticalBloch.IntegratedTransientSolver)
+  constructors from a `MotionalModel` or a `LindbladModel`, documented on the
   [Optical Bloch equations](@ref reference-optical-bloch) page.
 
 ```@autodocs

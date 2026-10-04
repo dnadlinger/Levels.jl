@@ -1,6 +1,7 @@
 # Conversions from Levels.jl objects to QuantumToolbox.jl `QuantumObject`s, so
 # that the QuantumToolbox solvers (`mesolve`, `steadystate_fourier`, …) can be
-# applied to models built from Levels data.
+# applied to models built from Levels data, and the QuantumToolbox-based
+# solvers of the Levels.OpticalBloch layer.
 #
 # QuantumToolbox works on dimensionless matrices, so the conversions fix a
 # reference time unit (the `time_unit` keyword; µs by default, matching the
@@ -13,10 +14,25 @@ module LevelsQuantumToolboxExt
 
 using LinearAlgebra: Diagonal, I, diag, eigen, norm, tr
 using Unitful
-using Levels: StateBasis, stateindex
+using Levels: Levels, StateBasis, stateindex
 using Levels.PeriodicDynamics: PeriodicDynamics, DrivenTransition
 using Levels.OpticalBloch:
-    OpticalBloch, DecayLabel, LindbladModel, MotionalCoupling, level_projector
+    OpticalBloch,
+    BandLiouvillian,
+    DecayLabel,
+    DephasingLabel,
+    HeatingLabel,
+    IntegratedTransientSolver,
+    LindbladModel,
+    MotionalCoupling,
+    MotionalModel,
+    RecoilLabel,
+    emission_rule,
+    joint_displacement,
+    level_projector,
+    phonon_number_operator,
+    thermal_populations,
+    validate_lamb_dicke_order
 using QuantumToolbox:
     QuantumToolbox,
     Ket,
@@ -25,8 +41,11 @@ using QuantumToolbox:
     SteadyStateLinearSolver,
     destroy,
     eigsolve,
+    isket,
+    ket2dm,
     liouvillian,
     mat2vec,
+    mesolve,
     num,
     ptrace,
     qeye,
@@ -182,10 +201,12 @@ end
 
 """
     liouvillian(model::LindbladModel; time_unit = u"µs")
+    liouvillian(mm::MotionalModel)
 
 Returns the Liouvillian superoperator of the internal-state master equation of
 the [`Levels.OpticalBloch.LindbladModel`](@ref) (static models only), in
-inverse `time_unit`.
+inverse `time_unit`, or of the full internal ⊗ motional master equation of a
+[`Levels.OpticalBloch.MotionalModel`](@ref).
 """
 function QuantumToolbox.liouvillian(
     model::LindbladModel;
@@ -195,17 +216,22 @@ function QuantumToolbox.liouvillian(
     liouvillian(hamiltonian_qobj(model; time_unit), jump_qobjs(model; time_unit))
 end
 
+QuantumToolbox.liouvillian(mm::MotionalModel) = liouvillian(mm.H, mm.c_ops)
+
 """
     steadystate(model::LindbladModel; time_unit = u"µs", num_harmonics = 4, solver, kwargs...)
+    steadystate(mm::MotionalModel; solver, kwargs...)
 
 Returns the steady-state internal density matrix of the
-[`Levels.OpticalBloch.LindbladModel`](@ref). A static model is solved directly
-(`QuantumToolbox.steadystate`); a model with beat-note harmonics at one frequency
-is solved for its periodic steady state with `steadystate_fourier`
-(`num_harmonics` harmonics of ρ, cf. its `n_max`), of which the period-averaged
-k = 0
-component is returned. `solver` defaults to the direct sparse factorisation
-`SteadyStateLinearSolver(; alg = nothing)`; further keywords pass through.
+[`Levels.OpticalBloch.LindbladModel`](@ref), or the steady state of the full
+internal ⊗ motional master equation of a
+[`Levels.OpticalBloch.MotionalModel`](@ref). A static model is solved directly
+(`QuantumToolbox.steadystate`); an internal model with beat-note harmonics at
+one frequency is solved for its periodic steady state with
+`steadystate_fourier` (`num_harmonics` harmonics of ρ, cf. its `n_max`), of
+which the period-averaged k = 0 component is returned. `solver` defaults to
+the direct sparse factorisation `SteadyStateLinearSolver(; alg = nothing)`;
+further keywords pass through.
 """
 function QuantumToolbox.steadystate(
     model::LindbladModel;
@@ -243,6 +269,12 @@ function QuantumToolbox.steadystate(
     ρs[1]
 end
 
+QuantumToolbox.steadystate(
+    mm::MotionalModel;
+    solver=SteadyStateLinearSolver(; alg=nothing),
+    kwargs...,
+) = steadystate(mm.H, mm.c_ops; solver, kwargs...)
+
 function OpticalBloch.populations(ρ::QuantumObject, model::LindbladModel)
     num_states = length(model.basis)
     size(ρ.data) == (num_states, num_states) || throw(
@@ -261,23 +293,43 @@ function OpticalBloch.populations(ρ::QuantumObject, model::LindbladModel, level
     sum(p[i] for i in 1:length(p) if !iszero(P[i, i]); init=0.0)
 end
 
-# --- Levels.OpticalBloch: motional layer ------------------------------------------
+# --- Levels.OpticalBloch: adiabatic-elimination rates ----------------------------
 
 # Adiabatic-elimination rates of one mode from the stripped internal Liouvillian
 # `L` and steady state `ρ` (plain matrices, inverse time_unit).
-function mode_rates(L, ρ, mc::MotionalCoupling, model::LindbladModel, time_unit)
+function mode_rates(L, ρ, mc::MotionalCoupling, time_unit)
     H_sb = ustrip.(time_unit^-1, mc.sideband_hamiltonian)
     ω_m = ustrip(time_unit^-1, mc.mode.frequency)
     y = mat2vec(H_sb * ρ)
     spectrum(ω) = tr(H_sb * vec2mat((-L + (im * ω) * I) \ y))
     diffusion = 0.0
-    for (k, R) in zip(mc.recoil_indices, mc.recoil_operators)
+    for R in mc.recoil_operators
         Rs = ustrip.(time_unit^(-1 // 2), R)
         diffusion += real(tr(Rs' * Rs * ρ))
     end
     A_plus = 2 * real(spectrum(ω_m)) + diffusion
     A_minus = 2 * real(spectrum(-ω_m)) + diffusion
     A_plus, A_minus
+end
+
+function check_heating_rate(heating_rate)
+    (heating_rate isa Unitful.Frequency && heating_rate >= zero(heating_rate)) || throw(
+        ArgumentError(
+            "heating_rate must be a non-negative rate in quanta per time " *
+            "(e.g. 1000.0u\"s^-1\"), got $heating_rate",
+        ),
+    )
+end
+
+# One heating rate per mode, from a single rate or one per mode.
+function mode_heating_rates(heating_rate, num_modes)
+    rates =
+        heating_rate isa AbstractVector ? collect(heating_rate) :
+        fill(heating_rate, num_modes)
+    length(rates) == num_modes ||
+        throw(ArgumentError("heating_rate must be one rate or one per mode"))
+    foreach(check_heating_rate, rates)
+    rates
 end
 
 function OpticalBloch.cooling_rates(
@@ -288,11 +340,12 @@ function OpticalBloch.cooling_rates(
     time_unit::Unitful.Units=Unitful.µs,
 )
     require_static(model, "cooling_rates")
+    check_heating_rate(heating_rate)
     L = liouvillian(model; time_unit).data
     ρm = Matrix(ρ.data)
     h = ustrip(time_unit^-1, heating_rate)
     map(mcs) do mc
-        A_plus, A_minus = mode_rates(L, ρm, mc, model, time_unit)
+        A_plus, A_minus = mode_rates(L, ρm, mc, time_unit)
         net = A_minus - A_plus
         cooling = net > 0
         (;
@@ -307,68 +360,172 @@ end
 OpticalBloch.cooling_rates(model::LindbladModel, mc::MotionalCoupling; kwargs...) =
     only(OpticalBloch.cooling_rates(model, [mc]; kwargs...))
 
+# --- Levels.OpticalBloch: the full internal ⊗ motional model ----------------------
+
 function OpticalBloch.motional_model(
     model::LindbladModel,
     mcs::AbstractVector{<:MotionalCoupling};
     num_fock,
+    lamb_dicke_order::Real=1,
+    heating_rate=0.0u"s^-1",
+    nodes=nothing,
     time_unit::Unitful.Units=Unitful.µs,
 )
     require_static(model, "motional_model")
+    validate_lamb_dicke_order(lamb_dicke_order)
+    order = Float64(lamb_dicke_order)
     num_modes = length(mcs)
-    sizes =
-        num_fock isa Integer ? fill(Int(num_fock), num_modes) : collect(Int, num_fock)
-    length(sizes) == num_modes ||
+    num_modes >= 1 || throw(ArgumentError("At least one mode is required"))
+    heating_rates = mode_heating_rates(heating_rate, num_modes)
+    nf = num_fock isa Integer ? fill(Int(num_fock), num_modes) : collect(Int, num_fock)
+    length(nf) == num_modes ||
         throw(ArgumentError("num_fock must be one truncation or one per mode"))
-    all(>(1), sizes) || throw(ArgumentError("Each Fock truncation must be at least 2"))
+    all(>(1), nf) ||
+        throw(ArgumentError("Each Fock truncation must hold at least 2 states"))
+    emission = mcs[1].emission
+    if order > 1
+        all(mc.emission == emission for mc in mcs) || throw(
+            ArgumentError(
+                "All modes must share one emission setting (:exact or :isotropic) " *
+                "beyond first order in the Lamb–Dicke parameters",
+            ),
+        )
+        emission == :constant && throw(
+            ArgumentError(
+                "Beyond first order in the Lamb–Dicke parameters the recoil kicks " *
+                "need the emission-direction distribution, not only its second " *
+                "moment; build the MotionalCoupling with recoil_moment = :exact " *
+                "or :isotropic",
+            ),
+        )
+    end
+    num_nodes = isnothing(nodes) ? (isinf(order) ? 12 : Int(order) + 1) : Int(nodes)
+    num_states = length(model.basis)
 
     # Sparse throughout: the tensor products (and hence the Liouvillian, of
     # dimension (N Π num_fock)²) would otherwise be dense.
     internal(M) = to_sparse(QuantumObject(M, model.basis; time_unit))
-    eye_int = qeye(length(model.basis))
-    eyes = [qeye(size) for size in sizes]
+    motional(D) = QuantumObject(D, Operator(), Tuple(nf))
+    eye_int = qeye(num_states)
+    eyes = [qeye(n) for n in nf]
     # Operator on the full space with `op` in slot `slot` (0 = internal states).
     function embed(op, slot)
         factors = Any[eye_int; eyes...]
         factors[slot+1] = op
         tensor(factors...)
     end
-    # `op_int ⊗ (a_m + a_m†)` with identities on the other modes.
-    function sideband(op_int, m)
-        a = destroy(sizes[m])
-        factors = Any[op_int; eyes...]
-        factors[m+1] = a + a'
-        tensor(factors...)
+    rate(x) = ustrip(time_unit^-1, x)
+
+    # Hamiltonian: the frame diagonal, the mode energies, and every beam's
+    # coupling dressed with the (truncated) joint displacement operator of its
+    # projected Lamb–Dicke factors.
+    H = embed(internal(Matrix(Diagonal(diag(model.hamiltonian)))), 0)
+    for (m, mc) in enumerate(mcs)
+        H += rate(mc.mode.frequency) * embed(num(nf[m]), m)
+    end
+    for (b, C) in enumerate(model.couplings)
+        ηs = [mc.projected_lamb_dicke[b] for mc in mcs]
+        T = tensor(internal(C), motional(joint_displacement(ηs, nf; order))) / 2
+        H += T + T'
     end
 
-    H = embed(internal(model.hamiltonian), 0)
-    for (m, mc) in enumerate(mcs)
-        a = destroy(sizes[m])
-        H += ustrip(time_unit^-1, mc.mode.frequency) * embed(a' * a, m)
-        H += sideband(internal(mc.sideband_hamiltonian), m)
-    end
-    c_ops = QuantumObject[embed(internal(L), 0) for L in model.jump_operators]
-    for (m, mc) in enumerate(mcs)
-        for R in mc.recoil_operators
-            push!(c_ops, sideband(internal(R), m))
+    # Jump operators: dephasing on the internal states only; spontaneous
+    # emission with its recoil — the separate first-order kick operators, or the
+    # emission-direction quadrature set of displaced decay operators.
+    c_ops = QuantumObject[]
+    labels = Any[]
+    directions = [mc.mode.direction for mc in mcs]
+    for (k, (L, label)) in enumerate(zip(model.jump_operators, model.jump_labels))
+        if label isa DephasingLabel
+            push!(c_ops, embed(internal(L), 0))
+            push!(labels, label)
+            continue
+        end
+        if order == 1
+            push!(c_ops, embed(internal(L), 0))
+            push!(labels, label)
+            for (m, mc) in enumerate(mcs)
+                R = mc.recoil_operators[findfirst(==(k), mc.recoil_indices)]
+                a = destroy(nf[m])
+                factors = Any[internal(R); eyes...]
+                factors[m+1] = a + a'
+                push!(c_ops, tensor(factors...))
+                push!(labels, RecoilLabel(label, m, 0))
+            end
+        else
+            rank =
+                emission == :isotropic ? 0 :
+                Levels.multipole_rank(label.lower, label.upper)
+            q = emission == :isotropic ? 0 : label.q
+            hs, ws = emission_rule(
+                rank,
+                q,
+                num_modes == 1 ? directions[1] : directions;
+                nodes=num_nodes,
+            )
+            η0s = [
+                mc.recoil_lamb_dicke[findfirst(==(k), mc.recoil_indices)] for mc in mcs
+            ]
+            Ls = internal(L)
+            for j in eachindex(ws)
+                h = num_modes == 1 ? [hs[j]] : hs[j, :]
+                D = joint_displacement(-η0s .* h, nf; order)
+                push!(c_ops, tensor(sqrt(ws[j]) * Ls, motional(D)))
+                push!(labels, RecoilLabel(label, 0, j))
+            end
         end
     end
-    (; H, c_ops)
+
+    # Heating bath.
+    for m in 1:num_modes
+        h_bath = sqrt(rate(heating_rates[m]))
+        h_bath > 0 || continue
+        a = destroy(nf[m])
+        push!(c_ops, h_bath * embed(a, m))
+        push!(labels, HeatingLabel(m, false))
+        push!(c_ops, h_bath * embed(a', m))
+        push!(labels, HeatingLabel(m, true))
+    end
+    MotionalModel(
+        H,
+        c_ops,
+        labels,
+        num_states,
+        nf,
+        [mc.mode for mc in mcs],
+        order,
+        time_unit,
+    )
 end
 
 OpticalBloch.motional_model(model::LindbladModel, mc::MotionalCoupling; kwargs...) =
     OpticalBloch.motional_model(model, [mc]; kwargs...)
 
+# The phonon-number operator of one mode on the full space.
+function number_operator(mm::MotionalModel, mode::Integer)
+    factors = Any[qeye(mm.num_states); [qeye(n) for n in mm.num_fock]...]
+    factors[mode+1] = num(mm.num_fock[mode])
+    tensor(factors...)
+end
+
+function reduced_populations(ρ::QuantumObject, mm::MotionalModel, mode::Integer)
+    p = real.(diag(ptrace(ρ, mode + 1).data))
+    p ./ sum(p)
+end
+
+function OpticalBloch.fock_populations(ρ::QuantumObject, mm::MotionalModel)
+    [reduced_populations(ρ, mm, m) for m in eachindex(mm.num_fock)]
+end
+
 function OpticalBloch.mean_phonon_number(
     ρ::QuantumObject,
-    model::LindbladModel,
-    mcs::AbstractVector{<:MotionalCoupling};
+    mm::MotionalModel;
     method::Symbol=:direct,
 )
     method in (:direct, :thermal_ratio) ||
         throw(ArgumentError("method must be :direct or :thermal_ratio, got $method"))
-    map(1:length(mcs)) do m
-        p = real.(diag(ptrace(ρ, m + 1).data))
-        p ./= sum(p)
+    nbars = map(eachindex(mm.num_fock)) do m
+        p = reduced_populations(ρ, mm, m)
         if method == :direct
             sum((n - 1) * p[n] for n in eachindex(p))
         else
@@ -381,19 +538,100 @@ function OpticalBloch.mean_phonon_number(
             r < 1 ? r / (1 - r) : Inf
         end
     end
+    length(nbars) == 1 ? only(nbars) : nbars
 end
 
-OpticalBloch.mean_phonon_number(
-    ρ::QuantumObject,
-    model::LindbladModel,
-    mc::MotionalCoupling;
+function OpticalBloch.thermal_state(mm::MotionalModel, internal::QuantumObject, nbars)
+    ρ_int = isket(internal) ? ket2dm(internal) : internal
+    nb =
+        nbars isa Real ? fill(Float64(nbars), length(mm.num_fock)) :
+        collect(Float64, nbars)
+    length(nb) == length(mm.num_fock) ||
+        throw(ArgumentError("One mean occupation per mode is required"))
+    thermals = [
+        QuantumObject(Diagonal(thermal_populations(nbar, n)), Operator(), n) for
+        (n, nbar) in zip(mm.num_fock, nb)
+    ]
+    tensor(ρ_int, thermals...)
+end
+
+function OpticalBloch.cooling_curve(
+    mm::MotionalModel,
+    ρ0::QuantumObject,
+    ts;
+    fock::Bool=false,
     kwargs...,
-) = only(OpticalBloch.mean_phonon_number(ρ, model, [mc]; kwargs...))
+)
+    times = eltype(ts) <: Quantity ? ustrip.(mm.time_unit, ts) : collect(float.(ts))
+    num_modes = length(mm.num_fock)
+    N_ops = [number_operator(mm, m) for m in 1:num_modes]
+    if fock
+        sol = mesolve(mm.H, ρ0, times, mm.c_ops; progress_bar=Val(false), kwargs...)
+        nbar = [real(tr(N_ops[m].data * ρ.data)) for ρ in sol.states, m in 1:num_modes]
+        populations = [
+            reduce(hcat, [reduced_populations(ρ, mm, m) for ρ in sol.states]) for
+            m in 1:num_modes
+        ]
+        return (; t=times, nbar, fock=populations)
+    end
+    sol = mesolve(
+        mm.H,
+        ρ0,
+        times,
+        mm.c_ops;
+        e_ops=N_ops,
+        progress_bar=Val(false),
+        kwargs...,
+    )
+    (; t=times, nbar=Matrix(transpose(real.(sol.expect))), fock=nothing)
+end
+
+OpticalBloch.BandLiouvillian(mm::MotionalModel; bandwidth=nothing) = BandLiouvillian(
+    mm.H.data,
+    [c.data for c in mm.c_ops],
+    mm.num_states,
+    mm.num_fock;
+    bandwidth,
+)
+
+function OpticalBloch.BandLiouvillian(
+    model::LindbladModel;
+    time_unit::Unitful.Units=Unitful.µs,
+)
+    require_static(model, "BandLiouvillian")
+    BandLiouvillian(
+        hamiltonian_qobj(model; time_unit).data,
+        [L.data for L in jump_qobjs(model; time_unit)],
+        length(model.basis),
+        Int[],
+    )
+end
+
+function OpticalBloch.IntegratedTransientSolver(
+    mm::MotionalModel;
+    bandwidth=nothing,
+    observables=[
+        phonon_number_operator(mm.num_states, mm.num_fock, m) for
+        m in eachindex(mm.num_fock)
+    ],
+    atol::Real=1e-9,
+)
+    IntegratedTransientSolver(BandLiouvillian(mm; bandwidth), observables; atol)
+end
+
+OpticalBloch.IntegratedTransientSolver(
+    model::LindbladModel,
+    observables;
+    time_unit::Unitful.Units=Unitful.µs,
+    atol::Real=1e-9,
+) = IntegratedTransientSolver(BandLiouvillian(model; time_unit), observables; atol)
 
 function OpticalBloch.cooling_time(
     H::QuantumObject,
     c_ops;
     time_unit::Unitful.Units=Unitful.µs,
+    mode_sizes=nothing,
+    mode=nothing,
     eigvals::Int=12,
     dense_limit::Int=2500,
     weight_threshold::Real=0.1,
@@ -407,14 +645,18 @@ function OpticalBloch.cooling_time(
         r = eigsolve(L; sigma=0.0 + 0.0im, eigvals)
         r.values, r.vectors
     end
-    # Total phonon-number operator over the motional factors (slot 1 is internal).
-    d = H.dims
-    sizes = collect(Int, d isa Tuple ? first(d) : d)
-    N_total = sum(
-        tensor((k == m ? num(sizes[k]) : qeye(sizes[k]) for k in eachindex(sizes))...) for m in 2:length(sizes)
-    )
+    # Phonon-number operator of the selected mode (or all modes) over the
+    # motional factors (slot 1 is internal).
+    sizes = if isnothing(mode_sizes)
+        d = H.dims
+        collect(Int, d isa Tuple ? first(d) : d)[2:end]
+    else
+        collect(Int, mode_sizes)
+    end
+    num_states = isqrt(dim) ÷ prod(sizes)
+    N_op = phonon_number_operator(num_states, sizes, mode)
     weights = [
-        abs(tr(N_total.data * vec2mat(vectors[:, i]))) / norm(vectors[:, i]) for
+        abs(tr(N_op * vec2mat(vectors[:, i]))) / norm(vectors[:, i]) for
         i in axes(vectors, 2)
     ]
     order = sortperm(abs.(real.(values)))
@@ -433,5 +675,13 @@ function OpticalBloch.cooling_time(
         ),
     )
 end
+
+OpticalBloch.cooling_time(mm::MotionalModel; kwargs...) = OpticalBloch.cooling_time(
+    mm.H,
+    mm.c_ops;
+    time_unit=mm.time_unit,
+    mode_sizes=mm.num_fock,
+    kwargs...,
+)
 
 end # module

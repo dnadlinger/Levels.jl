@@ -81,6 +81,50 @@
 
     strip_h(M) = ustrip.(u"µs^-1", M)
 
+    # The effective two-level system of sideband-cooling theory, built as a toy
+    # species: a closed σ⁻ cycle |S₁/₂, −½⟩ ↔ |P₃/₂, −3/2⟩ at 411 nm whose
+    # "P₃/₂" decays at γ, driven along the mode (ẑ) so that the projected and
+    # the recoil Lamb–Dicke parameters coincide; the mass is chosen to give the
+    # requested η at the mode frequency ω. Returns the internal model and the
+    # motional coupling for the carrier Rabi frequency Ω and detuning δ.
+    const TOY_S = StateSpec("S_1/2", -1//2)
+    const TOY_P = StateSpec("P_3/2", -3//2)
+    const TOY_BASIS = StateBasis([TOY_S, TOY_P])
+    const Z_AXIS = [0.0, 0.0, 1.0]
+    const σ_MINUS = [1.0, -im, 0.0] / √2
+    function sideband_toy(; γ, ω, η, Ω, δ, recoil_moment=:isotropic)
+        k = 2π / 411u"nm"
+        species = NoHyperfineOneElectronSpecies(;
+            mass=uconvert(u"u", u"ħ" * k^2 / (2 * ω * η^2)),
+            energies=Dict(
+                convert(NoHyperfineNumberSpec, "S_1/2") => 0.0u"J",
+                convert(NoHyperfineNumberSpec, "P_3/2") => u"h" * u"c" / 411u"nm",
+            ),
+            einstein_as=Dict(
+                (
+                    convert(NoHyperfineNumberSpec, "S_1/2"),
+                    convert(NoHyperfineNumberSpec, "P_3/2"),
+                ) => uconvert(u"µs^-1", γ),
+            ),
+        )
+        intensity = intensity_for_rabi(species, TOY_S, TOY_P, Ω, σ_MINUS, Z_AXIS)
+        beam = LaserBeam("S_1/2" => "P_3/2", δ, intensity, σ_MINUS, Z_AXIS)
+        scheme = LaserScheme(
+            TOY_BASIS,
+            [beam];
+            static_field=0.0u"mT",
+            frame_reference="S_1/2",
+        )
+        model = lindblad_model(species, scheme)
+        mode = MotionalMode(ω, Z_AXIS)
+        (;
+            species,
+            scheme,
+            model,
+            mode,
+            mc=motional_coupling(species, scheme, model, mode; recoil_moment),
+        )
+    end
 end
 
 @testitem "LaserBeam, LaserScheme and MotionalMode validation" tags=[:unit, :fast] setup=[

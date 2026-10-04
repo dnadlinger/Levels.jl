@@ -63,6 +63,14 @@ and this project adheres to [Semantic Versioning].
   `integral_relaxation_time`): one strictly pivoted sparse factorisation for
   the steady state and the integral relaxation time of any observable from
   any initial state (Kulosa et al. 2023's τ-matrix method)
+- `motional_model` takes a `lamb_dicke_order` (a positive integer, or `Inf`
+  for the exact displacement operators, with the recoil kicks integrated over
+  the emission-direction distribution of each multipole component) and a
+  `heating_rate` bath, and returns a `MotionalModel` on which the phonon
+  observables (`mean_phonon_number`, `fock_populations`, `thermal_state`,
+  `cooling_time`, `cooling_curve`) and the QuantumToolbox `steadystate`/
+  `liouvillian` dispatch. Breaking: the phonon observables take the
+  `MotionalModel` instead of the model and couplings
 
 <!-- Links -->
 
