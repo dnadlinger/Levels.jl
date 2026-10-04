@@ -44,7 +44,9 @@ adds solver methods:
   trajectories of the phonon numbers), the
   [`BandLiouvillian`](@ref Levels.OpticalBloch.BandLiouvillian) and
   [`IntegratedTransientSolver`](@ref Levels.OpticalBloch.IntegratedTransientSolver)
-  constructors from a `MotionalModel` or a `LindbladModel`, documented on the
+  constructors from a `MotionalModel` or a `LindbladModel`, and the common
+  [`cooling_metrics`](@ref Levels.OpticalBloch.cooling_metrics) front-end of
+  the cooling estimates, documented on the
   [Optical Bloch equations](@ref reference-optical-bloch) page.
 
 ```@autodocs

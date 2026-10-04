@@ -67,10 +67,12 @@ Pages = ["liouvillian.jl"]
 
 ## Solvers
 
-Steady states, populations, adiabatic-elimination cooling rates and the full
-internal ⊗ motional model to any order in the Lamb–Dicke parameters are
-provided through [QuantumToolbox.jl](https://qutip.org/QuantumToolbox.jl/) by
-the `LevelsQuantumToolboxExt` package extension (see
+Steady states, populations, adiabatic-elimination cooling rates, the full
+internal ⊗ motional model to any order in the Lamb–Dicke parameters and the
+common [`cooling_metrics`](@ref Levels.OpticalBloch.cooling_metrics) front-end
+of the cooling estimates are provided through
+[QuantumToolbox.jl](https://qutip.org/QuantumToolbox.jl/) by the
+`LevelsQuantumToolboxExt` package extension (see
 [QuantumToolbox integration](@ref reference-quantum-toolbox)); the functions
 below are defined there, the types here.
 

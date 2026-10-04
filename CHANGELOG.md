@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning].
   `cooling_time`, `cooling_curve`) and the QuantumToolbox `steadystate`/
   `liouvillian` dispatch. Breaking: the phonon observables take the
   `MotionalModel` instead of the model and couplings
+- `cooling_metrics(model, modes, method)` as the common front-end of the
+  cooling estimates — `AdiabaticElimination`, `IntegratedTransient`,
+  `LiouvillianSpectrum` — returning `CoolingMetrics` (steady-state occupation,
+  time constant, method-specific extras)
 
 <!-- Links -->
 

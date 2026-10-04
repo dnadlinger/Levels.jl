@@ -18,19 +18,26 @@ using Levels: Levels, StateBasis, stateindex
 using Levels.PeriodicDynamics: PeriodicDynamics, DrivenTransition
 using Levels.OpticalBloch:
     OpticalBloch,
+    AdiabaticElimination,
     BandLiouvillian,
+    CoolingMetrics,
     DecayLabel,
     DephasingLabel,
     HeatingLabel,
+    IntegratedTransient,
     IntegratedTransientSolver,
     LindbladModel,
     MotionalCoupling,
     MotionalModel,
     RecoilLabel,
+    LiouvillianSpectrum,
     emission_rule,
+    fock_truncation,
+    integral_relaxation_time,
     joint_displacement,
     level_projector,
     phonon_number_operator,
+    steady_value,
     thermal_populations,
     validate_lamb_dicke_order
 using QuantumToolbox:
@@ -683,5 +690,91 @@ OpticalBloch.cooling_time(mm::MotionalModel; kwargs...) = OpticalBloch.cooling_t
     mode_sizes=mm.num_fock,
     kwargs...,
 )
+
+# --- Levels.OpticalBloch: the common cooling-metrics front-end -------------------
+
+function OpticalBloch.cooling_metrics(
+    model::LindbladModel,
+    mcs::AbstractVector{<:MotionalCoupling},
+    method::AdiabaticElimination;
+    heating_rate=0.0u"s^-1",
+    ρ=steadystate(model),
+    time_unit::Unitful.Units=Unitful.µs,
+)
+    rates = OpticalBloch.cooling_rates(model, mcs; ρ, heating_rate, time_unit)
+    [
+        CoolingMetrics(method, r.nbar, r.τ_c, r.A_plus, r.A_minus, nothing, nothing) for
+        r in rates
+    ]
+end
+
+function OpticalBloch.cooling_metrics(
+    model::LindbladModel,
+    mcs::AbstractVector{<:MotionalCoupling},
+    method::LiouvillianSpectrum;
+    heating_rate=0.0u"s^-1",
+    ρ=nothing,
+    time_unit::Unitful.Units=Unitful.µs,
+)
+    mm = OpticalBloch.motional_model(
+        model,
+        mcs;
+        num_fock=method.num_fock,
+        lamb_dicke_order=method.lamb_dicke_order,
+        heating_rate,
+        time_unit,
+    )
+    ρ_ss = steadystate(mm)
+    nbars = OpticalBloch.fock_populations(ρ_ss, mm)
+    map(eachindex(mcs)) do m
+        nbar = sum((n - 1) * p for (n, p) in enumerate(nbars[m]))
+        τ = OpticalBloch.cooling_time(
+            mm;
+            mode=m,
+            eigvals=method.eigvals,
+            dense_limit=method.dense_limit,
+            weight_threshold=method.weight_threshold,
+        )
+        CoolingMetrics(method, nbar, τ, nothing, nothing, mm, nothing)
+    end
+end
+
+function OpticalBloch.cooling_metrics(
+    model::LindbladModel,
+    mcs::AbstractVector{<:MotionalCoupling},
+    method::IntegratedTransient;
+    heating_rate=0.0u"s^-1",
+    ρ=steadystate(model),
+    time_unit::Unitful.Units=Unitful.µs,
+)
+    num_modes = length(mcs)
+    nbar_ini =
+        method.nbar_ini isa Real ? fill(method.nbar_ini, num_modes) : method.nbar_ini
+    length(nbar_ini) == num_modes ||
+        throw(ArgumentError("nbar_ini must be one occupation or one per mode"))
+    num_fock = isnothing(method.num_fock) ? fock_truncation.(nbar_ini) : method.num_fock
+    mm = OpticalBloch.motional_model(
+        model,
+        mcs;
+        num_fock,
+        lamb_dicke_order=method.lamb_dicke_order,
+        heating_rate,
+        nodes=method.nodes,
+        time_unit,
+    )
+    solver = IntegratedTransientSolver(mm; bandwidth=method.bandwidth)
+    ρ0 = OpticalBloch.thermal_state(Matrix(ρ.data), mm.num_fock, nbar_ini)
+    map(1:num_modes) do m
+        τ = integral_relaxation_time(solver, ρ0, m) * time_unit
+        CoolingMetrics(method, steady_value(solver, m), τ, nothing, nothing, mm, solver)
+    end
+end
+
+OpticalBloch.cooling_metrics(
+    model::LindbladModel,
+    mc::MotionalCoupling,
+    method;
+    kwargs...,
+) = only(OpticalBloch.cooling_metrics(model, [mc], method; kwargs...))
 
 end # module

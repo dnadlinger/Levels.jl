@@ -466,3 +466,134 @@ end
     @test unitful.fock[1] ≈ band.fock[1] rtol = 1e-4
     @test steadystate(exact) isa typeof(ρ_th)
 end
+
+@testitem "Cooling metrics: the three methods agree in the rate-equation regime" tags=[
+    :integration,
+] setup=[OpticalBlochSetup] begin
+    using QuantumToolbox: steadystate
+
+    # Weak drive, small η: the full model relaxes like the adiabatic-elimination
+    # rate equation, whatever the Lamb–Dicke order.
+    ω = 2π * 0.6u"MHz"
+    γ = 2π * 50.0u"kHz"
+    s = sideband_toy(; γ, ω, η=0.02, Ω=2π * 20.0u"kHz", δ=(-ω))
+    ae = cooling_metrics(s.model, s.mc, AdiabaticElimination())
+    @test ae isa CoolingMetrics
+    @test ae.method == AdiabaticElimination() &&
+          isnothing(ae.model) &&
+          isnothing(ae.solver)
+    rates = cooling_rates(s.model, s.mc)
+    @test ae.nbar == rates.nbar && ae.τ_c == rates.τ_c
+    @test ae.A_plus == rates.A_plus && ae.A_minus == rates.A_minus
+    # the low-intensity limit 7/48 (γ/ω)² of isotropic emission
+    @test ae.nbar ≈ 7 / 48 * ustrip(NoUnits, γ / ω)^2 rtol = 0.02
+    it =
+        cooling_metrics(s.model, s.mc, IntegratedTransient(; nbar_ini=1.0, num_fock=20))
+    @test it.method.num_fock == 20 && isinf(it.method.lamb_dicke_order)
+    @test it.model isa MotionalModel && it.solver isa IntegratedTransientSolver
+    @test isnothing(it.A_plus)
+    @test it.nbar ≈ ae.nbar rtol = 0.02
+    @test it.τ_c ≈ ae.τ_c rtol = 0.02
+    it1 = cooling_metrics(
+        s.model,
+        s.mc,
+        IntegratedTransient(;
+            nbar_ini=1.0,
+            num_fock=20,
+            lamb_dicke_order=1,
+            bandwidth=nothing,
+        ),
+    )
+    @test it1.model.lamb_dicke_order == 1
+    @test it1.τ_c ≈ ae.τ_c rtol = 0.02
+    sm = cooling_metrics(s.model, s.mc, LiouvillianSpectrum(; num_fock=8))
+    @test sm.model isa MotionalModel && isnothing(sm.solver)
+    @test sm.nbar ≈ ae.nbar rtol = 0.02
+    @test sm.τ_c ≈ ae.τ_c rtol = 0.03
+    # Other initial states from the solver carried in the result.
+    ρ0 = thermal_state(Matrix(steadystate(s.model).data), it.model.num_fock, 3.0)
+    @test integral_relaxation_time(it.solver, ρ0) * u"µs" ≈ ae.τ_c rtol = 0.02
+    # The default truncation follows the thermal tail.
+    auto = IntegratedTransient(; nbar_ini=2.0)
+    @test isnothing(auto.num_fock) && auto.bandwidth == 4 && isnothing(auto.nodes)
+    @test cooling_metrics(s.model, s.mc, auto).model.num_fock == [fock_truncation(2.0)]
+    @test_throws ArgumentError IntegratedTransient(; nbar_ini=-1.0)
+    @test_throws ArgumentError IntegratedTransient(; nbar_ini=1.0, lamb_dicke_order=0)
+    @test_throws ArgumentError LiouvillianSpectrum(; num_fock=8, lamb_dicke_order=2.5)
+    # A heating bath shifts the occupation alike in the rate equations and the
+    # full model.
+    h = 1.0u"s^-1"
+    ae_h = cooling_metrics(s.model, s.mc, AdiabaticElimination(); heating_rate=h)
+    it_h = cooling_metrics(
+        s.model,
+        s.mc,
+        IntegratedTransient(; nbar_ini=1.0, num_fock=20);
+        heating_rate=h,
+    )
+    @test ae_h.nbar > 1.5ae.nbar
+    @test it_h.nbar ≈ ae_h.nbar rtol = 0.03
+    @test count(l -> l isa HeatingLabel, it_h.model.c_labels) == 2
+    # Several modes: one joint model, per-mode metrics (the second, far
+    # off-resonant mode barely couples, so its full-model occupation is set by
+    # its tiny rates and compares loosely).
+    modes = [s.mode, MotionalMode(2π * 2.5u"MHz", Z_AXIS)]
+    mcs =
+        motional_coupling(s.species, s.scheme, s.model, modes; recoil_moment=:isotropic)
+    many_ae = cooling_metrics(s.model, mcs, AdiabaticElimination())
+    many_it = cooling_metrics(
+        s.model,
+        mcs,
+        IntegratedTransient(; nbar_ini=[1.0, 0.5], num_fock=[12, 4]),
+    )
+    @test length(many_ae) == 2 && length(many_it) == 2
+    @test many_ae[1].nbar == ae.nbar
+    @test many_it[1].model === many_it[2].model &&
+          many_it[1].solver === many_it[2].solver
+    @test many_it[1].model.num_fock == [12, 4]
+    @test many_it[1].nbar ≈ ae.nbar rtol = 0.03
+    @test many_it[1].τ_c ≈ ae.τ_c rtol = 0.03
+    @test_throws ArgumentError cooling_metrics(
+        s.model,
+        mcs,
+        IntegratedTransient(; nbar_ini=[1.0], num_fock=4),
+    )
+    # The internal problem alone: the integrated transient of a level population
+    # — the quench-rate construction — on a LindbladModel.
+    decaying =
+        sideband_toy(; γ=2π * 1.0u"MHz", ω, η=0.05, Ω=1e-9u"µs^-1", δ=0.0u"µs^-1")
+    solver = IntegratedTransientSolver(
+        decaying.model,
+        level_projector(decaying.model, "P_3/2"),
+    )
+    @test integral_relaxation_time(solver, [0 0; 0 1.0]) ≈
+          1 / ustrip(u"µs^-1", 2π * 1.0u"MHz") rtol = 1e-6
+    @test steady_value(solver) ≈ 0 atol = 1e-9
+end
+
+@testitem "Integrated transient on a long Fock ladder" tags=[:integration, :slow] setup=[
+    OpticalBlochSetup,
+] begin
+    using QuantumToolbox: steadystate
+
+    # A Doppler-cooled ion at η = 0.1: the steady state spans > 100 orders of
+    # magnitude along the ladder, where UMFPACK's default threshold pivoting
+    # silently returned τ ≈ −7e9; strict pivoting gives the converged value
+    # (Kulosa et al. 2023, Fig. 1(b) scenario; regression from the
+    # quenched-sideband-cooling example).
+    ω = 2π * 0.6u"MHz"
+    γ = 2π * 50.0u"kHz"
+    s = sideband_toy(; γ, ω, η=0.1, Ω=2π * 500.0u"kHz", δ=(-ω))
+    num_fock = fock_truncation(20.0)
+    @test num_fock == 189
+    m = cooling_metrics(s.model, s.mc, IntegratedTransient(; nbar_ini=20.0))
+    @test m.model.num_fock == [num_fock]
+    @test m.τ_c * γ ≈ 81.5 rtol = 2e-3
+    @test 0.05 < m.nbar < 0.2
+    # Relaxation from a colder start is faster, and the integral time is a
+    # linear function of the initial occupation (one phonon per ≈ 2 lifetimes).
+    ρ_int = Matrix(steadystate(s.model).data)
+    τ5 = integral_relaxation_time(m.solver, thermal_state(ρ_int, num_fock, 5.0))
+    τ10 = integral_relaxation_time(m.solver, thermal_state(ρ_int, num_fock, 10.0))
+    @test τ5 < τ10 < ustrip(u"µs", m.τ_c)
+    @test (τ10 - τ5) * ustrip(u"µs^-1", γ) / 5 ≈ 2 rtol = 0.25
+end

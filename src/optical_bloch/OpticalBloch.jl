@@ -23,13 +23,15 @@ The motional layer never enters that model: a [`MotionalMode`](@ref) (frequency
 and direction) combines with a `LindbladModel` into a
 [`MotionalCoupling`](@ref) — the projected Lamb–Dicke factors per beam, the
 first-order sideband Hamiltonian and the recoil jump operators, one instance
-per mode — consumed by the QuantumToolbox-based solvers of the
-`LevelsQuantumToolboxExt` package extension (steady states, adiabatic-elimination
-cooling rates, full internal ⊗ motional models). A third, solver-independent
-layer provides the numerics on the assembled equations: the band-restricted
-[`BandLiouvillian`](@ref), its time evolution, and the
-[`IntegratedTransientSolver`](@ref) for steady states and integral relaxation
-times.
+per mode, plus the emission-direction distributions and displacement
+operators needed beyond first order — consumed by the QuantumToolbox-based
+solvers of the `LevelsQuantumToolboxExt` package extension (steady states,
+adiabatic-elimination cooling rates, full internal ⊗ motional models to any
+order in the Lamb–Dicke parameters, [`cooling_metrics`](@ref) as the common
+front-end). A third, solver-independent layer provides the numerics on the
+assembled equations: the band-restricted [`BandLiouvillian`](@ref), its time
+evolution, and the [`IntegratedTransientSolver`](@ref) for steady states and
+integral relaxation times.
 
 All quantities are unitful and, as in [`Levels.PeriodicDynamics`](@ref),
 normalised to µs⁻¹ (jump operators to µs⁻¹ᐟ²); only the numerics layer works
