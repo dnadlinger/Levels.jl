@@ -186,8 +186,8 @@ end
             @test isnan(rates.nbar) && isnan(ustrip(rates.τ_c))
         end
         if s == 0.01 && δ_over_ω == -1.0
-            for n_max in (4, 7)
-                full = motional_model(model, mc; n_max)
+            for num_fock in (4, 7)
+                full = motional_model(model, mc; num_fock)
                 ρ_full = steadystate(full.H, full.c_ops)
                 @test mean_phonon_number(ρ_full, model, mc) ≈ rates.nbar rtol = 5e-3
                 @test mean_phonon_number(ρ_full, model, mc; method=:thermal_ratio) ≈
@@ -222,7 +222,7 @@ end
     # intensity so that η Ω ≲ ω_m/4 keeps the adiabatic elimination roughly
     # valid. Even so, the full model's phonon distribution is not quite thermal:
     # p_{n+1}/p_n rises from 0.73 to 0.77 over the first dozen Fock states (rate
-    # model: 0.715 throughout), and the converged ⟨n⟩ = 3.05 (n_max = 32) lies
+    # model: 0.715 throughout), and the converged ⟨n⟩ = 3.05 (num_fock = 32) lies
     # 22 % above the rate model's n̄ = 2.51. The truncation at 8 perturbs only the
     # top ratio, so the thermal-ratio estimate (2.77; 2.86 converged) is compared
     # instead, while the direct ⟨n⟩ (2.04) is truncation-limited. The internal
@@ -241,7 +241,7 @@ end
     @test abs(mc.projected_lamb_dicke[2]) *
           2 *
           maximum(abs, model.hamiltonian[7:8, 3:6]) < 0.3ω_m
-    full = motional_model(model, mc; n_max=8)
+    full = motional_model(model, mc; num_fock=8)
     ρ_full = steadystate(full.H, full.c_ops)
     nbar_full = mean_phonon_number(ρ_full, model, mc; method=:thermal_ratio)
     @test nbar_full ≈ rates.nbar rtol = 0.15
@@ -255,13 +255,13 @@ end
     # truncation and the rate model reports NaN).
     modes = [mode, MotionalMode(2π * 2.3u"MHz", [0, 0, 1.0])]
     mcs = motional_coupling(CA40_NONREL_G, scheme, model, modes)
-    two = motional_model(model, mcs; n_max=[6, 3])
+    two = motional_model(model, mcs; num_fock=[6, 3])
     ρ_two = steadystate(two.H, two.c_ops)
     nbars = mean_phonon_number(ρ_two, model, mcs; method=:thermal_ratio)
     both = cooling_rates(model, mcs; ρ)
     @test length(nbars) == 2
     @test nbars[1] ≈ both[1].nbar rtol = 0.15
     @test isnan(both[2].nbar) && both[2].A_plus > both[2].A_minus
-    @test_throws ArgumentError motional_model(model, mcs; n_max=[6])
-    @test_throws ArgumentError motional_model(model, mc; n_max=1)
+    @test_throws ArgumentError motional_model(model, mcs; num_fock=[6])
+    @test_throws ArgumentError motional_model(model, mc; num_fock=1)
 end

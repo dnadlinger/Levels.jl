@@ -52,16 +52,17 @@ function monodromy(
     modulation=HarmonicPhaseModulation(),
 )
     period = ustrip(u"s", 2π / dt.drive_frequency)
-    n = length(dt.basis)
+    num_states = length(dt.basis)
     ham! = stripped_hamiltonian(dt, δ, modulation)
-    H = zeros(ComplexF64, n, n)
+    H = zeros(ComplexF64, num_states, num_states)
 
     function tdse!(dU, U, _, t)
         ham!(H, t)
         mul!(dU, H, U, -1.0im, 0.0im)
     end
 
-    problem = ODEProblem(tdse!, Matrix{ComplexF64}(I, n, n), (0.0, period))
+    problem =
+        ODEProblem(tdse!, Matrix{ComplexF64}(I, num_states, num_states), (0.0, period))
 
     # High-accuracy reference propagation settings.
     solution = solve(
@@ -161,10 +162,10 @@ function stroboscopic_populations(
     initial::Int=dt.lower,
 )
     U = monodromy(dt; δ, modulation)
-    n = length(dt.basis)
-    ψ = zeros(ComplexF64, n)
+    num_states = length(dt.basis)
+    ψ = zeros(ComplexF64, num_states)
     ψ[initial] = 1
-    populations = Matrix{Float64}(undef, n, num_periods + 1)
+    populations = Matrix{Float64}(undef, num_states, num_periods + 1)
     populations[:, 1] .= abs2.(ψ)
     for k in 1:num_periods
         ψ = U * ψ

@@ -57,13 +57,13 @@ shared; the modes are independent at this order.
 function cooling_rates end
 
 """
-    motional_model(model::LindbladModel, mc::MotionalCoupling; n_max, time_unit = u"µs")
-    motional_model(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}; n_max, time_unit)
+    motional_model(model::LindbladModel, mc::MotionalCoupling; num_fock, time_unit = u"µs")
+    motional_model(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}; num_fock, time_unit)
 
 Returns the full internal ⊗ motional model as QuantumToolbox operators,
 `(; H, c_ops, dims)`: the Hamiltonian
 ``H_\\mathrm{int} ⊗ 1 + \\sum_m ω_m a_m^† a_m + \\sum_m H_{\\mathrm{sb},m} ⊗ (a_m + a_m^†)``
-on the internal states and one Fock space per mode truncated at `n_max` levels
+on the internal states and one Fock space per mode truncated at `num_fock` levels
 (a number, or one per mode), and the jump operators ``L ⊗ 1`` together with the
 recoil operators ``\\sqrt{α} η_0 L ⊗ (a_m + a_m^†)`` of every mode. Recoil kicks
 are treated independently per mode (the emission-pattern cross moments between

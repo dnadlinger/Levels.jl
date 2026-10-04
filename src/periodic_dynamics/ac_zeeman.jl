@@ -102,9 +102,9 @@ end
 # amplitudes rotated from the coupled basis.
 function eigenbasis_blocks(m::HyperfineManifold, drives)
     isempty(drives) && throw(ArgumentError("At least one drive is required"))
-    n = length(m.basis)
+    num_states = length(m.basis)
     for drive in drives
-        if size(drive.amplitude) != (n, n)
+        if size(drive.amplitude) != (num_states, num_states)
             throw(
                 ArgumentError(
                     "Drive amplitude matrix does not match the manifold basis size",

@@ -196,20 +196,21 @@ function QuantumToolbox.liouvillian(
 end
 
 """
-    steadystate(model::LindbladModel; time_unit = u"µs", n_max = 4, solver, kwargs...)
+    steadystate(model::LindbladModel; time_unit = u"µs", num_harmonics = 4, solver, kwargs...)
 
 Returns the steady-state internal density matrix of the
 [`Levels.OpticalBloch.LindbladModel`](@ref). A static model is solved directly
 (`QuantumToolbox.steadystate`); a model with beat-note harmonics at one frequency
-is solved for its periodic steady state with `steadystate_fourier` (`n_max`
-harmonics of ρ, cf. its documentation), of which the period-averaged k = 0
+is solved for its periodic steady state with `steadystate_fourier`
+(`num_harmonics` harmonics of ρ, cf. its `n_max`), of which the period-averaged
+k = 0
 component is returned. `solver` defaults to the direct sparse factorisation
 `SteadyStateLinearSolver(; alg = nothing)`; further keywords pass through.
 """
 function QuantumToolbox.steadystate(
     model::LindbladModel;
     time_unit::Unitful.Units=Unitful.µs,
-    n_max::Int=4,
+    num_harmonics::Int=4,
     solver=SteadyStateLinearSolver(; alg=nothing),
     kwargs...,
 )
@@ -235,7 +236,7 @@ function QuantumToolbox.steadystate(
         H_m,
         ustrip(time_unit^-1, w),
         c_ops;
-        n_max,
+        n_max=num_harmonics,
         solver,
         kwargs...,
     )
@@ -243,11 +244,12 @@ function QuantumToolbox.steadystate(
 end
 
 function OpticalBloch.populations(ρ::QuantumObject, model::LindbladModel)
-    n = length(model.basis)
-    size(ρ.data) == (n, n) || throw(
+    num_states = length(model.basis)
+    size(ρ.data) == (num_states, num_states) || throw(
         ArgumentError(
             "Density matrix of size $(size(ρ.data)) does not match the model's " *
-            "$n internal states (reduce a full motional state with ptrace first)",
+            "$num_states internal states (reduce a full motional state with " *
+            "ptrace first)",
         ),
     )
     real.(diag(ρ.data))
@@ -266,7 +268,6 @@ end
 function mode_rates(L, ρ, mc::MotionalCoupling, model::LindbladModel, time_unit)
     H_sb = ustrip.(time_unit^-1, mc.sideband_hamiltonian)
     ω_m = ustrip(time_unit^-1, mc.mode.frequency)
-    n = size(ρ, 1)
     y = mat2vec(H_sb * ρ)
     spectrum(ω) = tr(H_sb * vec2mat((-L + (im * ω) * I) \ y))
     diffusion = 0.0
@@ -309,21 +310,22 @@ OpticalBloch.cooling_rates(model::LindbladModel, mc::MotionalCoupling; kwargs...
 function OpticalBloch.motional_model(
     model::LindbladModel,
     mcs::AbstractVector{<:MotionalCoupling};
-    n_max,
+    num_fock,
     time_unit::Unitful.Units=Unitful.µs,
 )
     require_static(model, "motional_model")
-    nmodes = length(mcs)
-    n_maxs = n_max isa Integer ? fill(Int(n_max), nmodes) : collect(Int, n_max)
-    length(n_maxs) == nmodes ||
-        throw(ArgumentError("n_max must be one truncation or one per mode"))
-    all(>(1), n_maxs) || throw(ArgumentError("Each Fock truncation must be at least 2"))
+    num_modes = length(mcs)
+    sizes =
+        num_fock isa Integer ? fill(Int(num_fock), num_modes) : collect(Int, num_fock)
+    length(sizes) == num_modes ||
+        throw(ArgumentError("num_fock must be one truncation or one per mode"))
+    all(>(1), sizes) || throw(ArgumentError("Each Fock truncation must be at least 2"))
 
     # Sparse throughout: the tensor products (and hence the Liouvillian, of
-    # dimension (N Π n_max)²) would otherwise be dense.
+    # dimension (N Π num_fock)²) would otherwise be dense.
     internal(M) = to_sparse(QuantumObject(M, model.basis; time_unit))
     eye_int = qeye(length(model.basis))
-    eyes = [qeye(n) for n in n_maxs]
+    eyes = [qeye(size) for size in sizes]
     # Operator on the full space with `op` in slot `slot` (0 = internal states).
     function embed(op, slot)
         factors = Any[eye_int; eyes...]
@@ -332,7 +334,7 @@ function OpticalBloch.motional_model(
     end
     # `op_int ⊗ (a_m + a_m†)` with identities on the other modes.
     function sideband(op_int, m)
-        a = destroy(n_maxs[m])
+        a = destroy(sizes[m])
         factors = Any[op_int; eyes...]
         factors[m+1] = a + a'
         tensor(factors...)
@@ -340,7 +342,7 @@ function OpticalBloch.motional_model(
 
     H = embed(internal(model.hamiltonian), 0)
     for (m, mc) in enumerate(mcs)
-        a = destroy(n_maxs[m])
+        a = destroy(sizes[m])
         H += ustrip(time_unit^-1, mc.mode.frequency) * embed(a' * a, m)
         H += sideband(internal(mc.sideband_hamiltonian), m)
     end

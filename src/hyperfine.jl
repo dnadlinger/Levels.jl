@@ -168,9 +168,9 @@ function coupling_transform(species::HyperfineOneElectronSpecies, fs_level)
     i = species.nuclear_spin
     j = spec.j
     d_i = Int(2i + 1)
-    n = Int(2j + 1) * d_i
+    num_states = Int(2j + 1) * d_i
 
-    U = zeros(n, n)
+    U = zeros(num_states, num_states)
     col = 0
     for f in abs(i-j):(i+j), m_f in (-f):f
         col += 1
@@ -224,7 +224,7 @@ function zeeman_hamiltonian(
         end for fs in manifolds
     )
 
-    n = length(basis)
+    num_states = length(basis)
     H = [
         begin
             bra = basis[i]
@@ -238,7 +238,7 @@ function zeeman_hamiltonian(
                     manifold_index(species, ket.level, ket.m),
                 ]
             end
-        end for i in 1:n, k in 1:n
+        end for i in 1:num_states, k in 1:num_states
     ]
     uconvert.(u"µs^-1", H)
 end
@@ -331,14 +331,14 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level, B)
     end
     spec = fine_structure(parse_level(fs_level))
     basis = StateBasis(species, spec)
-    n = length(basis)
+    num_states = length(basis)
 
     h = ustrip.(u"µs^-1", manifold_hamiltonian(species, spec, B))
     vals, vecs = eigen(Symmetric(real(h)))
 
     # Fix the arbitrary eigenvector signs for reproducibility: largest-magnitude
     # coupled-basis component positive.
-    for k in 1:n
+    for k in 1:num_states
         if vecs[argmax(abs.(view(vecs, :, k))), k] < 0
             vecs[:, k] .*= -1
         end
@@ -346,7 +346,8 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level, B)
 
     # m_F is exact, and F_z is diagonal in the coupled basis.
     fz = [Float64(s.m) for s in basis]
-    m_f_labels = [round(2 * sum(abs2.(view(vecs, :, k)) .* fz)) / 2 for k in 1:n]
+    m_f_labels =
+        [round(2 * sum(abs2.(view(vecs, :, k)) .* fz)) / 2 for k in 1:num_states]
 
     # Adiabatic F labels: within each m_F block (energy-ascending from eigen),
     # follow the zero-field energy ordering of the F levels.
@@ -356,10 +357,10 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level, B)
         collect(abs(i-spec.j):f_max);
         by=f -> hyperfine_shift(species, HyperfineNumberSpec(spec.l, spec.j, f)),
     )
-    energies = zeros(n)
-    states = zeros(n, n)
+    energies = zeros(num_states)
+    states = zeros(num_states, num_states)
     for m_f in (-f_max):f_max
-        ks = [k for k in 1:n if m_f_labels[k] == m_f]
+        ks = [k for k in 1:num_states if m_f_labels[k] == m_f]
         available = [f for f in zero_field_order if f >= abs(m_f)]
         @assert length(ks) == length(available)
         for (k, f) in zip(ks, available)
@@ -455,9 +456,9 @@ function eigenbasis_transform(
         end
     end
 
-    n = length(basis)
-    v = zeros(n, n)
-    for k in 1:n, i in 1:n
+    num_states = length(basis)
+    v = zeros(num_states, num_states)
+    for k in 1:num_states, i in 1:num_states
         slots[i].fs == slots[k].fs || continue
         v[i, k] = slots[k].m.states[slots[i].index, slots[k].index]
     end

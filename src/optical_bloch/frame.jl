@@ -129,13 +129,13 @@ rotating_frame(species, scheme::LaserScheme) =
 
 function rotating_frame(species, scheme::LaserScheme, couplings)
     basis = scheme.basis
-    n = length(basis)
-    nbeams = length(scheme.beams)
+    num_states = length(basis)
+    num_beams = length(scheme.beams)
     levels = fine_structure_levels(basis)
     offsets_beam = [beam_centroid_offset(species, beam) for beam in scheme.beams]
     E = typeof(1.0 * ANGULAR_UNIT)
-    offsets = zeros(E, n)
-    traversals = zeros(Int, n, nbeams)
+    offsets = zeros(E, num_states)
+    traversals = zeros(Int, num_states, num_beams)
     tree_beams = Int[]
     beats = Tuple{Int,Int,Int,E}[]
     level_of = [fine_structure(s.level) for s in basis]
@@ -144,14 +144,17 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
     # σ⁺ beam, does not count).
     components = map(couplings) do C
         scale = maximum(abs, C; init=zero(real(eltype(C))))
-        [(i, k) for i in 1:n for k in 1:n if abs(C[k, i]) > 1e-12 * scale]
+        [
+            (i, k) for i in 1:num_states for
+            k in 1:num_states if abs(C[k, i]) > 1e-12 * scale
+        ]
     end
 
     if scheme.frame_kind == :levels
         # Spanning tree over the levels.
         level_offsets = Dict{NoHyperfineNumberSpec,E}(l => zero(E) for l in levels)
         level_traversals = Dict{NoHyperfineNumberSpec,Vector{Int}}(
-            l => zeros(Int, nbeams) for l in levels
+            l => zeros(Int, num_beams) for l in levels
         )
         visited = Set([scheme.frame_reference])
         queue = [scheme.frame_reference]
@@ -174,7 +177,7 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
                 push!(queue, next)
             end
         end
-        for i in 1:n
+        for i in 1:num_states
             offsets[i] = level_offsets[level_of[i]]
             traversals[i, :] .= level_traversals[level_of[i]]
         end
@@ -191,13 +194,13 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
         # Spanning tree over the states, rooted at the first state of the
         # reference level.
         root = findfirst(==(scheme.frame_reference), level_of)
-        visited = falses(n)
+        visited = falses(num_states)
         visited[root] = true
         queue = [root]
         in_tree = Set{Tuple{Int,Int,Int}}()
         while !isempty(queue)
             s = popfirst!(queue)
-            for b in 1:nbeams, (i, k) in components[b]
+            for b in 1:num_beams, (i, k) in components[b]
                 if s == i && !visited[k]
                     next, from, sign = k, i, +1
                 elseif s == k && !visited[i]
@@ -214,7 +217,7 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
                 push!(queue, next)
             end
         end
-        for b in 1:nbeams, (i, k) in components[b]
+        for b in 1:num_beams, (i, k) in components[b]
             (b, i, k) in in_tree && continue
             w = offsets_beam[b] - (offsets[k] - offsets[i])
             abs(w) <= 1e-9 * abs(offsets_beam[b]) && continue

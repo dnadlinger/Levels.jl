@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning].
   and laser phase modulation, a dressed-state Floquet engine
   (`dress`/`sideband_amplitude`), and an exact monodromy-matrix engine
   (`exact_sideband`/`stroboscopic_populations`) as nonperturbative cross-check
+- Variables counting items are named `num_…` throughout (`num_states`,
+  `num_fock`, …), never bare `n`, which is reserved for the Fock index.
+  Breaking: the `motional_model` truncation keyword is `num_fock` and the
+  `steadystate(model)` harmonics keyword `num_harmonics` (both were `n_max`)
 
 <!-- Links -->
 

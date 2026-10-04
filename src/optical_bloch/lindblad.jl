@@ -145,15 +145,15 @@ function lindblad_model(
 
     basis = scheme.basis
     B = scheme.static_field
-    n = length(basis)
+    num_states = length(basis)
     couplings = beam_couplings(species, scheme)
     frame = rotating_frame(species, scheme, couplings)
     levels = frame.levels
 
     # --- Hamiltonian ---------------------------------------------------------
     energies = centroid_energies(species, basis, B)
-    H = zeros(typeof(complex(1.0) * ANGULAR_UNIT), n, n)
-    for i in 1:n
+    H = zeros(typeof(complex(1.0) * ANGULAR_UNIT), num_states, num_states)
+    for i in 1:num_states
         H[i, i] = complex(1.0) * (energies[i] - frame.offsets[i])
     end
     harmonics = Tuple{typeof(1.0 * ANGULAR_UNIT),typeof(H)}[]
@@ -191,7 +191,7 @@ function lindblad_model(
         upper_levels = unique!([l for l in basis.levels if fine_structure(l) == hi])
         amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)
         for q in (-rank):rank
-            L = zeros(J, n, n)
+            L = zeros(J, num_states, num_states)
             components = Tuple{Int,Int}[]
             for (i, s_lo) in enumerate(basis)
                 fine_structure(s_lo.level) == lo || continue
@@ -202,7 +202,7 @@ function lindblad_model(
                     iszero(amp) && continue
                     value = uconvert(JUMP_UNIT, sqrt(a) * complex(amp))
                     if decay == :resolved
-                        Lc = zeros(J, n, n)
+                        Lc = zeros(J, num_states, num_states)
                         Lc[i, k] = value
                         push!(jump_operators, Lc)
                         push!(jump_labels, DecayLabel(lo, hi, q, s_lo => s_hi))
@@ -244,9 +244,9 @@ function lindblad_model(
                 ),
             )
         end
-        L = zeros(J, n, n)
+        L = zeros(J, num_states, num_states)
         γ = uconvert(JUMP_UNIT, sqrt(beam.linewidth))
-        for i in 1:n
+        for i in 1:num_states
             L[i, i] = complex(frame.traversals[i, b]) * γ
         end
         push!(jump_operators, L)
@@ -283,8 +283,8 @@ levels for a hyperfine species.
 """
 function level_projector(model::LindbladModel, level)
     spec = parse_level(level)
-    n = length(model.basis)
-    P = zeros(n, n)
+    num_states = length(model.basis)
+    P = zeros(num_states, num_states)
     for (i, state) in enumerate(model.basis)
         matches =
             spec isa HyperfineNumberSpec ? state.level == spec :

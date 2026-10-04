@@ -158,8 +158,8 @@ function zeeman_hamiltonian(
         )
     end
 
-    n = length(basis)
-    [element(basis[i], basis[k]) for i in 1:n, k in 1:n]
+    num_states = length(basis)
+    [element(basis[i], basis[k]) for i in 1:num_states, k in 1:num_states]
 end
 
 export lande_g, zeeman_shift, zeeman_sensitivity, zeeman_hamiltonian

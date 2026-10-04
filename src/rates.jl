@@ -455,8 +455,8 @@ function coupling_matrix(
     lower_levels = level_list(species, pair.first)
     upper_levels = level_list(species, pair.second)
     amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)
-    N = length(basis)
-    C = zeros(typeof(complex(1.0) * u"µs^-1"), N, N)
+    num_states = length(basis)
+    C = zeros(typeof(complex(1.0) * u"µs^-1"), num_states, num_states)
     for (i, lo) in enumerate(basis)
         lo.level in lower_levels || continue
         for (k, hi) in enumerate(basis)

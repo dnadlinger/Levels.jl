@@ -133,13 +133,13 @@ end
 
 # Validates the coupling and drive matrices of a DrivenTransition against the
 # basis size and the two manifold index ranges.
-function validate_driven_blocks(n, coupling, drives, lower_range, upper_range)
-    if size(coupling) != (n, n)
+function validate_driven_blocks(num_states, coupling, drives, lower_range, upper_range)
+    if size(coupling) != (num_states, num_states)
         throw(ArgumentError("Laser coupling matrix does not match the basis size"))
     end
     if !all(
-        iszero(coupling[i, k]) for i in 1:n for
-        k in 1:n if !(i in upper_range && k in lower_range)
+        iszero(coupling[i, k]) for i in 1:num_states for
+        k in 1:num_states if !(i in upper_range && k in lower_range)
     )
         throw(
             ArgumentError(
@@ -149,7 +149,7 @@ function validate_driven_blocks(n, coupling, drives, lower_range, upper_range)
     end
 
     for drive in drives
-        if size(drive.amplitude) != (n, n)
+        if size(drive.amplitude) != (num_states, num_states)
             throw(ArgumentError("Drive amplitude matrix does not match the basis size"))
         end
         if !(
@@ -297,8 +297,8 @@ function DrivenTransition(
     end
     lower_range = staterange(basis, fs_lower)
     upper_range = staterange(basis, fs_upper)
-    n = length(basis)
-    if length(lower_range) + length(upper_range) != n
+    num_states = length(basis)
+    if length(lower_range) + length(upper_range) != num_states
         throw(
             ArgumentError(
                 "Basis must consist of exactly the two probed manifolds " *
@@ -306,7 +306,7 @@ function DrivenTransition(
             ),
         )
     end
-    validate_driven_blocks(n, coupling, drives, lower_range, upper_range)
+    validate_driven_blocks(num_states, coupling, drives, lower_range, upper_range)
 
     m_lower = hyperfine_manifold(species, fs_lower, static_field)
     m_upper = hyperfine_manifold(species, fs_upper, static_field)
