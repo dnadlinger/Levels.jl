@@ -792,6 +792,106 @@ end
     @test_throws ArgumentError fock_truncation(-1.0)
 end
 
+@testitem "Band Liouvillian and integrated transient" tags=[:unit, :fast] setup=[
+    OpticalBlochSetup,
+] begin
+    using SparseArrays
+
+    # A driven, decaying two-level system coupled to one damped oscillator, as
+    # plain matrices: the full band generator must equal the column-major
+    # vectorised Liouvillian −i(1 ⊗ H − Hᵀ ⊗ 1) + Σ (L̄ ⊗ L − ½ 1 ⊗ L†L − ½ (L†L)ᵀ ⊗ 1).
+    num_fock = 5
+    a = spdiagm(1 => sqrt.(1.0:(num_fock-1)))
+    σ = sparse([1], [2], [1.0], 2, 2)   # |g⟩⟨e|
+    H_int = sparse([0.0 0.3; 0.3 -0.2])
+    H = kron(H_int, I(num_fock)) + 1.5 * kron(I(2), a' * a) + 0.1 * kron(σ + σ', a + a')
+    c_ops = [sqrt(0.7) * kron(σ, I(num_fock)), sqrt(0.05) * kron(I(2), a)]
+    d = 2num_fock
+    vectorised(A, B) = kron(transpose(B), A)   # vec(A X B) = (Bᵀ ⊗ A) vec(X)
+    dissipator(L) =
+        vectorised(L, L') - vectorised(L' * L, I(d)) / 2 - vectorised(I(d), L' * L) / 2
+    Lfull = -im * (vectorised(H, I(d)) - vectorised(I(d), H)) + sum(dissipator, c_ops)
+    bl = BandLiouvillian(H, c_ops, 2, num_fock)
+    @test bl.bandwidth == num_fock - 1 && length(bl.entries) == d^2
+    perm = [(c - 1) * d + r for (r, c) in bl.entries]
+    @test maximum(abs, bl.L - Lfull[perm, perm]) < 1e-12
+    # Band restriction: entries outside the band are gone, the rest unchanged.
+    band = BandLiouvillian(H, c_ops, 2, num_fock; bandwidth=1)
+    @test all(
+        abs(((r - 1) % num_fock) - ((c - 1) % num_fock)) <= 1 for (r, c) in band.entries
+    )
+    @test all(band.index[r, c] > 0 for (r, c) in band.entries)
+    sub = [bl.index[r, c] for (r, c) in band.entries]
+    @test maximum(abs, band.L - bl.L[sub, sub]) < 1e-12
+    @test_throws ArgumentError BandLiouvillian(H, c_ops, 3, num_fock)
+    @test_throws ArgumentError BandLiouvillian(H, c_ops, 2, num_fock; bandwidth=-1)
+    # Round trips and trace functionals.
+    ρ = thermal_state([0.6 0.1; 0.1 0.4], num_fock, 1.2)
+    @test tr(ρ) ≈ 1
+    @test full_matrix(bl, band_vector(bl, ρ)) ≈ ρ
+    N = phonon_number_operator(2, num_fock)
+    @test diag(N) == repeat(0.0:(num_fock-1), 2)
+    @test transpose(expectation_row(bl, N)) * band_vector(bl, ρ) ≈ tr(N * ρ)
+    @test fock_populations(bl, band_vector(bl, ρ))[1] ≈
+          thermal_populations(1.2, num_fock)
+    @test fock_populations(bl, band_vector(bl, ρ), 1) ≈
+          thermal_populations(1.2, num_fock)
+    # Two modes: internal slowest, last mode fastest.
+    N2 = phonon_number_operator(3, [4, 2], 2)
+    @test diag(N2) == repeat([0.0, 1.0], 12)
+    @test diag(phonon_number_operator(3, [4, 2], 1)) ==
+          repeat(repeat(0.0:3, inner=2), 3)
+    @test diag(phonon_number_operator(3, [4, 2])) ==
+          diag(N2) + diag(phonon_number_operator(3, [4, 2], 1))
+    ρ2 = thermal_state(I(3) / 3, [4, 2], [0.5, 0.2])
+    bl2 = BandLiouvillian(spzeros(24, 24), [], 3, [4, 2])
+    p2 = fock_populations(bl2, band_vector(bl2, ρ2))
+    @test p2[1] ≈ thermal_populations(0.5, 4) && p2[2] ≈ thermal_populations(0.2, 2)
+    @test_throws ArgumentError thermal_state(I(3) / 3, [4, 2], [0.5])
+    @test_throws ArgumentError thermal_populations(-0.1, 4)
+
+    # Integrated transient on closed-form relaxations. A damped oscillator
+    # (no internal states, generator κ a): n̄(t) = n̄₀ e^{−κt}, so the integral
+    # relaxation time is 1/κ from any initial state and the steady value zero.
+    κ = 0.3
+    N_f = 8
+    a_f = spdiagm(1 => sqrt.(1.0:(N_f-1)))
+    osc = BandLiouvillian(spzeros(N_f, N_f), [sqrt(κ) * a_f], 1, N_f; bandwidth=2)
+    s = IntegratedTransientSolver(osc, phonon_number_operator(1, N_f))
+    @test steady_value(s) ≈ 0 atol = 1e-12
+    @test steady_state(s) ≈ [i == j == 1 ? 1.0 : 0.0 for i in 1:N_f, j in 1:N_f] atol = 1e-12
+    for nbar in (0.3, 1.0)
+        @test integral_relaxation_time(s, thermal_state(ones(1, 1), N_f, nbar)) ≈ 1 / κ rtol =
+            1e-9
+    end
+    fock3 = zeros(ComplexF64, N_f, N_f)
+    fock3[4, 4] = 1
+    @test integral_relaxation_time(s, fock3) ≈ 1 / κ rtol = 1e-9
+    # The propagated curve has the same area and end point.
+    r = cooling_curve(
+        osc,
+        thermal_state(ones(1, 1), N_f, 1.0),
+        range(0.0, 60.0; length=601);
+        fock=true,
+    )
+    @test r.nbar[1, 1] ≈ sum((0:(N_f-1)) .* thermal_populations(1.0, N_f))
+    @test r.nbar[:, 1] ≈ r.nbar[1, 1] .* exp.(-κ .* r.t) rtol = 1e-6
+    @test size(r.fock[1]) == (N_f, 601) && all(sum(r.fock[1]; dims=1) .≈ 1)
+    @test r.fock[1][1, end] ≈ 1 atol = 1e-6
+    # Spontaneous decay of a two-level atom from |e⟩: the excited population
+    # relaxes with the lifetime 1/Γ.
+    Γ = 2.0
+    atom = BandLiouvillian(spzeros(2, 2), [sqrt(Γ) * σ], 2, Int[])
+    P_e = [0.0 0; 0 1.0]
+    s_atom = IntegratedTransientSolver(atom, [P_e, [1.0 0; 0 0.0]])
+    @test steady_value(s_atom, 1) ≈ 0 atol = 1e-12
+    @test steady_value(s_atom, 2) ≈ 1
+    @test integral_relaxation_time(s_atom, P_e) ≈ 1 / Γ rtol = 1e-12
+    @test integral_relaxation_time(s_atom, P_e, 2) ≈ 1 / Γ rtol = 1e-12
+    @test integral_relaxation_time(s_atom, [0.5 0; 0 0.5]) ≈ 1 / Γ rtol = 1e-12
+    @test_throws ArgumentError IntegratedTransientSolver(atom, [])
+end
+
 @testitem "Scheme conveniences: intensity for a Rabi frequency, component detunings, peak intensity" tags=[
     :unit,
     :fast,

@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning].
   `displacement_elements`, `emission_rule` (Gauss rules for the
   emission-direction distributions of the multipole components) and
   `fock_truncation` are exported
+- Solver-independent numerics on the assembled master equations:
+  `BandLiouvillian` (the generator restricted to motional coherences within a
+  bandwidth, with `band_vector`/`full_matrix`/`expectation_row`), the band
+  `cooling_curve`, `phonon_number_operator`/`thermal_populations`/
+  `thermal_state`, and the integrated-transient method
+  (`IntegratedTransientSolver`, `steady_state`, `steady_value`,
+  `integral_relaxation_time`): one strictly pivoted sparse factorisation for
+  the steady state and the integral relaxation time of any observable from
+  any initial state (Kulosa et al. 2023's τ-matrix method)
 
 <!-- Links -->
 

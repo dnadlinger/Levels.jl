@@ -25,15 +25,22 @@ and direction) combines with a `LindbladModel` into a
 first-order sideband Hamiltonian and the recoil jump operators, one instance
 per mode — consumed by the QuantumToolbox-based solvers of the
 `LevelsQuantumToolboxExt` package extension (steady states, adiabatic-elimination
-cooling rates, full internal ⊗ motional models).
+cooling rates, full internal ⊗ motional models). A third, solver-independent
+layer provides the numerics on the assembled equations: the band-restricted
+[`BandLiouvillian`](@ref), its time evolution, and the
+[`IntegratedTransientSolver`](@ref) for steady states and integral relaxation
+times.
 
 All quantities are unitful and, as in [`Levels.PeriodicDynamics`](@ref),
-normalised to µs⁻¹ (jump operators to µs⁻¹ᐟ²).
+normalised to µs⁻¹ (jump operators to µs⁻¹ᐟ²); only the numerics layer works
+on the unit-stripped matrices of the solvers.
 """
 module OpticalBloch
 
 using LinearAlgebra
 using FastGaussQuadrature: gausslegendre
+using OrdinaryDiffEqVerner: Vern7
+using SciMLBase: ODEProblem, solve
 using SparseArrays:
     SparseArrays,
     SparseMatrixCSC,
@@ -78,6 +85,7 @@ include("scheme.jl")
 include("frame.jl")
 include("lindblad.jl")
 include("motion.jl")
+include("liouvillian.jl")
 include("quantum_toolbox.jl")
 
 end # module

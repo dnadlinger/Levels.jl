@@ -51,6 +51,20 @@ Modules = [Levels.OpticalBloch]
 Pages = ["motion.jl"]
 ```
 
+## Numerical methods
+
+Solver-independent numerics on the assembled internal ⊗ Fock master
+equations, working on plain matrices: the Liouvillian restricted to a band of
+motional coherences (which makes Fock ladders of hundreds of states
+tractable), its time evolution, thermal states, and the integrated-transient
+method — one sparse factorisation for the steady state and the integral
+relaxation time of any observable from any initial state.
+
+```@autodocs
+Modules = [Levels.OpticalBloch]
+Pages = ["liouvillian.jl"]
+```
+
 ## Solvers
 
 Steady states, populations, adiabatic-elimination cooling rates and the full
