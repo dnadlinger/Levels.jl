@@ -19,7 +19,7 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: pretty-format-json
-        args: [--autofix, --indent=2]
+        args: [--autofix, --indent=2, --no-ensure-ascii]
         exclude: \.ipynb$
       - id: trailing-whitespace
       - id: end-of-file-fixer
