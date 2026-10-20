@@ -369,13 +369,7 @@ end
         α1 = vector_polarisability(sr88, level, λ)
         α2 = tensor_polarisability(sr88, level, λ)
         for m in (-j):j
-            explicit = sum(
-                w .* Levels.state_polarisabilities(
-                    sr88,
-                    StateSpec(level, m),
-                    Levels.photon_energy(λ),
-                ),
-            )
+            explicit = sum(w .* polarisability(sr88, StateSpec(level, m), λ))
             tensor = j > 1//2 ? (3m^2 - j * (j + 1)) / (j * (2j - 1)) : 0//1
             @test explicit ≈
                   α0 + circular * (m / 2j) * α1 + (3w[2] - 1) / 2 * tensor * α2
@@ -1329,7 +1323,6 @@ end
 
 @testitem "F-basis light shifts" tags=[:unit] begin
     using Unitful
-    using Levels: photon_energy, state_polarisabilities
 
     # Toy hyperfine twins of ⁸⁸Sr⁺ — identical fine-structure data, fictitious
     # nuclear spin — so the F-basis machinery can be validated against the
@@ -1349,7 +1342,7 @@ end
         "S_1/2" => HyperfineConstants(; a=0.0u"J"),
         "D_5/2" => HyperfineConstants(; a=0.0u"J"),
     ]
-    ħω = photon_energy(674.0u"nm")
+    laser = 674.0u"nm"
 
     # I → 0: the single-F states reproduce the fine-structure channel
     # polarisabilities exactly.
@@ -1357,8 +1350,8 @@ end
     for (level, hf_level, j) in
         (("S_1/2", "S_1/2 F=1/2", 1//2), ("D_5/2", "D_5/2 F=5/2", 5//2))
         for m in (-j):j
-            @test state_polarisabilities(toy0, StateSpec(hf_level, m), ħω) ≈
-                  state_polarisabilities(sr88, StateSpec(level, m), ħω) rtol = 1e-12
+            @test polarisability(toy0, StateSpec(hf_level, m), laser) ≈
+                  polarisability(sr88, StateSpec(level, m), laser) rtol = 1e-12
         end
     end
 
@@ -1370,24 +1363,23 @@ end
     for level in ("S_1/2", "D_5/2")
         states = collect(StateBasis(toy32, level))
         mean =
-            sum(sum(state_polarisabilities(toy32, s, ħω)) / 3 for s in states) /
+            sum(sum(polarisability(toy32, s, laser)) / 3 for s in states) /
             length(states)
-        @test mean ≈ scalar_polarisability(sr88, level, 674.0u"nm") rtol = 1e-12
+        @test mean ≈ scalar_polarisability(sr88, level, laser) rtol = 1e-12
     end
     for f in 1:2
-        @test abs(tensor_polarisability(toy32, "S_1/2 F=$f", 674.0u"nm")) <
-              1e-15 * abs(scalar_polarisability(sr88, "S_1/2", 674.0u"nm"))
+        @test abs(tensor_polarisability(toy32, "S_1/2 F=$f", laser)) <
+              1e-15 * abs(scalar_polarisability(sr88, "S_1/2", laser))
     end
 
     # The α₀/α₁/α₂ decomposition (with j → F) against the per-channel sum, for
     # an arbitrary elliptical polarisation.
     _, ε = beam_vectors(0.4, 0.6, 0.8)
     w = Levels.polarisation_weights(ε)
-    laser = 674.0u"nm"
     for (level, m) in (("D_5/2 F=4", 3//1), ("D_5/2 F=2", -1//1), ("S_1/2 F=2", 2//1))
         spec = HyperfineNumberSpec(level)
         f = spec.f
-        α = state_polarisabilities(toy32, StateSpec(spec, m), ħω)
+        α = polarisability(toy32, StateSpec(spec, m), laser)
         α0 = scalar_polarisability(toy32, level, laser)
         α1 = vector_polarisability(toy32, level, laser)
         α2 = tensor_polarisability(toy32, level, laser)

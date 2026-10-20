@@ -8,8 +8,9 @@ and this project adheres to [Semantic Versioning].
 ## [Unreleased]
 
 - Initial release
-- `polarisability(species, state, laser, ε; B)` for the electric-dipole response
-  of an individual state, including the static limit. With `B`, light-shift
+- `polarisability(species, state, frequency[, ε]; B)` for the electric-dipole
+  response of an individual state — per Δm channel, or contracted with a
+  polarisation — including the static limit. With `B`, light-shift
   backgrounds are evaluated on the field eigenstates — hyperfine ``F`` mixing
   included, Zeeman and known intermediate hyperfine splittings resolved in the
   denominators — by the same at-field machinery as the near-resonant channels;

@@ -2,7 +2,9 @@
     using Unitful
 
     _, ε = beam_vectors(0.4, 0.6, 0.8)
+    w = Levels.polarisation_weights(ε)
     intensity = 12.0u"W/m^2"
+    laser = 422.0u"nm"
     for (species, state) in (
         (sr88, StateSpec("D_5/2", 3//2)),
         (ca43, StateSpec("D_5/2 F=4", 3)),
@@ -10,20 +12,50 @@
     )
         level, m = state.level, state.m
         j = level isa HyperfineNumberSpec ? level.f : level.j
-        w = Levels.polarisation_weights(ε)
-        laser = 422.0u"nm"
-        expected =
-            scalar_polarisability(species, level, laser) +
-            (w[3] - w[1]) * m / (2j) * vector_polarisability(species, level, laser) +
-            (3w[2] - 1) / 2 * (3m^2 - j * (j + 1)) / (j * (2j - 1)) *
-            tensor_polarisability(species, level, laser)
-        α = polarisability(species, state, laser, ε)
-        @test α ≈ expected
-        @test polarisability(species, state, laser, 3ε) ≈ α
-        @test polarisability(species, state, 2π * u"c" / laser, ε) ≈ α
+        α0 = scalar_polarisability(species, level, laser)
+        α1 = vector_polarisability(species, level, laser)
+        α2 = tensor_polarisability(species, level, laser)
+        tensor = (3m^2 - j * (j + 1)) / (j * (2j - 1))
+
+        # The per-channel form against the α₀/α₁/α₂ decomposition (j → F for
+        # a hyperfine level), exact for the zero-field states: π is the
+        # response to a field along the quantisation axis, the σ mean that to
+        # a linear field perpendicular to it, and their difference the
+        # circular (vector) part.
+        α = polarisability(species, state, laser)
+        @test α[2] ≈ α0 + tensor * α2
+        @test (α[1] + α[3]) / 2 ≈ α0 - tensor * α2 / 2
+        @test α[3] - α[1] ≈ m / j * α1
+        @test polarisability(species, state, laser, [0, 0, 1]) ≈ α[2]
+        @test polarisability(species, state, laser, [1, 0, 0]) ≈ (α[1] + α[3]) / 2
+
+        # The polarisation form is the contraction with the channel weights.
+        contracted = polarisability(species, state, laser, ε)
+        @test contracted ≈ sum(w .* α)
+        @test contracted ≈
+              α0 + (w[3] - w[1]) * m / (2j) * α1 + (3w[2] - 1) / 2 * tensor * α2
+        @test polarisability(species, state, laser, 3ε) ≈ contracted
+        @test polarisability(species, state, 2π * u"c" / laser, ε) ≈ contracted
         @test light_shift(species, state, laser, intensity, ε; parts=:background) ≈
-              -intensity * α / (2 * u"c" * u"ε0" * u"ħ")
+              -intensity * contracted / (2 * u"c" * u"ε0" * u"ħ")
     end
+
+    # Near an explicit channel (here the 397 nm line, 0.03 nm ≈ 57 GHz off) the
+    # Zeeman structure and the tabulated line centre would matter, so the plain
+    # sum is refused, as is a laser placed relative to the line; a nanometre
+    # (≈2 THz) away it is fine.
+    s = StateSpec("S_1/2 F=4", 4)
+    λ_397 =
+        uconvert(u"nm", 2π * u"c" / Levels.transition_frequency(ca43, "S_1/2", "P_1/2"))
+    @test_throws ArgumentError polarisability(ca43, s, λ_397 + 0.03u"nm")
+    @test_throws ArgumentError polarisability(ca43, s, λ_397 + 0.03u"nm", ε)
+    @test_throws ArgumentError polarisability(
+        ca43,
+        s,
+        RelativeFrequency("S_1/2 F=4" => "P_1/2 F=4", 2π * 1.0u"GHz"),
+        ε,
+    )
+    @test length(polarisability(ca43, s, λ_397 + 1.0u"nm")) == 3
 
     state = StateSpec("D_5/2 F=4", 3)
     for B in (0.0u"mT", [0, 0, 1]u"mT", 1u"s", NaN * u"mT", (1 + im)u"mT")
@@ -198,9 +230,15 @@ end
     ω = Levels.photon_energy(ca43, laser) / u"ħ"
     _, ε = beam_vectors(0.4, 0.6, 0.8)
     intensity = 10.0u"W/m^2"
-    full = -intensity * polarisability(ca43, state, ω, ε; B) / (2 * u"c" * u"ε0" * u"ħ")
-    # The named channel's rotating term is in :resonant, its counter-rotating
-    # term remains in :background. All use the same field eigenstates.
+    # The plain second-order sum at that frequency — which the public accessor
+    # refuses this close (50 GHz) to the line, hence the internal form — must
+    # be recovered by the split evaluation: the named channel's co-rotating
+    # term in :resonant, its counter-rotating term in :background, both on the
+    # same field eigenstates.
+    w = Levels.polarisation_weights(ε)
+    plain = sum(w .* Levels.state_polarisabilities(ca43, state, u"ħ" * ω, B))
+    full = -intensity * plain / (2 * u"c" * u"ε0" * u"ħ")
+    @test_throws ArgumentError polarisability(ca43, state, ω, ε; B)
     @test light_shift(c, state, intensity, ε) ≈ full rtol = 1e-8
     @test light_shift(c, state, intensity, ε) ≈
           light_shift(c, state, intensity, ε; parts=:background) +

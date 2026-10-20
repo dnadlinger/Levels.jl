@@ -1255,23 +1255,24 @@ function polarisability_data(species, level)
 end
 
 """
-Returns the per-channel polarisabilities of the stretched state ``m = F`` of a
-hyperfine level at zero field, from which the ``α_0``/``α_1``/``α_2``
-decomposition is extracted (``α_{σ^-} = α_0 - α_1/2 - α_2/2``,
-``α_π = α_0 + α_2``, ``α_{σ^+} = α_0 + α_1/2 - α_2/2`` there, as the tensor
-angular factor is unity at ``m = F``).
-"""
-stretched_channels(species, spec::HyperfineNumberSpec, ħω) =
-    state_polarisabilities(species, StateSpec(spec, spec.f), ħω)
+    polarisability(species, state::StateSpec, frequency[, ε]; B=nothing)
 
-"""
-    polarisability(species, state::StateSpec, laser, ε; B=nothing)
+Returns the electric-dipole polarisability of one state in SI units
+(``C m^2/V``): for each of the three ``Δm = q`` channels — a pure ``σ^-``,
+``π`` or ``σ^+`` driving field — as a length-3 vector indexed by `q + 2` (the
+layout of [`polarisation_weights`](@ref)), or, given the polarisation `ε`,
+contracted with those weights to the response for that field (only the
+direction and ellipticity of `ε` matter; a real vector is a linearly
+oscillating field). The ``π`` entry is the response to a field along the
+quantisation axis, the mean of the two ``σ`` entries that to a linear field
+perpendicular to it.
 
-Returns the electric-dipole polarisability of one state for polarisation `ε`,
-in SI units (``C m^2/V``). `laser` is a wavelength or angular frequency of the
-driving field — a laser, or e.g. a trap rf drive; `0u"s^-1"` gives the static
-response. Only the direction and ellipticity of `ε` matter; a real vector
-specifies a linearly oscillating electric field.
+`frequency` is the wavelength or angular frequency of the driving field — a
+laser, or e.g. a trap rf drive; `0u"s^-1"` gives the static response. Within
+~100 GHz of an explicit electric-dipole channel the result would depend on
+the Zeeman structure of the line and on the uncertain tabulated line centre,
+so such frequencies are refused, as is a [`RelativeFrequency`](@ref): that
+regime belongs to [`LightShiftCoefficients`](@ref) and [`light_shift`](@ref).
 
 Without `B`, the state is a zero-field ``|J, m_J⟩`` or ``|F, m_F⟩`` state.
 With `B` — the signed, nonzero scalar flux density along ẑ — a hyperfine
@@ -1285,20 +1286,35 @@ Zeeman energies in the denominators (cf.
 hyperfine constants stay degenerate at their centroid.
 
 This is the E1 response, with both rotating and counter-rotating terms; it
-includes no electric-quadrupole channels. The second-order expression has
-unregularised poles at E1 resonances and does not include linewidths. Near a
-driven resonance, [`light_shift`](@ref) and [`driven_light_shift`](@ref) provide
-the reference-frequency parametrisation and perturbation-validity warnings.
-
-For a sinusoidal field of peak amplitude `E`, the cycle-averaged energy shift
-is ``-α E^2/4``; for a static electric field it is ``-α E^2/2``. For a light
-beam of intensity `I`, the angular shift is ``-I α/(2c ε_0 ħ)``. The same
-calculation serves as the background of [`LightShiftCoefficients`](@ref).
+includes no electric-quadrupole channels, and the second-order expression
+has unregularised poles at the E1 resonances. For a sinusoidal field of peak
+amplitude `E`, the cycle-averaged energy shift is ``-α E^2/4``; for a static
+electric field it is ``-α E^2/2``. For a light beam of intensity `I`, the
+angular shift is ``-I α/(2c ε_0 ħ)`` — the background of
+[`LightShiftCoefficients`](@ref), which this calculation serves as well.
 """
-function polarisability(species, state::StateSpec, laser, ε; B=nothing)
-    w = polarisation_weights(ε)
-    sum(w .* state_polarisabilities(species, state, photon_energy(laser), B))
+function polarisability(species, state::StateSpec, frequency; B=nothing)
+    ħω = photon_energy(frequency)
+    validate_background_detunings(species, [state.level], ħω, Returns(nothing))
+    state_polarisabilities(species, state, ħω, B)
 end
+
+polarisability(species, state::StateSpec, frequency, ε; B=nothing) =
+    sum(polarisation_weights(ε) .* polarisability(species, state, frequency; B))
+
+polarisability(
+    species,
+    state::StateSpec,
+    laser::RelativeFrequency,
+    args...;
+    kwargs...,
+) = throw(
+    ArgumentError(
+        "polarisability evaluates the plain second-order sum at an absolute " *
+        "frequency; a laser placed relative to a line belongs to " *
+        "LightShiftCoefficients and light_shift",
+    ),
+)
 
 """
     scalar_polarisability(species, level, laser)
@@ -1317,16 +1333,20 @@ where ``𝒜 = |ε_{-1}|^2 - |ε_{+1}|^2`` is the degree of circular polarisatio
 about the quantisation axis and ``ε_0 = ε · ẑ``. [`light_shift`](@ref) evaluates
 the equivalent sum directly, without going through this decomposition.
 
-For a hyperfine ``F`` level (with ``j`` replaced by ``F`` in the decomposition),
-the components are extracted from the per-channel polarisabilities of the
-stretched state; cf. [`Levels.state_polarisabilities`](@ref) for the
-approximations involved.
+For a hyperfine ``F`` level (with ``j`` replaced by ``F`` in the
+decomposition), the components are extracted from the per-channel
+polarisabilities of the zero-field stretched state ``m = F``, where the tensor
+angular factor is unity: ``α_{σ^-} = α_0 - α_1/2 - α_2/2``,
+``α_π = α_0 + α_2`` and ``α_{σ^+} = α_0 + α_1/2 - α_2/2`` (cf.
+[`polarisability`](@ref); the decomposition is a zero-field level property,
+as the single-``F`` angular factors do not describe a mixed field
+eigenstate).
 """
 function scalar_polarisability(species, level, laser)
     ħω = photon_energy(laser)
     parsed = parse_level(level)
     if parsed isa HyperfineNumberSpec
-        α = stretched_channels(species, parsed, ħω)
+        α = state_polarisabilities(species, StateSpec(parsed, parsed.f), ħω)
         return (α[1] + α[2] + α[3]) / 3
     end
     spec, data = polarisability_data(species, level)
@@ -1355,7 +1375,7 @@ function vector_polarisability(species, level, laser)
     parsed = parse_level(level)
     if parsed isa HyperfineNumberSpec
         parsed.f > 0 || return 0.0u"C*m^2/V"
-        α = stretched_channels(species, parsed, ħω)
+        α = state_polarisabilities(species, StateSpec(parsed, parsed.f), ħω)
         return α[3] - α[1]
     end
     spec, data = polarisability_data(species, level)
@@ -1384,7 +1404,7 @@ function tensor_polarisability(species, level, laser)
     parsed = parse_level(level)
     if parsed isa HyperfineNumberSpec
         parsed.f >= 1 || return 0.0u"C*m^2/V"
-        α = stretched_channels(species, parsed, ħω)
+        α = state_polarisabilities(species, StateSpec(parsed, parsed.f), ħω)
         return (2α[2] - α[1] - α[3]) / 3
     end
     spec, data = polarisability_data(species, level)

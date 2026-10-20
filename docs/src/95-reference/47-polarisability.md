@@ -21,25 +21,31 @@ constrain different combinations of the beam parameters.
 
 ## State polarisability
 
-[`polarisability`](@ref) returns the electric-dipole response of one state for
-a specified polarisation, without converting it to a light shift or requiring
-a beam intensity. A zero angular frequency gives the static response, useful
-for slowly oscillating electric fields such as a Paul-trap drive:
+[`polarisability`](@ref) returns the electric-dipole response of one state —
+for each ``Δm`` channel, or contracted with a polarisation — without
+converting it to a light shift or requiring a beam intensity. A zero angular
+frequency gives the static response, e.g. to the slowly oscillating electric
+field of a Paul-trap drive, whose "magic" frequency cancels the clock shift it
+causes against the second-order Doppler shift of the micromotion it drives:
 
 ```julia
 s = StateSpec("S_1/2 F=4", 4)
 d = StateSpec("D_5/2 F=4", 3)
 B0 = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"))
-ε = [0, 0, 1]  # electric field parallel to the static quantisation field
-Δα = polarisability(ca43, d, 0u"s^-1", ε; B=B0) -
-     polarisability(ca43, s, 0u"s^-1", ε; B=B0)
+Δα = polarisability(ca43, d, 0u"s^-1"; B=B0) - polarisability(ca43, s, 0u"s^-1"; B=B0)
+Δα_parallel = Δα[2]                      # rf field along the quantisation axis
+Δα_perpendicular = (Δα[1] + Δα[3]) / 2   # … perpendicular to it
+Δα_tilted = polarisability(ca43, d, 0u"s^-1", [sin(θ), 0, cos(θ)]; B=B0) - …
 ```
 
-The returned SI quantity is ``α`` in ``C m^2/V``. For an oscillating field
-with peak amplitude ``E_0``, the cycle-averaged energy shift is
-``-α E_0^2/4``; for a static field it is ``-α E^2/2``. This is the E1
-polarisability only, including both rotating and counter-rotating terms.
-Electric-quadrupole near-resonant shifts belong to the light-shift APIs below.
+The returned SI quantity is ``α`` in ``C m^2/V``; for a sinusoidal field of
+peak amplitude ``E_0`` the cycle-averaged energy shift is ``-α E_0^2/4``, for
+a static field ``-α E^2/2``. This is the E1 polarisability only, including
+both rotating and counter-rotating terms, with unregularised poles at the E1
+lines: within ~100 GHz of one, the Zeeman structure of the line and the
+uncertain tabulated line centre would matter, so such frequencies are refused
+— that regime belongs to the light-shift APIs below, as do the near-resonant
+electric-quadrupole shifts.
 
 Without `B`, the accessor describes the zero-field state — a ``|J, m_J⟩``
 state, or the coupled ``|F, m_F⟩`` state of a hyperfine level. With `B`, a
