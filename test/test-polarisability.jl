@@ -503,16 +503,12 @@ end
         ε,
     )
 
-    # B only enters through the near-resonant channels of a RelativeFrequency
-    # laser; on a bare-laser single state it signals a misunderstanding.
-    @test_throws ArgumentError light_shift(
-        sr88,
-        StateSpec("S_1/2", 1//2),
-        λ,
-        intensity,
-        ε;
-        B=0.5u"mT",
-    )
+    # A bare laser also accepts B, which evaluates the background on the field
+    # eigenstates: for fine-structure states the unchanged |J, m_J⟩ states with
+    # their Zeeman energies in the denominators, a ~1e-8 effect at optical
+    # detunings.
+    @test light_shift(sr88, StateSpec("S_1/2", 1//2), λ, intensity, ε; B=0.5u"mT") ≈
+          light_shift(coefficients, StateSpec("S_1/2", 1//2), intensity, ε) rtol = 1e-6
 
     # A δ override needs a RelativeFrequency reference to be relative to, and
     # the parts selector is validated.

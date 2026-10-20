@@ -19,6 +19,40 @@ Note that, unlike the electric-quadrupole coupling, an E1 light shift does not
 depend on the beam direction — only on the polarisation. The two therefore
 constrain different combinations of the beam parameters.
 
+## State polarisability
+
+[`polarisability`](@ref) returns the electric-dipole response of one state for
+a specified polarisation, without converting it to a light shift or requiring
+a beam intensity. A zero angular frequency gives the static response, useful
+for slowly oscillating electric fields such as a Paul-trap drive:
+
+```julia
+s = StateSpec("S_1/2 F=4", 4)
+d = StateSpec("D_5/2 F=4", 3)
+B0 = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"))
+ε = [0, 0, 1]  # electric field parallel to the static quantisation field
+Δα = polarisability(ca43, d, 0u"s^-1", ε; B=B0) -
+     polarisability(ca43, s, 0u"s^-1", ε; B=B0)
+```
+
+The returned SI quantity is ``α`` in ``C m^2/V``. For an oscillating field
+with peak amplitude ``E_0``, the cycle-averaged energy shift is
+``-α E_0^2/4``; for a static field it is ``-α E^2/2``. This is the E1
+polarisability only, including both rotating and counter-rotating terms.
+Electric-quadrupole near-resonant shifts belong to the light-shift APIs below.
+
+Without `B`, the accessor describes the zero-field state — a ``|J, m_J⟩``
+state, or the coupled ``|F, m_F⟩`` state of a hyperfine level. With `B`, a
+hyperfine state denotes the adiabatically labelled field eigenstate, ``F``
+mixing included, while the ``|J, m_J⟩`` states of a fine-structure species,
+which the field leaves unchanged, merely carry their Zeeman energies in the
+denominators. One calculation serves both the accessor and the background of
+`LightShiftCoefficients`; `light_shift(species, state, laser, intensity, ε;
+B)` also accepts a bare frequency or wavelength to evaluate that background
+at the stated field. The scalar/vector/tensor accessors remain zero-field
+level properties: the usual single-``F`` angular factors do not describe a
+mixed field eigenstate.
+
 ## Two observables
 
 Driving one Zeeman component of a transition also couples the two states
@@ -72,8 +106,16 @@ For hyperfine states, the electric-dipole background channels are summed over
 the hyperfine levels of each intermediate fine-structure level with the
 ``F``-basis angular factors, and the intermediate splittings are resolved in
 the detunings — which is what gives e.g. the ⁴³Ca⁺ S``_{1/2}`` ``F`` levels a
-small tensor polarisability their ``J = 1/2`` parent lacks. The near-resonant
-channels are built from the eigenbasis-rotated amplitudes and exact
+small tensor polarisability their ``J = 1/2`` parent lacks. With `B`, the
+background instead rotates the E1 amplitudes into the field eigenbases of
+both manifolds before squaring, and uses the exact at-field energy
+differences. The scalar/tensor static remainder is an electronic operator
+evaluated in the same eigenstate, retaining the coherences between its ``F``
+components. Unknown intermediate hyperfine constants keep that manifold
+degenerate at its centroid, without an intermediate Zeeman shift, as in the
+zero-field model.
+
+The near-resonant channels are built from the eigenbasis-rotated amplitudes and exact
 intermediate-field eigen-energy differences of the manifolds at the
 construction field, so the ``F`` mixing is accounted for exactly; the
 reference pair of a `RelativeFrequency` names two ``F`` levels, whose

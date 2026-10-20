@@ -1,3 +1,4 @@
+using LinearAlgebra: I
 using Unitful
 using WignerSymbols
 
@@ -10,6 +11,9 @@ function dipole_cg(j, m, q, j_upper)
     abs(m + q) <= j_upper || return 0.0
     Float64(clebschgordan(j, m, 1, q, j_upper, m + q))
 end
+
+# Diagonal electronic rank-two operator in the |J, m_J⟩ basis (J_z in ħ).
+tensor_projection(j, m) = j > 1//2 ? (3m^2 - j * (j + 1)) / (j * (2j - 1)) : 0//1
 
 """
 Returns the scalar polarisability contribution of one explicit
@@ -97,160 +101,43 @@ function quadrupole_weights(ε, n)
 end
 
 """
-Returns the polarisability of `state` for each of the three ``Δm`` channels
-separately, as a length-3 vector indexed by `q + 2`.
+    state_polarisabilities(species, state::StateSpec, ħω[, B])
 
-For hyperfine states of a [`HyperfineOneElectronSpecies`](@ref), the explicit
-channels are summed over the hyperfine levels of each intermediate
-fine-structure level, with the ``F``-basis angular factors
-(``\\mathrm{CG} × β``, cf. [`Levels.hyperfine_reduction`](@ref)) and the
-intermediate-state hyperfine splittings resolved in the detunings (levels
-without known hyperfine constants keep degenerate ``F`` levels at their
-centroid). The hyperfine-resolved detunings are what gives e.g. the ⁴³Ca⁺
-S``_{1/2}`` ``F`` levels their small tensor polarisability (``∝ A_P/Δ``),
-which the fine-structure ``J = 1/2`` level lacks; with the splittings zeroed,
-the result collapses exactly to the standard 6-j re-projection of the
-fine-structure polarisability. The tensor part of the lumped static remainder
-is re-projected with the expectation value of the ``J``-basis tensor operator
-in the coupled state (diagonal-in-``F`` approximation; the ``F``-off-diagonal
-elements are second order in the hyperfine mixing).
+Returns the electric-dipole polarisability of `state` for each of the three
+``Δm = q`` channels — a pure ``σ^-``, ``π`` or ``σ^+`` driving field — at
+photon energy `ħω`, as a length-3 vector indexed by `q + 2` — the layout of
+[`polarisation_weights`](@ref), against which it contracts to the response for
+an arbitrary polarisation (the cross terms between components vanish, as ``m``
+is exact for every state involved).
 
-The `exclude` keyword names one intermediate fine-structure level whose
-*co-rotating* term is left out of the sum — used when that channel is
-near-resonant and handled Zeeman-resolved by the channel machinery of
-[`LightShiftCoefficients`](@ref) instead; its smooth counter-rotating term
-stays in the background. The excluded channel must be explicit in the
-[`LevelPolarisability`](@ref) data, not lumped into the static remainder,
-which cannot be split.
+This is the one evaluation of the second-order sum behind every background
+quantity of this file (cf. [`Levels.manifold_polarisabilities`](@ref)): the
+explicit channels of the level's [`LevelPolarisability`](@ref) data, with the
+amplitudes rotated into the eigenbases of the manifolds at the static flux
+density `B` and the exact at-field energy differences in the denominators,
+plus the lumped static remainder. Without `B` the states are the zero-field
+ones — the ``|J, m_J⟩`` states of a fine-structure species, or the coupled
+``|F, m_F⟩`` states of a hyperfine level, with the intermediate-level
+hyperfine splittings resolved in the detunings; with `B`, hyperfine states
+denote the adiabatically-labelled field eigenstates, ``F`` mixing included
+(cf. [`hyperfine_manifold`](@ref)), and the ``|J, m_J⟩`` states of a
+fine-structure species — which the field leaves unchanged — carry their Zeeman
+energies in the denominators. The validated public form is
+[`polarisability`](@ref).
 """
-function state_polarisabilities(species, state::StateSpec, ħω; exclude=nothing)
-    level = convert(NoHyperfineNumberSpec, state.level)
-    data = level_polarisability(species, level)
-    if isnothing(data)
+function state_polarisabilities(species, state::StateSpec, ħω, B=nothing)
+    basis = StateBasis([state])
+    validate_basis_kind(species, basis)
+    isnothing(B) || validate_shift_field(B)
+    if isnothing(level_polarisability(species, state.level))
         throw(ArgumentError("No light-shift data known for level '$(state.level)'"))
     end
-    if !isnothing(exclude) && !haskey(data.reduced_dipoles, exclude)
-        throw(
-            ArgumentError(
-                "The '$level' → '$exclude' channel is lumped into the static " *
-                "remainder of the polarisability data, so its near-resonant part " *
-                "cannot be separated out",
-            ),
-        )
-    end
-    j, m = level.j, state.m
-    if abs(m) > j || !isinteger(j - m)
-        throw(ArgumentError("Invalid projection m = $m for level with j = $j"))
-    end
-    e_level = species.energies[level]
-
-    α = fill(0.0u"C*m^2/V", 3)
-    for (upper, d) in data.reduced_dipoles
-        Δ = species.energies[upper] - e_level
-        r = d^2 / (2 * upper.j + 1)
-        # For a channel to a level below, the near-resonant term is the one at
-        # Δ + ħω (the labels swap), so the exclusion picks by the sign of Δ.
-        drop_rotating = upper == exclude && Δ > zero(Δ)
-        drop_counter = upper == exclude && !drop_rotating
-        for q in -1:1
-            rotating = drop_rotating ? 0.0 : dipole_cg(j, m, q, upper.j)^2
-            counter = drop_counter ? 0.0 : dipole_cg(j, m, -q, upper.j)^2
-            α[q+2] +=
-                uconvert(u"C*m^2/V", r * (rotating / (Δ - ħω) + counter / (Δ + ħω)))
-        end
-    end
-
-    # The tensor part of the lumped remainder scales with the same angular factors
-    # as an explicit channel would; the scalar part is channel-independent.
-    tensor = j > 1//2 ? (3m^2 - j * (j + 1)) / (j * (2j - 1)) : 0//1
-    for q in -1:1
-        α[q+2] +=
-            data.static_scalar + data.static_tensor * ((3 * (q == 0) - 1) / 2) * tensor
-    end
-    α
-end
-
-function state_polarisabilities(
-    species::HyperfineOneElectronSpecies,
-    state::StateSpec{HyperfineNumberSpec},
-    ħω;
-    exclude=nothing,
-)
-    spec = validate_hyperfine(species, state.level)
-    fs = fine_structure(spec)
-    data = level_polarisability(species, fs)
-    if isnothing(data)
-        throw(ArgumentError("No light-shift data known for level '$(state.level)'"))
-    end
-    if !isnothing(exclude) && !haskey(data.reduced_dipoles, exclude)
-        throw(
-            ArgumentError(
-                "The '$fs' → '$exclude' channel is lumped into the static " *
-                "remainder of the polarisability data, so its near-resonant part " *
-                "cannot be separated out",
-            ),
-        )
-    end
-    f, m = spec.f, state.m
-    if abs(m) > f || !isinteger(f - m)
-        throw(ArgumentError("Invalid projection m = $m for level with F = $f"))
-    end
-    e_level = level_energy(species, spec)
-
-    # Zero-field hyperfine shift where constants are known; intermediate levels
-    # without them keep their F levels degenerate at the centroid.
-    shift_of(level) =
-        haskey(species.hyperfine, fine_structure(level)) ?
-        u"ħ" * hyperfine_shift(species, level) : zero(1.0u"J")
-
-    α = fill(0.0u"C*m^2/V", 3)
-    for (upper, d) in data.reduced_dipoles
-        r = d^2 / (2 * upper.j + 1)
-        for upper_f in hyperfine_levels(species, upper)
-            β = hyperfine_reduction(species.nuclear_spin, spec, upper_f; rank=1)
-            iszero(β) && continue
-            Δ = species.energies[upper] + shift_of(upper_f) - e_level
-            drop_rotating = upper == exclude && Δ > zero(Δ)
-            drop_counter = upper == exclude && !drop_rotating
-            for q in -1:1
-                rotating = drop_rotating ? 0.0 : dipole_cg(f, m, q, upper_f.f)^2
-                counter = drop_counter ? 0.0 : dipole_cg(f, m, -q, upper_f.f)^2
-                α[q+2] += uconvert(
-                    u"C*m^2/V",
-                    r * β^2 * (rotating / (Δ - ħω) + counter / (Δ + ħω)),
-                )
-            end
-        end
-    end
-
-    # The J-basis tensor operator of the lumped remainder, evaluated in the
-    # coupled state (diagonal-in-F approximation): its angular factor is the
-    # CG-weighted average of (3m_J² − J(J+1))/(J(2J−1)) over the state's
-    # |m_J, m_I⟩ decomposition. Zero for J = 1/2, where the operator vanishes
-    # identically — the genuinely-new hyperfine tensor term of such levels
-    # comes from the resolved detunings above instead.
-    j = fs.j
-    i_nuc = species.nuclear_spin
-    tensor = if j > 1//2
-        sum(
-            Float64(clebschgordan(j, m_j, i_nuc, m - m_j, f, m))^2 *
-            (3m_j^2 - j * (j + 1)) / (j * (2j - 1)) for
-            m_j in (-j):j if abs(m - m_j) <= i_nuc;
-            init=0.0,
-        )
-    else
-        0.0
-    end
-    for q in -1:1
-        α[q+2] +=
-            data.static_scalar + data.static_tensor * ((3 * (q == 0) - 1) / 2) * tensor
-    end
-    α
+    cache = Dict{NoHyperfineNumberSpec,ManifoldSolution}()
+    only(polarisability_rows(species, basis, ħω, B, Returns(nothing), cache))
 end
 
 """
-Raises an error unless `B` is a sensible signed scalar flux density for the
-near-resonant channel construction.
+Raises an error unless `B` is a real, finite, nonzero scalar flux density.
 """
 function validate_shift_field(B)
     if !(B isa Unitful.BField)
@@ -262,36 +149,281 @@ function validate_shift_field(B)
             ),
         )
     end
+    if !isreal(B) || !isfinite(B)
+        throw(ArgumentError("B must be a real, finite scalar flux density"))
+    end
     if iszero(B)
         throw(
             ArgumentError(
-                "The near-resonant channels are undefined at zero magnetic " *
-                "field, where the Zeeman components are degenerate",
+                "Field-resolved states and channels require nonzero B; " *
+                "omit B for the zero-field states",
             ),
         )
     end
 end
 
-# Relative rank-`rank` multipole amplitudes between the adiabatically-labelled
-# eigenstates of two solved manifolds: the coupled-basis CG × β amplitudes
-# conjugated with the eigenvector matrices ([upper eigenstate, lower
-# eigenstate], real).
-function rotated_multipole_amplitudes(
-    species::HyperfineOneElectronSpecies,
-    m_lower::HyperfineManifold,
-    m_upper::HyperfineManifold,
-    rank::Integer,
-)
-    c = zeros(length(m_upper.basis), length(m_lower.basis))
-    for (i, ls) in enumerate(m_lower.basis), (k, us) in enumerate(m_upper.basis)
-        q = us.m - ls.m
-        abs(q) <= rank || continue
-        β = hyperfine_reduction(species.nuclear_spin, ls.level, us.level; rank)
-        iszero(β) && continue
-        c[k, i] =
-            Float64(clebschgordan(ls.level.f, ls.m, rank, q, us.level.f, us.m)) * β
+"""
+Raises an error unless the kind of the basis levels matches the species: a
+hyperfine species resolves its states as ``F`` levels (whose `m` is ``m_F``),
+a fine-structure species as ``J`` levels — neither converts implicitly into
+the other (cf. [`fine_structure`](@ref)).
+"""
+function validate_basis_kind(species, basis::StateBasis)
+    if eltype(basis.levels) <: HyperfineNumberSpec
+        throw(
+            ArgumentError(
+                "Level '$(first(basis.levels))' carries hyperfine structure, " *
+                "but the species has none",
+            ),
+        )
     end
-    m_upper.states' * c * m_lower.states
+end
+
+function validate_basis_kind(species::HyperfineOneElectronSpecies, basis::StateBasis)
+    if !(eltype(basis.levels) <: HyperfineNumberSpec)
+        throw(
+            ArgumentError(
+                "States of a hyperfine species must specify hyperfine (F) " *
+                "levels, e.g. 'S_1/2 F=4', not '$(first(basis.levels))'",
+            ),
+        )
+    end
+end
+
+"""
+Raises an error if the eigenstates of the level `fs` at the static flux
+density `B` cannot be resolved: a hyperfine level without known hyperfine
+constants (at zero field, `B = nothing`, the coupled states need none).
+"""
+validate_field_solution(species, fs, B) = nothing
+
+function validate_field_solution(species::HyperfineOneElectronSpecies, fs, B)
+    if !isnothing(B) && !haskey(species.hyperfine, fs)
+        throw(
+            ArgumentError(
+                "No hyperfine constants known for level '$fs', whose " *
+                "eigenstates at a static field therefore cannot be resolved",
+            ),
+        )
+    end
+end
+
+"""
+The eigen-solution of one fine-structure manifold the light-shift sums run
+over — the species-kind-agnostic form of [`HyperfineManifold`](@ref): the
+canonical state basis of the level, the state energies relative to the level
+centroid (angular units) and the eigenvector columns in that basis, so that a
+coupled-basis operator ``X`` rotates into the eigenbasis as
+`states' * X * states`.
+
+The eigenvectors are the identity wherever the basis states are the
+eigenstates themselves: for a fine-structure species — a static field along
+ẑ leaves the ``|J, m_J⟩`` states unchanged and only shifts their energies —
+and for the zero-field coupled ``|F, m_F⟩`` states of a hyperfine level,
+whose energies are then the Casimir hyperfine shifts, or all zero for a level
+without known hyperfine constants, which stays degenerate at its centroid.
+Built by [`Levels.manifold_solution`](@ref).
+"""
+struct ManifoldSolution{L<:LevelSpec}
+    "The fine-structure level."
+    level::NoHyperfineNumberSpec
+
+    "The canonical basis of the level's states."
+    basis::StateBasis{L}
+
+    "The state energies relative to the level centroid, aligned to `basis`."
+    energies::Vector{typeof(1.0u"µs^-1")}
+
+    "Eigenvector columns in the coupled basis, aligned to `basis`."
+    states::Matrix{Float64}
+end
+
+identity_states(num_states) = Matrix{Float64}(I, num_states, num_states)
+
+"""
+Returns the [`Levels.ManifoldSolution`](@ref) of the fine-structure level `fs`
+at the static flux density `B` (`nothing` for zero field), memoised in
+`cache` so that one coefficient construction solves each manifold once —
+whether it serves as a source level, an intermediate level or a near-resonant
+channel partner.
+
+For a hyperfine species with `B`, this is the [`hyperfine_manifold`](@ref)
+solution, provided the level's hyperfine constants are known; otherwise the
+coupled-basis form described at [`Levels.ManifoldSolution`](@ref), which keeps
+an intermediate level without constants degenerate at its centroid (without
+a Zeeman shift either, as its field eigenstates are unknown). The callers
+decide where that fallback is acceptable
+([`Levels.validate_field_solution`](@ref)).
+"""
+function manifold_solution(species, fs, B, cache)
+    get!(cache, fs) do
+        basis = StateBasis([fs])
+        energies = [
+            isnothing(B) ? 0.0u"µs^-1" :
+            uconvert(u"µs^-1", zeeman_shift(species, s, B)) for s in basis
+        ]
+        ManifoldSolution(fs, basis, energies, identity_states(length(basis)))
+    end
+end
+
+function manifold_solution(species::HyperfineOneElectronSpecies, fs, B, cache)
+    get!(cache, fs) do
+        known = haskey(species.hyperfine, fs)
+        if known && !isnothing(B)
+            m = hyperfine_manifold(species, fs, B)
+            return ManifoldSolution(fs, m.basis, m.energies, m.states)
+        end
+        basis = StateBasis(species, fs)
+        energies =
+            [known ? hyperfine_shift(species, s.level) : 0.0u"µs^-1" for s in basis]
+        ManifoldSolution(fs, basis, energies, identity_states(length(basis)))
+    end
+end
+
+"""
+Returns the relative rank-`rank` multipole amplitudes between the states of
+two manifold solutions at a common field, as the `[target, source]` matrix of
+[`transition_amplitude`](@ref)s — ``⟨\\mathrm{target}|T^k_q|\\mathrm{source}⟩``
+relative to the reduced fine-structure matrix element, ``q`` the projection
+difference — rotated into both eigenbases: the matrix form of the at-field
+`transition_amplitude` (cf. [`eigenbasis_transform`](@ref)).
+"""
+function relative_amplitudes(
+    species,
+    source::ManifoldSolution,
+    target::ManifoldSolution,
+    rank,
+)
+    c = zeros(length(target.basis), length(source.basis))
+    for (i, s) in enumerate(source.basis), (k, t) in enumerate(target.basis)
+        abs(t.m - s.m) <= rank || continue
+        c[k, i] = transition_amplitude(species, s, t; rank)
+    end
+    target.states' * c * source.states
+end
+
+"""
+Returns the expectation value of the electronic rank-two operator
+``(3 J_z^2 - J(J+1)) / (J(2J-1))`` in every eigenstate of the manifold
+solution — the angular factor of the lumped static tensor remainder (cf.
+[`tensor_polarisability`](@ref)); zero for ``J = 1/2``, where the operator
+vanishes identically.
+
+For a hyperfine eigenstate, the operator is lifted to the ``|m_J, m_I⟩``
+product space, where it is diagonal, and weighted by the eigenstate's
+decomposition there — which retains the coherences between its ``F``
+components (an expectation per ``F`` level, rotated afterwards, would lose
+them). Nothing is dropped: the operator has no matrix elements between the
+components of one ``m_F`` eigenstate.
+"""
+tensor_expectations(species, m::ManifoldSolution) =
+    [Float64(tensor_projection(m.level.j, s.m)) for s in m.basis]
+
+function tensor_expectations(species::HyperfineOneElectronSpecies, m::ManifoldSolution)
+    j, i_nuc = m.level.j, species.nuclear_spin
+    diagonal =
+        [Float64(tensor_projection(j, m_j)) for m_j in (-j):j for _ in (-i_nuc):i_nuc]
+    products = coupling_transform(species, m.level) * m.states
+    vec(diagonal' * abs2.(products))
+end
+
+"""
+Returns the per-channel electric-dipole polarisabilities (indexed `q + 2` like
+[`polarisation_weights`](@ref)) of every state of the manifold solution
+`source` at photon energy `ħω`, as a `length(basis) × 3` matrix: the
+second-order sum over the explicit channels of the level's
+[`LevelPolarisability`](@ref) data — amplitudes rotated into the eigenbases of
+both manifolds ([`Levels.relative_amplitudes`](@ref)), the exact at-field
+energy differences in the denominators, co- and counter-rotating terms both —
+plus the lumped static remainder, its tensor part weighted by the operator
+expectation of [`Levels.tensor_expectations`](@ref). The intermediate
+manifolds are solved at the same field `B` through `cache`.
+
+`exclude` names one intermediate level whose *co-rotating* term is left out of
+the sum — the channel handled Zeeman-resolved by the near-resonant machinery
+of [`LightShiftCoefficients`](@ref) instead, whose smooth counter-rotating
+term stays in the background. It must be explicit in the data: the lumped
+remainder cannot be split.
+"""
+function manifold_polarisabilities(
+    species,
+    source::ManifoldSolution,
+    ħω,
+    B,
+    exclude,
+    cache,
+)
+    fs = source.level
+    data = level_polarisability(species, fs)
+    if !isnothing(exclude) && !haskey(data.reduced_dipoles, exclude)
+        throw(
+            ArgumentError(
+                "The '$fs' → '$exclude' channel is lumped into the static " *
+                "remainder of the polarisability data, so its near-resonant part " *
+                "cannot be separated out",
+            ),
+        )
+    end
+    num_states = length(source.basis)
+    α = fill(0.0u"C*m^2/V", num_states, 3)
+    for (upper, d) in data.reduced_dipoles
+        target = manifold_solution(species, upper, B, cache)
+        amplitudes = relative_amplitudes(species, source, target, 1)
+        strength = d^2 / (2 * upper.j + 1)
+        centroid = species.energies[upper] - species.energies[fs]
+        for (i, state) in enumerate(source.basis), (k, other) in enumerate(target.basis)
+            q = other.m - state.m
+            abs(q) <= 1 || continue
+            weight = strength * abs2(amplitudes[k, i])
+            iszero(weight) && continue
+            Δ = centroid + u"ħ" * (target.energies[k] - source.energies[i])
+            # For a channel to a level below, the near-resonant term is the one
+            # at Δ + ħω (the labels swap), so the exclusion picks by the sign
+            # of Δ.
+            drop_rotating = upper == exclude && Δ > zero(Δ)
+            drop_counter = upper == exclude && !drop_rotating
+            if !drop_rotating
+                α[i, Int(q)+2] += uconvert(u"C*m^2/V", weight / (Δ - ħω))
+            end
+            if !drop_counter
+                α[i, 2-Int(q)] += uconvert(u"C*m^2/V", weight / (Δ + ħω))
+            end
+        end
+    end
+    tensor = tensor_expectations(species, source)
+    for i in 1:num_states, q in -1:1
+        α[i, q+2] +=
+            data.static_scalar +
+            data.static_tensor * ((3 * (q == 0) - 1) / 2) * tensor[i]
+    end
+    α
+end
+
+"""
+Returns the per-channel background polarisabilities of every state of `basis`
+at photon energy `ħω` and static flux density `B` (`nothing` for zero field)
+as a vector of length-3 rows — `NaN` for the states of levels without
+[`LevelPolarisability`](@ref) data — evaluating each fine-structure level's
+manifold once ([`Levels.manifold_polarisabilities`](@ref), with
+`exclude(level)` the level's excluded channel partner).
+"""
+function polarisability_rows(species, basis::StateBasis, ħω, B, exclude, cache)
+    blocks = Dict{NoHyperfineNumberSpec,Matrix{typeof(1.0u"C*m^2/V")}}()
+    for level in basis.levels
+        fs = fine_structure(level)
+        (haskey(blocks, fs) || isnothing(level_polarisability(species, fs))) && continue
+        validate_field_solution(species, fs, B)
+        source = manifold_solution(species, fs, B, cache)
+        blocks[fs] =
+            manifold_polarisabilities(species, source, ħω, B, exclude(fs), cache)
+    end
+    [
+        begin
+            fs = fine_structure(state.level)
+            haskey(blocks, fs) ? blocks[fs][stateindex(cache[fs].basis, state), :] :
+            fill(NaN * u"C*m^2/V", 3)
+        end for state in basis
+    ]
 end
 
 """
@@ -419,88 +551,14 @@ Builds the per-state near-resonant channel lists over `basis` at the static
 flux density `B`: for every state, one entry per Zeeman component connecting it
 to the other manifold of each relevant level pair — the electric-quadrupole
 pairs within the basis, plus the reference pair of a
-[`RelativeFrequency`](@ref) `laser` (of either rank). Channel positions are
-exact at-field offsets from the pair's zero-field interval; for the reference
-pair that is the very reference the laser offset is measured against, for the
-others the reference cancels out of the driven-mode differences it is used in.
+[`RelativeFrequency`](@ref) `laser` (of either rank). The amplitudes and
+positions are exact at the field, from the manifold solutions shared through
+`cache` ([`Levels.manifold_solution`](@ref)): the positions are offsets from
+the pair's zero-field interval, which for the reference pair is the very
+reference the laser offset is measured against, while for the others it
+cancels out of the driven-mode differences it is used in.
 """
-function resonant_channels(species, basis::StateBasis{NoHyperfineNumberSpec}, laser, B)
-    channels = [channel_type(basis)[] for _ in basis]
-    pairs = quadrupole_pairs(species, unique(basis.levels))
-    if laser isa RelativeFrequency
-        named = (fine_structure(laser.lower), fine_structure(laser.upper))
-        named in pairs || push!(pairs, named)
-    end
-    for (lo, hi) in pairs
-        rank = multipole_rank(lo, hi)
-        scale = channel_scale(species, lo, hi, rank)
-        γ = uconvert(u"µs^-1", 1 / lifetime(species, hi))
-        # Relative amplitude of the m_lo → m_hi component (zero also covers the
-        # dipole-forbidden j combinations).
-        amplitude(m_lo, q, m_hi) =
-            rank == 1 ? dipole_cg(lo.j, m_lo, q, hi.j) :
-            Float64(clebschgordan(lo.j, m_lo, 2, q, hi.j, m_hi))
-        for (i, state) in enumerate(basis)
-            if state.level == lo
-                for m in (-hi.j):hi.j
-                    q = m - state.m
-                    abs(q) <= rank || continue
-                    amp = amplitude(state.m, q, m)
-                    iszero(amp) && continue
-                    partner = StateSpec(hi, m)
-                    Δ = uconvert(
-                        u"µs^-1",
-                        zeeman_shift(species, partner, B) -
-                        zeeman_shift(species, state, B),
-                    )
-                    push!(
-                        channels[i],
-                        ResonantChannel(
-                            partner,
-                            Int8(rank),
-                            Int8(Int(q)),
-                            scale * amp^2,
-                            Δ,
-                            γ,
-                        ),
-                    )
-                end
-            elseif state.level == hi
-                for m in (-lo.j):lo.j
-                    q = state.m - m
-                    abs(q) <= rank || continue
-                    amp = amplitude(m, q, state.m)
-                    iszero(amp) && continue
-                    partner = StateSpec(lo, m)
-                    Δ = uconvert(
-                        u"µs^-1",
-                        zeeman_shift(species, state, B) -
-                        zeeman_shift(species, partner, B),
-                    )
-                    push!(
-                        channels[i],
-                        ResonantChannel(
-                            partner,
-                            Int8(rank),
-                            Int8(Int(q)),
-                            -scale * amp^2,
-                            Δ,
-                            γ,
-                        ),
-                    )
-                end
-            end
-        end
-    end
-    channels
-end
-
-function resonant_channels(
-    species::HyperfineOneElectronSpecies,
-    basis::StateBasis{HyperfineNumberSpec},
-    laser,
-    B,
-)
+function resonant_channels(species, basis::StateBasis, laser, B, cache)
     channels = [channel_type(basis)[] for _ in basis]
     pairs = quadrupole_pairs(species, unique!(fine_structure.(basis.levels)))
     named = nothing
@@ -508,25 +566,23 @@ function resonant_channels(
         named = (fine_structure(laser.lower), fine_structure(laser.upper))
         named in pairs || push!(pairs, named)
     end
-    needed = unique!([level for pair in pairs for level in pair])
-    manifolds = Dict(fs => hyperfine_manifold(species, fs, B) for fs in needed)
     for (lo, hi) in pairs
+        validate_field_solution(species, lo, B)
+        validate_field_solution(species, hi, B)
         rank = multipole_rank(lo, hi)
         scale = channel_scale(species, lo, hi, rank)
         γ = uconvert(u"µs^-1", 1 / lifetime(species, hi))
-        m_lo, m_hi = manifolds[lo], manifolds[hi]
-        rotated = rotated_multipole_amplitudes(species, m_lo, m_hi, rank)
-        # For the reference pair, positions are measured from the named
-        # zero-field F-pair interval; the manifold eigen-energies are relative
-        # to their centroids, so only the Casimir offsets of the named levels
-        # remain (the centroid interval cancels).
+        m_lo = manifold_solution(species, lo, B, cache)
+        m_hi = manifold_solution(species, hi, B, cache)
+        rotated = relative_amplitudes(species, m_lo, m_hi, rank)
+        # The manifold energies are relative to the level centroids, so for the
+        # reference pair — positions measured from the named zero-field
+        # interval — only the Casimir offsets of the named F levels remain (the
+        # centroid interval cancels; nothing at all for fine-structure levels).
         ref = 0.0u"µs^-1"
         if (lo, hi) == named
-            ref = uconvert(
-                u"µs^-1",
-                hyperfine_shift(species, laser.upper) -
-                hyperfine_shift(species, laser.lower),
-            )
+            ref =
+                level_offset(species, laser.upper) - level_offset(species, laser.lower)
         end
         for (i, state) in enumerate(basis)
             fs = fine_structure(state.level)
@@ -537,7 +593,7 @@ function resonant_channels(
                     abs(q) <= rank || continue
                     amp = rotated[k, li]
                     iszero(amp) && continue
-                    Δ = uconvert(u"µs^-1", (m_hi.energies[k] - m_lo.energies[li]) - ref)
+                    Δ = uconvert(u"µs^-1", m_hi.energies[k] - m_lo.energies[li] - ref)
                     push!(
                         channels[i],
                         ResonantChannel(
@@ -557,7 +613,7 @@ function resonant_channels(
                     abs(q) <= rank || continue
                     amp = rotated[ui, k]
                     iszero(amp) && continue
-                    Δ = uconvert(u"µs^-1", (m_hi.energies[ui] - m_lo.energies[k]) - ref)
+                    Δ = uconvert(u"µs^-1", m_hi.energies[ui] - m_lo.energies[k] - ref)
                     push!(
                         channels[i],
                         ResonantChannel(
@@ -576,11 +632,16 @@ function resonant_channels(
     channels
 end
 
+# The zero-field offset of a reference level from its fine-structure centroid:
+# the Casimir hyperfine shift of an F level, nothing for a fine-structure one.
+level_offset(species, level::HyperfineNumberSpec) = hyperfine_shift(species, level)
+level_offset(species, level::NoHyperfineNumberSpec) = 0.0u"µs^-1"
+
 """
 A bare laser frequency closer than this to an explicit electric-dipole channel
-would make the background silently miss the Zeeman/hyperfine structure of the
-line (which only a [`RelativeFrequency`](@ref) reference resolves); beyond it,
-neglecting that structure is a ``≲ 10^{-3}`` relative error.
+requires a [`RelativeFrequency`](@ref) reference: its channel detunings must
+cancel the uncertain tabulated line centre. Fine-structure backgrounds also
+neglect the Zeeman structure; beyond this window its effect is ``≲ 10^{-3}``.
 """
 const BACKGROUND_GUARD_WINDOW = u"ħ" * 2π * 100.0u"GHz"
 
@@ -603,8 +664,8 @@ function validate_background_detunings(species, levels, ħω, exclude)
                 throw(
                     ArgumentError(
                         "The laser is within $cyclic of the '$fs' → '$upper' " *
-                        "resonance, where the electric-dipole background misses " *
-                        "the Zeeman structure of the line; give the laser as a " *
+                        "resonance, where precise component detunings require " *
+                        "a reference to the line centre; give the laser as a " *
                         "RelativeFrequency naming that transition instead",
                     ),
                 )
@@ -660,7 +721,7 @@ struct LightShiftCoefficients{
     "The [`RelativeFrequency`](@ref) the laser was given as, if it was."
     laser::R
 
-    "The static flux density the channels were computed at, if any."
+    "The static flux density the background and channels were computed at, if any."
     field::F
 end
 
@@ -694,27 +755,24 @@ electric-dipole one, the co-rotating part of that channel is moved from the
 background into the channels (which requires it to be explicit in the
 [`LevelPolarisability`](@ref) data rather than lumped into the static
 remainder). A bare wavelength that falls within ~100 GHz of an explicit
-electric-dipole channel is refused for the same reason: the background alone
-would silently miss the Zeeman structure of the line.
-"""
-LightShiftCoefficients(
-    species,
-    basis::StateBasis{NoHyperfineNumberSpec},
-    laser;
-    B=nothing,
-) = build_coefficients(species, basis, laser, B)
+electric-dipole channel is refused: the near-resonant detunings require a
+reference which cancels the uncertain tabulated line centre.
 
-LightShiftCoefficients(
-    species::HyperfineOneElectronSpecies,
-    basis::StateBasis{HyperfineNumberSpec},
-    laser;
-    B=nothing,
-) = build_coefficients(species, basis, laser, B)
+Supplying `B` also evaluates the electric-dipole background on the field
+eigenstates: for hyperfine states the adiabatically labelled eigenstates
+including the ``F`` mixing, for fine-structure ones the unchanged
+``|J, m_J⟩`` states with their Zeeman energies in the denominators (cf.
+[`polarisability`](@ref)). Without `B`, the background describes the
+zero-field states.
+"""
+LightShiftCoefficients(species, basis::StateBasis, laser; B=nothing) =
+    build_coefficients(species, basis, laser, B)
 
 LightShiftCoefficients(species, levels_or_states::AbstractVector, laser; kwargs...) =
     LightShiftCoefficients(species, StateBasis(levels_or_states), laser; kwargs...)
 
 function build_coefficients(species, basis, laser, B)
+    validate_basis_kind(species, basis)
     if laser isa RelativeFrequency
         if !(laser.lower isa eltype(basis.levels))
             throw(
@@ -737,16 +795,12 @@ function build_coefficients(species, basis, laser, B)
     isnothing(B) || validate_shift_field(B)
     ħω = photon_energy(species, laser)
     exclude = exclusion_partner(laser)
-    rows = [
-        isnothing(level_polarisability(species, state.level)) ?
-        fill(NaN * u"C*m^2/V", 3) :
-        state_polarisabilities(species, state, ħω; exclude=exclude(state.level)) for
-        state in basis
-    ]
     validate_background_detunings(species, unique(basis.levels), ħω, exclude)
+    cache = Dict{NoHyperfineNumberSpec,ManifoldSolution}()
+    rows = polarisability_rows(species, basis, ħω, B, exclude, cache)
     channels =
         isnothing(B) ? [channel_type(basis)[] for _ in basis] :
-        resonant_channels(species, basis, laser, B)
+        resonant_channels(species, basis, laser, B, cache)
     LightShiftCoefficients(
         species,
         basis,
@@ -866,6 +920,12 @@ frequency must stay small against its detuning, and detunings within a few
 linewidths of a pole are outside the model; both conditions warn when
 violated. The one-shot species form is a convenience wrapper that rebuilds the
 coefficients on every call.
+
+Supplying `B` also evaluates the electric-dipole background on the field
+eigenstates (cf. [`polarisability`](@ref), which returns that response without
+converting it to a shift at a given intensity) — for bare laser frequencies
+and wavelengths as well as `RelativeFrequency` lasers; without `B`, the
+background describes the zero-field states.
 """
 function light_shift(
     c::LightShiftCoefficients,
@@ -933,15 +993,6 @@ function light_shift(
     δ=nothing,
     parts=:total,
 )
-    if !(laser isa RelativeFrequency) && !isnothing(B)
-        throw(
-            ArgumentError(
-                "B only enters through the near-resonant channels of a " *
-                "RelativeFrequency laser; the shift of a single state from a " *
-                "bare laser frequency does not depend on it",
-            ),
-        )
-    end
     c = LightShiftCoefficients(species, [state.level], laser; B)
     light_shift(c, state, intensity, ε; n, δ, parts)
 end
@@ -1205,23 +1256,48 @@ end
 
 """
 Returns the per-channel polarisabilities of the stretched state ``m = F`` of a
-hyperfine level, from which the ``α_0``/``α_1``/``α_2`` decomposition is
-extracted (``α_{σ^-} = α_0 - α_1/2 - α_2/2``, ``α_π = α_0 + α_2``,
-``α_{σ^+} = α_0 + α_1/2 - α_2/2`` there, as the tensor angular factor is unity
-at ``m = F``).
+hyperfine level at zero field, from which the ``α_0``/``α_1``/``α_2``
+decomposition is extracted (``α_{σ^-} = α_0 - α_1/2 - α_2/2``,
+``α_π = α_0 + α_2``, ``α_{σ^+} = α_0 + α_1/2 - α_2/2`` there, as the tensor
+angular factor is unity at ``m = F``).
 """
-stretched_channels(
-    species::HyperfineOneElectronSpecies,
-    spec::HyperfineNumberSpec,
-    ħω,
-) = state_polarisabilities(species, StateSpec(spec, spec.f), ħω)
+stretched_channels(species, spec::HyperfineNumberSpec, ħω) =
+    state_polarisabilities(species, StateSpec(spec, spec.f), ħω)
 
-function stretched_channels(species, spec, ħω)
-    throw(
-        ArgumentError(
-            "Level '$spec' carries hyperfine structure, but the species has none",
-        ),
-    )
+"""
+    polarisability(species, state::StateSpec, laser, ε; B=nothing)
+
+Returns the electric-dipole polarisability of one state for polarisation `ε`,
+in SI units (``C m^2/V``). `laser` is a wavelength or angular frequency of the
+driving field — a laser, or e.g. a trap rf drive; `0u"s^-1"` gives the static
+response. Only the direction and ellipticity of `ε` matter; a real vector
+specifies a linearly oscillating electric field.
+
+Without `B`, the state is a zero-field ``|J, m_J⟩`` or ``|F, m_F⟩`` state.
+With `B` — the signed, nonzero scalar flux density along ẑ — a hyperfine
+state denotes the adiabatically labelled eigenstate at that field, with the
+``F`` mixing included in the channel amplitudes, in the expectation of the
+static remainder and in the energy denominators (which also resolve the
+intermediate hyperfine and Zeeman splittings), while the ``|J, m_J⟩`` states
+of a fine-structure species — unchanged by the field — merely carry their
+Zeeman energies in the denominators (cf.
+[`Levels.state_polarisabilities`](@ref)). Intermediate levels without
+hyperfine constants stay degenerate at their centroid.
+
+This is the E1 response, with both rotating and counter-rotating terms; it
+includes no electric-quadrupole channels. The second-order expression has
+unregularised poles at E1 resonances and does not include linewidths. Near a
+driven resonance, [`light_shift`](@ref) and [`driven_light_shift`](@ref) provide
+the reference-frequency parametrisation and perturbation-validity warnings.
+
+For a sinusoidal field of peak amplitude `E`, the cycle-averaged energy shift
+is ``-α E^2/4``; for a static electric field it is ``-α E^2/2``. For a light
+beam of intensity `I`, the angular shift is ``-I α/(2c ε_0 ħ)``. The same
+calculation serves as the background of [`LightShiftCoefficients`](@ref).
+"""
+function polarisability(species, state::StateSpec, laser, ε; B=nothing)
+    w = polarisation_weights(ε)
+    sum(w .* state_polarisabilities(species, state, photon_energy(laser), B))
 end
 
 """
@@ -1326,6 +1402,7 @@ end
 export LightShiftCoefficients,
     driven_light_shift,
     light_shift,
+    polarisability,
     scalar_polarisability,
     tensor_polarisability,
     vector_polarisability

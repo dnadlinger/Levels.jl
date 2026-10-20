@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning].
 ## [Unreleased]
 
 - Initial release
+- `polarisability(species, state, laser, ε; B)` for the electric-dipole response
+  of an individual state, including the static limit. With `B`, light-shift
+  backgrounds are evaluated on the field eigenstates — hyperfine ``F`` mixing
+  included, Zeeman and known intermediate hyperfine splittings resolved in the
+  denominators — by the same at-field machinery as the near-resonant channels;
+  bare-frequency `light_shift` also accepts `B`
 - `StateBasis` for ordered Zeeman-state index bookkeeping, plus the generic
   `state_pairs` transition enumeration between two levels
 - Zeeman structure: `lande_g` (LS coupling with reduced-mass correction, using
