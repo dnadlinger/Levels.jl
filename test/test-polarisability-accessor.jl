@@ -17,11 +17,8 @@
         α2 = tensor_polarisability(species, level, laser)
         tensor = (3m^2 - j * (j + 1)) / (j * (2j - 1))
 
-        # The per-channel form against the α₀/α₁/α₂ decomposition (j → F for
-        # a hyperfine level), exact for the zero-field states: π is the
-        # response to a field along the quantisation axis, the σ mean that to
-        # a linear field perpendicular to it, and their difference the
-        # circular (vector) part.
+        # Zero-field decomposition: π is parallel, the σ mean perpendicular,
+        # and the σ difference the vector part (j → F for hyperfine levels).
         α = polarisability(species, state, laser)
         @test α[2] ≈ α0 + tensor * α2
         @test (α[1] + α[3]) / 2 ≈ α0 - tensor * α2 / 2
@@ -29,7 +26,6 @@
         @test polarisability(species, state, laser, [0, 0, 1]) ≈ α[2]
         @test polarisability(species, state, laser, [1, 0, 0]) ≈ (α[1] + α[3]) / 2
 
-        # The polarisation form is the contraction with the channel weights.
         contracted = polarisability(species, state, laser, ε)
         @test contracted ≈ sum(w .* α)
         @test contracted ≈
@@ -40,15 +36,16 @@
               -intensity * contracted / (2 * u"c" * u"ε0" * u"ħ")
     end
 
-    # Near an explicit channel (here the 397 nm line, 0.03 nm ≈ 57 GHz off) the
-    # Zeeman structure and the tabulated line centre would matter, so the plain
-    # sum is refused, as is a laser placed relative to the line; a nanometre
-    # (≈2 THz) away it is fine.
+    # The 397 nm line is guarded at 0.03 nm (57 GHz), but not 1 nm (2 THz).
     s = StateSpec("S_1/2 F=4", 4)
     λ_397 =
         uconvert(u"nm", 2π * u"c" / Levels.transition_frequency(ca43, "S_1/2", "P_1/2"))
     @test_throws "'S_1/2' → 'P_1/2'" polarisability(ca43, s, λ_397 + 0.03u"nm")
     @test_throws ArgumentError polarisability(ca43, s, λ_397 + 0.03u"nm", ε)
+    ω_397 = Levels.transition_frequency(ca43, "S_1/2", "P_1/2")
+    @test_throws ArgumentError polarisability(ca43, s, -ω_397, ε)
+    ω = 2π * u"c" / laser
+    @test polarisability(ca43, s, -ω, ε) ≈ polarisability(ca43, s, ω, conj.(ε))
     @test_throws ArgumentError polarisability(
         ca43,
         s,
@@ -69,10 +66,7 @@
         ε,
     )
 
-    # States of the wrong kind for the species are refused rather than
-    # silently evaluated as something else (a J state of a hyperfine species
-    # is not any of its eigenstates; an F state of a fine-structure species
-    # does not exist).
+    # Reject kind mismatches rather than reinterpret m_J as m_F or vice versa.
     @test_throws ArgumentError polarisability(
         ca43,
         StateSpec("D_5/2", 3//2),
@@ -86,10 +80,8 @@
         ε,
     )
 
-    # A field leaves the |J, m_J⟩ states of a fine-structure species unchanged;
-    # it only enters the denominators through the Zeeman energies of the state
-    # and its channel partners — a ~1e-8 effect at a working field, pinned
-    # exactly at an absurd one.
+    # Fine-structure eigenvectors are unchanged. A large field exposes the
+    # otherwise tiny Zeeman correction to the denominators.
     fine = StateSpec("D_5/2", 3//2)
     @test polarisability(sr88, fine, 0u"s^-1", ε; B=0.5u"mT") ≈
           polarisability(sr88, fine, 0u"s^-1", ε) rtol = 1e-6
@@ -124,6 +116,32 @@
         polarisability(sr88, fine, 0u"s^-1", ε);
         rtol=1e-6,
     )
+end
+
+@testitem "Relative amplitude matrices" tags=[:unit, :fast] begin
+    using Unitful
+
+    # Check E1/E2 amplitudes for both species kinds and fields. The tolerance
+    # allows rotation roundoff on entries that vanish by symmetry.
+    cache = Dict{NoHyperfineNumberSpec,Levels.ManifoldSolution}()
+    for (species, lo, hi, B) in (
+        (sr88, "S_1/2", "P_3/2", nothing),
+        (sr88, "S_1/2", "D_5/2", 0.5u"mT"),
+        (ca43, "D_5/2", "P_3/2", nothing),
+        (ca43, "S_1/2", "D_5/2", 0.5u"mT"),
+    )
+        empty!(cache)
+        m_lo = Levels.manifold_solution(species, fine_structure(lo), B, cache)
+        m_hi = Levels.manifold_solution(species, fine_structure(hi), B, cache)
+        rank = Levels.multipole_rank(lo, hi)
+        amplitudes = Levels.relative_amplitudes(species, m_lo, m_hi, rank)
+        for (i, s) in enumerate(m_lo.basis), (k, t) in enumerate(m_hi.basis)
+            expected =
+                isnothing(B) ? transition_amplitude(species, s, t; rank) :
+                transition_amplitude(species, s, t, B; rank)
+            @test amplitudes[k, i] ≈ expected atol = 1e-12
+        end
+    end
 end
 
 @testitem "Field-resolved polarisability vs product-basis E1 sum" tags=[:unit] begin
@@ -230,11 +248,8 @@ end
     ω = Levels.photon_energy(ca43, laser) / u"ħ"
     _, ε = beam_vectors(0.4, 0.6, 0.8)
     intensity = 10.0u"W/m^2"
-    # The plain second-order sum at that frequency — which the public accessor
-    # refuses this close (50 GHz) to the line, hence the internal form — must
-    # be recovered by the split evaluation: the named channel's co-rotating
-    # term in :resonant, its counter-rotating term in :background, both on the
-    # same field eigenstates.
+    # The split must recover the plain sum on the same eigenstates. Use the
+    # internal form because the public accessor guards this 50 GHz detuning.
     w = Levels.polarisation_weights(ε)
     plain = sum(w .* Levels.state_polarisabilities(ca43, state, u"ħ" * ω, B))
     full = -intensity * plain / (2 * u"c" * u"ε0" * u"ħ")

@@ -1,135 +1,152 @@
 # [Light shifts and polarisabilities](@id reference-polarisability)
 
-The ac Stark (light) shift of the Zeeman states of a laser-illuminated ion,
-composed of two parts: the far-detuned electric-dipole **background** — the
-per-state polarisability at the laser frequency, summed over the explicit
-dipole channels of the level — and the **near-resonant channels** of one level
-pair the laser sits close to, resolved down to the individual Zeeman
-components at the static field.
+The light-shift model combines an electric-dipole (E1) **background** with
+**near-resonant channels** resolved into individual Zeeman components. The
+background uses explicit dipole strengths plus a static scalar/tensor
+remainder; the channels use Einstein A coefficients and at-field couplings.
+E1 shifts depend on polarisation. Electric-quadrupole (E2) channels also
+depend on the beam direction.
 
-The atomic structure is fixed once by [`LightShiftCoefficients`](@ref);
-evaluating a shift for a particular intensity and polarisation afterwards is
-cheap enough to sit inside the inner loop of a laser-parameter fit. Which
-levels the background is available for depends on the
-[`LevelPolarisability`](@ref) data of the species (for [`sr88`](@ref), the
-S``_{1/2}`` and D``_{5/2}`` clock levels; for [`ca43`](@ref), additionally
-D``_{3/2}``); the channels need only the Einstein A coefficient.
-
-Note that, unlike the electric-quadrupole coupling, an E1 light shift does not
-depend on the beam direction — only on the polarisation. The two therefore
-constrain different combinations of the beam parameters.
+| Quantity | API |
+| --- | --- |
+| E1 response of one state | [`polarisability`](@ref) |
+| Shift of one state under a parked beam | [`light_shift`](@ref) |
+| Displacement of a resonantly driven transition | [`driven_light_shift`](@ref) |
+| Data cached for repeated shift evaluations | [`LightShiftCoefficients`](@ref) |
+| Zero-field level decomposition | [`scalar_polarisability`](@ref), [`vector_polarisability`](@ref), [`tensor_polarisability`](@ref) |
 
 ## State polarisability
 
-[`polarisability`](@ref) returns the electric-dipole response of one state —
-for each ``Δm`` channel, or contracted with a polarisation — without
-converting it to a light shift or requiring a beam intensity. A zero angular
-frequency gives the static response, e.g. to the slowly oscillating electric
-field of a Paul-trap drive, whose "magic" frequency cancels the clock shift it
-causes against the second-order Doppler shift of the micromotion it drives:
+[`polarisability`](@ref) returns the E1 response of a state in SI units
+(``C m^2/V``). With no polarisation argument, it returns three entries for
+pure ``σ^-``, ``π`` and ``σ^+`` fields, indexed by ``q + 2``. A polarisation
+argument contracts these with the normalised weights ``w_q = |ε_{-q}|^2``.
+The ``π`` entry describes a field along the quantisation axis; the mean of
+the two ``σ`` entries describes a linear field perpendicular to it.
 
-```julia
+A wavelength or angular frequency selects the dynamic response;
+`0u"s^-1"` selects the static response. For example, the static differential
+polarisability sets the electric Stark shift from micromotion in a Paul trap:
+
+```@example polarisability
+using Levels, Unitful
+
 s = StateSpec("S_1/2 F=4", 4)
 d = StateSpec("D_5/2 F=4", 3)
 B0 = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"))
-Δα = polarisability(ca43, d, 0u"s^-1"; B=B0) - polarisability(ca43, s, 0u"s^-1"; B=B0)
-Δα_parallel = Δα[2]                      # rf field along the quantisation axis
-Δα_perpendicular = (Δα[1] + Δα[3]) / 2   # … perpendicular to it
-Δα_tilted = polarisability(ca43, d, 0u"s^-1", [sin(θ), 0, cos(θ)]; B=B0) - …
+Δα = polarisability(ca43, d, 0u"s^-1"; B=B0) -
+     polarisability(ca43, s, 0u"s^-1"; B=B0)
+Δα_parallel = Δα[2]
+Δα_perpendicular = (Δα[1] + Δα[3]) / 2
+θ = π / 4
+Δα_tilted = cos(θ)^2 * Δα_parallel + sin(θ)^2 * Δα_perpendicular
+(; Δα_parallel, Δα_perpendicular, Δα_tilted)
 ```
 
-The returned SI quantity is ``α`` in ``C m^2/V``; for a sinusoidal field of
-peak amplitude ``E_0`` the cycle-averaged energy shift is ``-α E_0^2/4``, for
-a static field ``-α E^2/2``. This is the E1 polarisability only, including
-both rotating and counter-rotating terms, with unregularised poles at the E1
-lines: within ~100 GHz of one, the Zeeman structure of the line and the
-uncertain tabulated line centre would matter, so such frequencies are refused
-— that regime belongs to the light-shift APIs below, as do the near-resonant
-electric-quadrupole shifts.
+For a sinusoidal electric field with unit polarisation and peak amplitude
+``E_0``, the cycle-averaged energy shift is ``-α E_0^2/4``. For a static field
+it is ``-α E^2/2``. For a light beam of intensity ``I``, the angular-frequency
+shift is ``-I α/(2c ε_0 ħ)``.
 
-Without `B`, the accessor describes the zero-field state — a ``|J, m_J⟩``
-state, or the coupled ``|F, m_F⟩`` state of a hyperfine level. With `B`, a
-hyperfine state denotes the adiabatically labelled field eigenstate, ``F``
-mixing included, while the ``|J, m_J⟩`` states of a fine-structure species,
-which the field leaves unchanged, merely carry their Zeeman energies in the
-denominators. One calculation serves both the accessor and the background of
-`LightShiftCoefficients`; `light_shift(species, state, laser, intensity, ε;
-B)` also accepts a bare frequency or wavelength to evaluate that background
-at the stated field. The scalar/vector/tensor accessors remain zero-field
-level properties: the usual single-``F`` angular factors do not describe a
-mixed field eigenstate.
+Without `B`, states are zero-field ``|J,m_J⟩`` or ``|F,m_F⟩`` states. With
+`B`, hyperfine states denote the adiabatically labelled field eigenstates,
+including ``F`` mixing. Fine-structure eigenvectors remain unchanged, but
+their Zeeman energies enter the denominators. The scalar/vector/tensor level
+accessors describe zero-field levels; their single-``F`` angular factors do
+not apply to mixed field eigenstates.
 
-## Two observables
+## Parked and driven beams
 
-Driving one Zeeman component of a transition also couples the two states
-involved, off resonantly, to every other component sharing one of them, and
-the detunings involved are mere Zeeman splittings.
-[`driven_light_shift`](@ref) returns the displacement of the *driven*
-resonance: the laser is pinned to the probed component — so the laser
-frequency drops out entirely — and that component itself is excluded as the
-coherent drive. This is the shift ⁸⁸Sr⁺ clock evaluations quote as the "E2 ac
-Stark shift", and — needing no polarisability data — it covers the 687-nm
-S``_{1/2}`` → D``_{3/2}`` line just as well.
+For a parked beam, [`light_shift`](@ref) returns the angular-frequency shift
+of one state. The shift of a transition in a Ramsey measurement is the upper
+state's shift minus the lower state's shift.
 
-A beam *parked* at a stated frequency, resonantly driving nothing, instead
-shifts every state it illuminates: [`light_shift`](@ref) with the laser given
-as a [`RelativeFrequency`](@ref) — an offset from the zero-field interval of a
-named level pair — adds the near-resonant channel sum at the exact at-field
-detunings to the background. The parametrisation is what preserves precision:
-the tabulated line centre cancels between the laser and the components,
-leaving only the stated offset and exactly-known Zeeman and hyperfine
-splittings (see [Laser frequencies](@ref reference-laser)). This is the
-regime of a laser placed *within* the
-manifold of Zeeman components, poles and all; second-order perturbation
-theory holds while every channel Rabi frequency stays small against its
-detuning, and the evaluation warns otherwise. The Ramsey-type shift of a pair
-from a parked beam is simply the difference of the two states' shifts.
+A nearby laser is specified by [`RelativeFrequency`](@ref), an angular
+offset from a named zero-field interval. The uncertain tabulated line centre
+then cancels from the component detunings, leaving the offset and the
+Zeeman/hyperfine splittings. See [Laser frequencies](@ref reference-laser).
 
-Being second order in the coupling, the driven shift scales as the intensity
-over the field, so its size relative to the background is set by the field
-alone: for ⁸⁸Sr⁺ at 674 nm it is of the same order at 0.5 mT, but up to two
-orders of magnitude larger at the 4.8 µT of an optical-clock field. What saves
-the clock is a symmetry rather than a small size — with a linear polarisation
-the two components of a ``±m`` Zeeman pair shift equally and oppositely, so
-the shift cancels in the pair average the servo is steered to, and only the
-ellipticity leaks through (`[Lindvall2025]`, Sec. III F 2).
+```@example polarisability
+laser = RelativeFrequency(s.level => d.level, 2π * 20u"MHz")
+c = LightShiftCoefficients(ca43, [s, d], laser; B=B0)
+intensity = 1u"W/m^2"
+n, ε = beam_vectors(π / 2, π / 4, 0.3)
+Δω_parked = light_shift(c, d, intensity, ε; n) -
+            light_shift(c, s, intensity, ε; n)
+```
 
-## Electric-dipole lines
+For a resonantly driven component, [`driven_light_shift`](@ref) returns the
+displacement of its resonance. It evaluates spectator channels with the laser
+tuned to the probed component and excludes that component as the coherent
+drive. A positive result raises the resonance frequency.
 
-The channel machinery is rank-agnostic: naming an electric-dipole pair in the
-`RelativeFrequency` (e.g. 422 nm S``_{1/2}`` → P``_{1/2}``) moves the
-co-rotating part of that one polarisability channel out of the background and
-into the Zeeman-resolved sum — an exact split, with the smooth
-counter-rotating term staying behind. This is the regime of a beam parked
-some tens of MHz to a few GHz from a broad dipole line, where tens-of-MHz
-Zeeman splittings modify the result at a level a Zeeman-blind polarisability
-cannot see. A *bare* wavelength that close (~100 GHz) to an explicit dipole
-channel is refused outright for the same reason.
+```@example polarisability
+Δω_driven = driven_light_shift(c, s => d, intensity, ε; n)
+```
 
-## Hyperfine species
+Both APIs accept `parts = :total | :background | :resonant` (default
+`:total`). The resonant part needs `B` and the Einstein A coefficient, but
+no polarisability data. E2 channels are built for pairs within the basis;
+E1 channels require that pair to be the `RelativeFrequency` reference.
 
-For hyperfine states, the electric-dipole background channels are summed over
-the hyperfine levels of each intermediate fine-structure level with the
-``F``-basis angular factors, and the intermediate splittings are resolved in
-the detunings — which is what gives e.g. the ⁴³Ca⁺ S``_{1/2}`` ``F`` levels a
-small tensor polarisability their ``J = 1/2`` parent lacks. With `B`, the
-background instead rotates the E1 amplitudes into the field eigenbases of
-both manifolds before squaring, and uses the exact at-field energy
-differences. The scalar/tensor static remainder is an electronic operator
-evaluated in the same eigenstate, retaining the coherences between its ``F``
-components. Unknown intermediate hyperfine constants keep that manifold
-degenerate at its centroid, without an intermediate Zeeman shift, as in the
-zero-field model.
+Coefficients cache the atomic structure for repeated intensity, polarisation
+and detuning evaluations. A parked evaluation's `δ` keyword changes only the
+near-resonant detunings; the smooth background stays at the construction
+frequency. Coefficients used in driven mode must have a construction
+frequency within relative tolerance ``10^{-3}`` of the probed line.
 
-The near-resonant channels are built from the eigenbasis-rotated amplitudes and exact
-intermediate-field eigen-energy differences of the manifolds at the
-construction field, so the ``F`` mixing is accounted for exactly; the
-reference pair of a `RelativeFrequency` names two ``F`` levels, whose
-zero-field interval — where the Zeeman components are degenerate — anchors
-the offset. Note that the ``±m`` pair cancellation quoted above then survives
-only approximately: spectators in *other* ``F`` levels sit at
-hyperfine-interval detunings that are even under ``m → -m``, so their
-contribution — often the dominant one — does not average out.
+## Background and channel split
+
+For an E1 reference pair, the near-resonant term moves from the background
+into the channel sum. The counter-rotating term stays in the background,
+so the split counts every term once at the construction frequency. The
+reference channel must be explicit in the [`LevelPolarisability`](@ref)
+data; a lumped remainder cannot be split.
+
+Bare frequencies within ~100 GHz of an explicit E1 line are refused: precise
+component detunings require a reference that cancels the uncertain line
+centre. The state [`polarisability`](@ref) accessor has the same guard and
+rejects `RelativeFrequency`; the level scalar/vector/tensor accessors remain
+unguarded curves.
+
+For hyperfine states, explicit E1 channels resolve the known hyperfine
+splittings of both levels. This can produce a tensor response even for an
+``F`` level of a ``J = 1/2`` parent. With `B`, amplitudes rotate into both
+field eigenbases before squaring, and denominators use their eigen-energies.
+The static remainder is an electronic operator evaluated in the source
+eigenstate, retaining coherences between its ``F`` components.
+
+An intermediate level without hyperfine constants is approximated as
+degenerate at its centroid, with no Zeeman shift. Field-resolved source
+levels and near-resonant partners require known constants.
+
+## Validity and symmetry
+
+The background requires polarisability data: S``_{1/2}`` and D``_{5/2}`` for
+[`sr88`](@ref), and also D``_{3/2}`` for [`ca40`](@ref) and [`ca43`](@ref).
+Evaluating a background for a level without data raises an error; its
+near-resonant channels can still be used with `parts = :resonant`.
+The static remainder approximates unresolved E1 channels and is suitable
+only far from their resonances. E2 contributions outside the selected
+near-resonant pair and counter-rotating E2 terms are omitted.
+
+The channel sum uses second-order perturbation theory with unregularised
+``1/detuning`` poles. Evaluation warns if a channel's Rabi frequency exceeds
+one tenth of its detuning or the laser lies within five upper-level
+linewidths of a pole. Linewidths enter these warnings, not the denominators;
+the model provides no scattering rate.
+
+For fine-structure E2 transitions, spectator detunings scale with `B`, so
+the resonant shift scales as ``I/B``. With linear polarisation, reversing
+both magnetic projections changes this part's sign; it cancels in a
+``±m`` pair average (`[Lindvall2025]`, Sec. III F 2). Ellipticity breaks that
+cancellation. The E1 background generally remains in the pair average.
+
+Hyperfine spectators in other ``F`` levels generally prevent the resonant
+pair cancellation and the ``I/B`` scaling. For linear polarisation, the
+field-reversal identity is ``shift(-m,B) = shift(+m,-B)``, with both
+projections reversed; for elliptical polarisation the field reversal also
+requires conjugating `ε`.
 
 ```@autodocs
 Modules = [Levels]

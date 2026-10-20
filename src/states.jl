@@ -292,9 +292,7 @@ StateSpec(level::LevelSpec, m::Union{Integer,Rational}) =
 StateSpec(level::AbstractString, m::Union{Integer,Rational}) =
     StateSpec(parse_level(level), m)
 
-# Levels and states print in the spectroscopic notation the parser accepts, so
-# that `parse_level(string(level)) == level`, and error messages read as the
-# user wrote them; the projection is printed as a plain fraction.
+# Use spectroscopic notation in displays and error messages.
 fraction(x::Rational) =
     isone(denominator(x)) ? string(numerator(x)) :
     string(numerator(x), "/", denominator(x))

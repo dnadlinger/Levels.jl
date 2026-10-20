@@ -29,22 +29,18 @@ const POLARISABILITY_AU = uconvert(u"C*m^2/V", DIPOLE_AU^2 / (2 * u"R∞" * u"h"
 """
 Electric-dipole data for the ac Stark shift (light shift) of one level.
 
-The shift is evaluated as a sum over the intermediate levels an electric-dipole
-transition connects to (cf. [`light_shift`](@ref)). The few channels that
-dominate are given explicitly by their reduced matrix elements, so that their
-detuning from the driving laser is accounted for; everything else — the ionic
-core, and the many weak transitions to high-lying levels — is lumped into a pair
-of static polarisabilities, which is a good approximation as long as the laser
-is far detuned from those transitions.
+Explicit intermediate levels contribute their frequency-dependent E1 sums;
+the ionic core and omitted channels contribute a static scalar/tensor
+remainder. This approximation requires the driving field to be far from the
+omitted resonances. Used by [`polarisability`](@ref) and [`light_shift`](@ref).
 """
 struct LevelPolarisability
     """
     Reduced electric-dipole matrix elements ``|⟨k‖d‖a⟩|`` from this level ``a``
     to the intermediate levels ``k`` treated explicitly.
 
-    The energies of the levels `k` are taken from
-    [`NoHyperfineOneElectronSpecies`](@ref)`.energies`, so every key must appear
-    there as well.
+    Keys are fine-structure levels and must also appear in the species'
+    `energies` table.
     """
     reduced_dipoles::Dict{NoHyperfineNumberSpec,typeof(1.0u"C*m")}
 
@@ -64,8 +60,9 @@ end
 """
     LevelPolarisability(reduced_dipoles; static_scalar, static_tensor)
 
-Creates the light-shift data for one level from a collection of
-`level => reduced matrix element` pairs and the static remainder.
+Creates light-shift data from `level => reduced matrix element` pairs and
+static **remainders**, not total polarisabilities. Both remainders default
+to zero; [`ImplicitPolarisability`](@ref) accepts total static anchors instead.
 
 Levels may be given in spectroscopic notation, and all quantities are converted
 to the stored units, so literature values can be written as e.g.
@@ -162,31 +159,18 @@ function resolve_einstein_as(einstein_as, energies)
 end
 
 """
-Electric-dipole light-shift data for one level, specified through the
-quantities that are genuinely independent rather than the assembled
-[`LevelPolarisability`](@ref) numbers: the intermediate levels whose channels
-are treated explicitly, and the level's **total** static polarisabilities,
-from which the lumped static remainder follows by subtracting the explicit
-channels' static contributions.
+E1 channels and **total** static polarisabilities for one fine-structure level.
+Species constructors resolve these into [`LevelPolarisability`](@ref) data,
+subtracting the explicit channels' static contributions from each total.
 
-A channel given as a bare level has its reduced dipole matrix element
-**derived from the species' Einstein A coefficient** for the pair
-([`Levels.dipole_from_einstein_a`](@ref)); a `level => dipole` pair carries an
-explicit matrix element, and is accepted only for channels absent from the
-`einstein_as` table (which must stay complete per upper level, as it defines
-the level [`lifetime`](@ref)s) — a pair must never carry two independent
-strengths.
+A bare channel level derives its dipole from the species' Einstein A
+coefficient. An explicit `level => dipole` is accepted only if the pair is
+absent from `einstein_as`, so each transition has one independent strength.
+Rate tables should remain complete for each upper level because they also
+determine [`lifetime`](@ref).
 
-The species constructors resolve this into a [`LevelPolarisability`](@ref) —
-the one place the required `energies` and `einstein_as` tables are both in
-hand — so a channel strength is stored exactly once per species, and an update
-to a measured rate propagates into the light-shift background automatically.
-
-Note that the resolved static remainder is a bookkeeping quantity rather than
-a physical tail contribution: it is whatever the anchor totals exceed the
-explicit channels by, and so also absorbs any tension between the channel
-dipoles used here and the matrix elements underlying the anchors (cf. the
-⁴³Ca⁺ S``_{1/2}`` remainder commentary in `species_data.jl`).
+The remainder includes any mismatch between the chosen dipoles and the data
+underlying the static anchors; it need not represent a physical tail alone.
 """
 struct ImplicitPolarisability
     """
@@ -220,13 +204,12 @@ intermediate levels — each a bare level (in spectroscopic notation or as a
 coefficient) or a `level => dipole` pair — and the total static
 polarisabilities.
 
-All quantities are converted to the stored units, so literature values can be
-written as e.g. `74.62 * Levels.POLARISABILITY_AU`. An anchor total given as
-`nothing` keeps the corresponding static remainder at zero — for datasets
-whose only known inputs are the explicit channels; `static_scalar` has no
-default, so leaving out the anchor is always an explicit choice. (For a level
-whose channels carry no tensor content — any ``j = 1/2`` one — the default
-`static_tensor = nothing` is indistinguishable from a zero total.)
+Quantities accept any compatible units, e.g. `74.62 * Levels.POLARISABILITY_AU`.
+An anchor of `nothing` leaves the corresponding remainder zero; an anchor of
+zero makes the **total** zero. `static_scalar` is required, while
+`static_tensor` defaults to `nothing`. For ``J ≤ 1/2``, the electronic tensor
+remainder vanishes; resolved hyperfine channels can still give an ``F`` level
+a tensor response.
 """
 function ImplicitPolarisability(channels; static_scalar, static_tensor=nothing)
     normalise(channel::Pair) =
@@ -310,18 +293,14 @@ function resolve_polarisability(
             dipole
         end
         push!(dipoles, channel => d)
-        # The channels' static contributions, via the same helpers the
-        # evaluation side uses (polarisability.jl — included later, but loaded
-        # by species-construction time, cf. src/Levels.jl), so the resolved
-        # data reproduces the anchor totals exactly.
+        # Shared evaluation helpers keep the static anchors consistent.
         channels_scalar += channel_scalar_polarisability(d, j, Δ, zero(Δ))
         if j > 1//2
             channels_tensor +=
                 channel_tensor_polarisability(d, j, channel.j, Δ, zero(Δ))
         end
     end
-    # Whatever the anchor totals exceed the explicit channels by becomes the
-    # lumped remainder; an unanchored (nothing) total leaves none at all.
+    # An absent anchor leaves a channels-only model.
     remainder(total, channels) = isnothing(total) ? zero(channels) : total - channels
     LevelPolarisability(
         dipoles;
