@@ -292,6 +292,23 @@ StateSpec(level::LevelSpec, m::Union{Integer,Rational}) =
 StateSpec(level::AbstractString, m::Union{Integer,Rational}) =
     StateSpec(parse_level(level), m)
 
+# Levels and states print in the spectroscopic notation the parser accepts, so
+# that `parse_level(string(level)) == level`, and error messages read as the
+# user wrote them; the projection is printed as a plain fraction.
+fraction(x::Rational) =
+    isone(denominator(x)) ? string(numerator(x)) :
+    string(numerator(x), "/", denominator(x))
+
+orbital_symbol(l) = l < length(ORBITAL_SYMBOLS) ? ORBITAL_SYMBOLS[l+1] : "(l=$l)"
+
+Base.show(io::IO, spec::NoHyperfineNumberSpec) =
+    print(io, orbital_symbol(spec.l), "_", fraction(spec.j))
+Base.show(io::IO, spec::HyperfineNumberSpec) =
+    print(io, orbital_symbol(spec.l), "_", fraction(spec.j), " F=", fraction(spec.f))
+Base.show(io::IO, spec::SpectroscopicSpec) = print(io, spec.val)
+Base.show(io::IO, state::StateSpec) =
+    print(io, "|", state.level, ", m=", fraction(state.m), "⟩")
+
 """
     convert(::Type{StateSpec{L}}, s::StateSpec)
 

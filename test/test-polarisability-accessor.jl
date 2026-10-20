@@ -47,7 +47,7 @@
     s = StateSpec("S_1/2 F=4", 4)
     λ_397 =
         uconvert(u"nm", 2π * u"c" / Levels.transition_frequency(ca43, "S_1/2", "P_1/2"))
-    @test_throws ArgumentError polarisability(ca43, s, λ_397 + 0.03u"nm")
+    @test_throws "'S_1/2' → 'P_1/2'" polarisability(ca43, s, λ_397 + 0.03u"nm")
     @test_throws ArgumentError polarisability(ca43, s, λ_397 + 0.03u"nm", ε)
     @test_throws ArgumentError polarisability(
         ca43,

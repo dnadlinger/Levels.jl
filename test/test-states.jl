@@ -70,6 +70,21 @@ end
     @test convert(StateSpec{NoHyperfineNumberSpec}, spectro) == StateSpec("D_5/2", 3//2)
 end
 
+@testitem "Spec printing" tags=[:unit, :fast] begin
+    # Levels print in the notation the parser accepts (round trip), states as
+    # kets with a plain-fraction projection — the forms error messages use.
+    for level in ("S_1/2", "D_5/2", "F_7/2", "S_1/2 F=4", "D_5/2 F=7/2", "P_3/2 F=1")
+        spec = Levels.parse_level(level)
+        @test string(spec) == level
+        @test Levels.parse_level(string(spec)) == spec
+    end
+    @test string(SpectroscopicSpec("D5//2")) == "D5//2"
+    @test string(StateSpec("D_5/2", -3//2)) == "|D_5/2, m=-3/2⟩"
+    @test string(StateSpec("S_1/2 F=4", 4)) == "|S_1/2 F=4, m=4⟩"
+    @test string(StateSpec("S_1/2 F=4", 0)) == "|S_1/2 F=4, m=0⟩"
+    @test endswith(repr([StateSpec("S_1/2", 1//2)]), "[|S_1/2, m=1/2⟩]")
+end
+
 @testitem "state_pairs" tags=[:unit, :fast] begin
     # The eight quadrupole components observable with Δm = 0 suppressed.
     e2 = state_pairs("S_1/2", "D_5/2"; Δm=[-2, -1, 1, 2])

@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning].
   included, Zeeman and known intermediate hyperfine splittings resolved in the
   denominators — by the same at-field machinery as the near-resonant channels;
   bare-frequency `light_shift` also accepts `B`
+- Level and state specifications print in spectroscopic notation
+  (`S_1/2 F=4`, `|D_5/2, m=3/2⟩`)
 - `StateBasis` for ordered Zeeman-state index bookkeeping, plus the generic
   `state_pairs` transition enumeration between two levels
 - Zeeman structure: `lande_g` (LS coupling with reduced-mass correction, using
