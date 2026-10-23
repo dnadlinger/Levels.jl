@@ -322,8 +322,8 @@ pivoting silently returns wrong solutions once the steady state spans ~100
 orders of magnitude along a Fock ladder (``N ≳ 170`` at ``η = 0.1``). The
 factorisation is released immediately (it lives outside the Julia heap, so
 scans with hundreds of factorisations would otherwise exhaust the memory).
-Both solve residuals are checked, and the steady state must be a density
-matrix to within `atol`; an inaccurate factorisation raises.
+Both solves are checked using normwise backward error. The steady state is
+also checked for negative populations and a non-unit trace (tolerance `atol`).
 """
 struct IntegratedTransientSolver
     liouvillian::BandLiouvillian
@@ -356,9 +356,9 @@ function IntegratedTransientSolver(bl::BandLiouvillian, observables; atol::Real=
     Mt = sparse(transpose(M))
     adjoints = [refined_solve(transpose(F), Mt, a) for a in rows]
     finalize(F)
-    check_residual(M * steady - e, e)
+    check_solution(M, steady, e)
     for (y, a) in zip(adjoints, rows)
-        check_residual(Mt * y - a, a)
+        check_solution(Mt, y, a)
     end
     populations = [steady[k] for k in diagonal]
     if minimum(real, populations) < -atol || abs(sum(populations) - 1) > atol
@@ -384,11 +384,12 @@ function refined_solve(F, M, b)
     x
 end
 
-function check_residual(residual, rhs)
-    norm(residual) <= 1e-8 * norm(rhs) || error(
-        "Inaccurate Liouvillian solve (relative residual " *
-        "$(norm(residual) / norm(rhs)))",
-    )
+# Checks normwise backward error, allowing for roundoff on the scale ‖M‖∞ ‖x‖∞
+# when slow relaxation makes the adjoint solution large. Small backward error
+# does not guarantee small forward error for an ill-conditioned system.
+function check_solution(M, x, b)
+    η = norm(M * x - b, Inf) / (opnorm(M, Inf) * norm(x, Inf) + norm(b, Inf))
+    η <= 1e-12 || error("Inaccurate Liouvillian solve (backward error $η)")
 end
 
 """
