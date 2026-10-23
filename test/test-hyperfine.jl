@@ -313,6 +313,14 @@ end
     lower = insensitive_field(ca43, s => d, (0.30u"mT", 0.40u"mT"))
     @test lower ≈ 0.338u"mT" rtol = 1e-2
 
+    # By default the root is converged to the floating-point limit, so the residual
+    # sensitivity should just be numerical noise.
+    @test abs(zeeman_sensitivity(ca43, s, d, upper)) < 1e-12u"µs^-1/mT"
+    @test abs(zeeman_sensitivity(ca43, s, d, lower)) < 1e-12u"µs^-1/mT"
+    # The finite-tolerance result should lie within the expected interval.
+    coarse = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"); abstol=1e-4u"mT")
+    @test abs(coarse - upper) < 1e-4u"mT"
+
     # Microwave clock qubits: field-independent points at 146.0942 G and
     # 287.7827 G (atomic_physics test_ca43.py, after T. Harty's DPhil thesis).
     p1 = insensitive_field(

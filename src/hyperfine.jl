@@ -575,30 +575,34 @@ function transition_frequency(
 end
 
 """
-    insensitive_field(species, transition::Pair, bracket)
+    insensitive_field(species, transition::Pair, bracket; abstol = 0u"mT")
 
-Returns the static field (along ẑ) at which the first-order magnetic-field
-sensitivity of the given `lower => upper` hyperfine transition vanishes, found
-by bracketed root finding ([ITP](https://doi.org/10.1145/3423597)) of
-[`zeeman_sensitivity`](@ref) over `bracket` (a 2-tuple of flux densities).
+Returns the static field (along ẑ) at which the first-order magnetic-field sensitivity
+of the given `lower => upper` hyperfine transition vanishes within `bracket` (a 2-tuple
+of magnetic flux densities).
 
-There is deliberately no default bracket: sensitivity zeros are typically not
-unique (e.g. the ⁴³Ca⁺ 729 nm clock transition has them at both 3.38 G and
-4.96 G), so the bracket chooses which one is meant. An error is raised if the
-sensitivity does not change sign over the bracket.
+There is deliberately no default bracket: sensitivity zeros are typically not unique
+(e.g. the ⁴³Ca⁺ 729 nm clock transition has them at both 3.38 G and 4.96 G). An error is
+raised if the sensitivity does not change sign over the given bracket.
+
+This uses the analytical first-order term (see [`zeeman_sensitivity`](@ref)). `abstol`
+is the absolute tolerance on the returned field (bracketed root search); the default of
+0 runs to the floating-point floor, where the accuracy is set by the eigensolver when
+diagonalising the hyperfine Hamiltonian. This is typically much better than femtotesla,
+i.e. ultimately determined entirely by the accuracy of the atomic species data; you
+may want to set `abstol` to a value appropriate for your application for a slight
+speedup.
 """
 function insensitive_field(
     species::HyperfineOneElectronSpecies,
     transition::Pair,
-    bracket,
+    bracket::NTuple{2,Unitful.BField};
+    abstol=0u"mT",
 )
     lower, upper = transition
     f(b, _) = ustrip(u"µs^-1/mT", zeeman_sensitivity(species, lower, upper, b * u"mT"))
-    prob = IntervalNonlinearProblem{false}(
-        f,
-        (ustrip(u"mT", bracket[1]), ustrip(u"mT", bracket[2])),
-    )
-    sol = solve(prob, ITP())
+    prob = IntervalNonlinearProblem{false}(f, ustrip.(u"mT", bracket))
+    sol = solve(prob, ITP(); abstol=ustrip(u"mT", abstol))
     if !successful_retcode(sol)
         throw(
             ArgumentError(
