@@ -83,8 +83,9 @@ fast compared to the motional dynamics (``η Ω ≪ Γ, ω_m``), as a `NamedTupl
 `(; A_plus, A_minus, nbar, τ_c)` (a vector of them for several modes):
 
 ```math
-A_± = 2 \\, \\mathrm{Re} \\, S(∓ω_m) + D, \\qquad
-S(ω) = \\mathrm{Tr}\\left[ H_\\mathrm{sb} \\, (-\\mathcal{L} + i ω)^{-1} \\left( H_\\mathrm{sb} ρ_∞ \\right) \\right],
+A_± = 2 \\, \\mathrm{Re} \\, S(±ω_m) + D, \\qquad
+S(ω) = \\mathrm{Tr}\\left[ H_\\mathrm{sb} \\, (-\\mathcal{L} + i ω)^{-1} \\left( H_\\mathrm{sb} ρ_∞ \\right) \\right]
+= \\int_0^∞ \\! dτ \\, e^{-i ω τ} \\, ⟨H_\\mathrm{sb}(τ) H_\\mathrm{sb}(0)⟩,
 \\qquad
 D = \\sum_k α_k η_{0,k}^2 \\, \\mathrm{Tr}\\left[ L_k^† L_k ρ_∞ \\right],
 ```
@@ -92,7 +93,15 @@ D = \\sum_k α_k η_{0,k}^2 \\, \\mathrm{Tr}\\left[ L_k^† L_k ρ_∞ \\right],
 with ``\\mathcal{L}`` the internal Liouvillian, ``ρ_∞`` its steady state,
 ``H_\\mathrm{sb}`` the sideband Hamiltonian and ``D`` the recoil diffusion from
 spontaneous emission (cf. [`MotionalCoupling`](@ref); Cirac et al., Phys. Rev.
-A **46**, 2668 (1992); Morigi, Phys. Rev. A **67**, 033402 (2003)). ``A_+``
+A **46**, 2668 (1992); Morigi, Phys. Rev. A **67**, 033402 (2003)). With this
+sign of the transform the cooling rate ``A_-`` samples the spectrum at
+``-ω_m``: for a single beam on a two-level transition in the resolved-sideband
+limit, ``A_∓ - D = η^2 Γ Ω^2 / (Γ^2 + 4 (δ ± ω_m)^2)`` with ``δ`` the laser
+detuning from the line (laser minus atomic frequency, as throughout this
+package), so that red detuning cools. Morigi defines the spectrum with
+``e^{+iντ}``, i.e. ``S(-ν)`` of the definition here, and the detunings as
+atomic minus laser frequency, and accordingly writes
+``A_± = 2 \\mathrm{Re} \\, S(∓ν)`` — the same rates. ``A_+``
 raises and ``A_-`` lowers the phonon number, so the mean occupation relaxes as
 ``\\dot{\\bar n} = A_+ (\\bar n + 1) - A_- \\bar n`` (plus an optional
 `heating_rate` in quanta per time) towards
