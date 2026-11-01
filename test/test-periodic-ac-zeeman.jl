@@ -31,7 +31,7 @@ end
         ac_zeeman_shift(s_manifold(), S_PROBE, Ω_RF, [0.0u"mT", 0.0u"mT", 0.05u"mT"]),
     )
     # …and its whole shift comes from the transverse component.
-    r = ac_zeeman_shift(ca43, S_PROBE => D_PROBE, B0, Ω_RF, B_DRIVE)
+    r = ac_zeeman_shift(ca43, S_PROBE => D_PROBE, Ω_RF, B_DRIVE; B=B0)
     @test ac_zeeman_shift(
         s_manifold(),
         S_PROBE,
@@ -49,7 +49,7 @@ end
         zeeman_drive(ca43, m_d.basis, [0.05u"mT", 0.0u"mT", 0.0u"mT"]; phase=0.0),
         zeeman_drive(ca43, m_d.basis, [0.0u"mT", 0.0u"mT", 0.05u"mT"]; phase=1.234),
     ]
-    @test ac_zeeman_shift(m_d, D_PROBE, Ω_RF, drives_dephased) ≈ r.upper rtol = 1e-12
+    @test quasienergy_shift(m_d, D_PROBE, Ω_RF, drives_dephased) ≈ r.upper rtol = 1e-12
 
     # Polarisation of the transverse field: σ⁺ and σ⁻ rotating fields differ,
     # and a linear field is their mean (all at equal total |B|²).
@@ -68,11 +68,16 @@ end
         zeeman_drive(ca43, m_d.basis, real.(b_plus); phase=0.0),
         zeeman_drive(ca43, m_d.basis, imag.(b_plus); phase=(-π / 2)),
     ]
-    @test ac_zeeman_shift(m_d, D_PROBE, Ω_RF, drives_manual) ≈ δ_plus rtol = 1e-12
+    @test quasienergy_shift(m_d, D_PROBE, Ω_RF, drives_manual) ≈ δ_plus rtol = 1e-12
 
     # Contribution breakdown: entries carry adiabatic labels, sum to the total,
     # and are sorted by decreasing magnitude.
-    contributions = ac_zeeman_contributions(m_d, D_PROBE, Ω_RF, B_DRIVE)
+    contributions = quasienergy_shift_contributions(
+        m_d,
+        D_PROBE,
+        Ω_RF,
+        zeeman_drives(ca43, m_d.basis, B_DRIVE),
+    )
     @test sum(c.shift for c in contributions) ≈ r.upper rtol = 1e-12
     @test issorted([abs(c.shift) for c in contributions]; rev=true)
     @test contributions[1].state isa StateSpec{HyperfineNumberSpec}
@@ -99,9 +104,9 @@ end
     slow = ac_zeeman_shift(
         ca43,
         S_PROBE => D_PROBE,
-        B0,
         2π * 100.0u"Hz",
-        [0.0u"mT", 0.0u"mT", b_par * u"mT"],
+        [0.0u"mT", 0.0u"mT", b_par * u"mT"];
+        B=B0,
     )
     @test ustrip(u"Hz", slow.shift / 2π) ≈ curvature * b_par^2 / 4 rtol = 1e-3
 end
@@ -119,7 +124,7 @@ end
         for f_mhz in frequencies
             ω = 2π * f_mhz * u"MHz"
             pt = ac_zeeman_shift(manifold, state, ω, B_DRIVE)
-            fl = floquet_zeeman_shift(manifold, state, ω, B_DRIVE)
+            fl = ac_zeeman_shift(manifold, state, ω, B_DRIVE, Floquet())
             @test pt ≈ fl rtol = 2e-2
         end
     end
@@ -127,8 +132,9 @@ end
     # Harmonic-truncation convergence of the Floquet reference.
     m_d = d_manifold()
     ω = 2π * 30.0u"MHz"
-    @test floquet_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE; harmonic_cutoff=4) ≈
-          floquet_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE; harmonic_cutoff=6) rtol = 1e-4
+    @test ac_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=4)) ≈
+          ac_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=6)) rtol =
+        1e-4
 end
 
 @testitem "Near-resonance warnings" tags=[:unit] setup=[Ca43ClockSetup] begin
@@ -146,11 +152,12 @@ end
 
     # A strong drive on resonance spreads the bare state over several Floquet
     # modes; the dressed-state identification then warns as ambiguous.
-    @test_logs (:warn, r"Ambiguous dressed-state") match_mode = :any floquet_zeeman_shift(
+    @test_logs (:warn, r"Ambiguous dressed-state") match_mode = :any ac_zeeman_shift(
         m_d,
         D_PROBE,
         Δ,
         [2.0u"mT", 0.0u"mT", 0.0u"mT"],
+        Floquet(),
     )
 end
 
@@ -194,14 +201,14 @@ end
     # The PT shift evaluated on the model's manifold blocks agrees exactly
     # with the manifold-level wrapper (three-way consistency with the
     # reference values is covered in the PT item).
-    wrapper = ac_zeeman_shift(ca43, S_PROBE => D_PROBE, B0, Ω_RF, B_DRIVE)
-    @test ac_zeeman_shift(dt, dt.upper) - ac_zeeman_shift(dt, dt.lower) ≈ wrapper.shift rtol =
-        1e-12
+    wrapper = ac_zeeman_shift(ca43, S_PROBE => D_PROBE, Ω_RF, B_DRIVE; B=B0)
+    @test quasienergy_shift(dt, dt.upper) - quasienergy_shift(dt, dt.lower) ≈
+          wrapper.shift rtol = 1e-12
 
     # The dressed carrier resonance shift agrees with the PT transition shift
     # up to the PT truncation error and the laser-induced ac Stark shift
     # (∝ Ω0², ~Hz here).
-    sb = sideband_rabi(dt; sideband=0, num_time_samples=32)
+    sb = sideband_rabi(dt, DressedStates(; num_time_samples=32); sideband=0)
     @test abs(sb.δ_res - wrapper.shift) < 2π * 10.0u"Hz"
 
     # Constructor validation.
@@ -265,7 +272,7 @@ end
         for (α, i) in enumerate(range)
             m = BASIS[i].m
             pred = -Ω_b^2 * (m / 8) * (1 / (Ω_RF - ω_z) - 1 / (Ω_RF + ω_z))
-            @test ac_zeeman_shift(dt, i) ≈ pred rtol = 1e-6
+            @test quasienergy_shift(dt, i) ≈ pred rtol = 1e-6
         end
     end
 end
@@ -275,7 +282,7 @@ end
 ] begin
     # End-to-end: the exact monodromy engine's carrier resonance detuning for
     # the hyperfine DrivenTransition agrees with the dressed-state engine (and
-    # thus, to PT accuracy, with ac_zeeman_shift) — the ⁴³Ca⁺ analogue of the
+    # thus, to PT accuracy, with quasienergy_shift) — the ⁴³Ca⁺ analogue of the
     # sr88 cross-engine item in test-periodic-tdse.jl.
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     n, ε = beam_vectors(π / 2, π / 4)
@@ -294,8 +301,12 @@ end
         coupling,
         drives=zeeman_drives(ca43, basis, B_DRIVE),
     )
-    fl = sideband_rabi(dt; sideband=0, num_time_samples=32)
-    ex = exact_sideband(dt; sideband=0, num_time_samples=32)
+    fl = sideband_rabi(dt, DressedStates(; num_time_samples=32); sideband=0)
+    ex = sideband_rabi(
+        dt,
+        Monodromy(; estimate=DressedStates(; num_time_samples=32));
+        sideband=0,
+    )
     @test ex.Ω ≈ fl.Ω rtol = 1e-3
     # δ_res agrees between the engines up to the laser-induced ac Stark shift
     # (∝ Ω0², sub-Hz here).

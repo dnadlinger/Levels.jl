@@ -1598,7 +1598,7 @@ end
     B = 0.3u"mT"
     n, ε = beam_vectors(π / 2, π / 4, 0.3)
     # Large enough that the ~Ω₀·1e-7-scale resonance-finder tolerance of
-    # exact_sideband stays well below the ∝ Ω₀² shift, small enough that
+    # sideband_rabi stays well below the ∝ Ω₀² shift, small enough that
     # Ω₀ ≪ the ~MHz Zeeman splittings keeps higher orders negligible.
     Ω0 = 2π * 10.0u"kHz"
 
@@ -1625,6 +1625,10 @@ end
         B,
         coupling,
     )
-    exact = exact_sideband(dt; sideband=0, num_time_samples=16)
+    exact = sideband_rabi(
+        dt,
+        Monodromy(; estimate=DressedStates(; num_time_samples=16));
+        sideband=0,
+    )
     @test exact.δ_res ≈ expected rtol = 2e-2
 end

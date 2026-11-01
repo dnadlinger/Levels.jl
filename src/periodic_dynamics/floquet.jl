@@ -74,18 +74,12 @@ Fourier components (harmonics 0 and +1) of the laser-free Hamiltonian of a
 [`DrivenTransition`](@ref) restricted to the manifold covering the index range
 `r`, at ``δ = 0``.
 """
-function manifold_blocks(dt::DrivenTransition, r::UnitRange{Int})
-    H0 = Diagonal(dt.frame[r])
-    H1 = zeros(ComplexF64, length(r), length(r)) .* u"µs^-1"
-    for drive in dt.drives
-        H1 .+= (0.5 * cis(drive.phase)) .* drive.amplitude[r, r]
-    end
-    H0, H1
-end
+manifold_blocks(dt::DrivenTransition, r::UnitRange{Int}) =
+    Diagonal(dt.frame[r]), harmonic_block(dt.drives, r)
 
 """
 A [`DrivenTransition`](@ref) with both manifolds dressed by its harmonic drives
-(laser off), cached so that repeated [`sideband_amplitude`](@ref) evaluations
+(laser off), cached so that repeated [`sideband_rabi`](@ref) evaluations
 (e.g. a modulation-index scan) reuse the diagonalisation.
 
 The quasienergies `ε_lower`/`ε_upper` and periodic Floquet modes
@@ -100,16 +94,18 @@ Base.@kwdef struct DressedTransition{DT<:DrivenTransition,E<:Quantity}
 end
 
 """
-    dress(dt::DrivenTransition; harmonic_cutoff = 8, num_time_samples = 256)
+    dress(dt::DrivenTransition, method = DressedStates())
 
 Dresses the two manifolds of the given model by its harmonic drives, returning a
 [`DressedTransition`](@ref).
 
 `harmonic_cutoff` is the Floquet harmonic truncation of the dressing; `num_time_samples` the number of
 uniform time samples per drive period used for the Fourier analysis of the laser
-coupling in [`sideband_amplitude`](@ref).
+coupling in [`sideband_rabi`](@ref).
 """
-function dress(dt::DrivenTransition; harmonic_cutoff::Int=8, num_time_samples::Int=256)
+function dress(dt::DrivenTransition, method::DressedStates=DressedStates())
+    harmonic_cutoff = method.harmonic_cutoff
+    num_time_samples = method.num_time_samples
     ε_lower, u_lower = dress_manifold(
         manifold_blocks(dt, dt.lower_range)...,
         dt.drive_frequency,
@@ -126,7 +122,7 @@ function dress(dt::DrivenTransition; harmonic_cutoff::Int=8, num_time_samples::I
 end
 
 """
-    sideband_amplitude(d::DressedTransition; sideband::Int, modulation = none)
+    sideband_rabi(d::DressedTransition; sideband::Int, modulation = none)
 
 Computes the first-order laser coupling between the dressed probed states at
 harmonic `sideband` of the drive frequency (`+1`: probing at ν + Ω, `-1`: ν − Ω,
@@ -139,9 +135,9 @@ resonance detuning `δ_res` (including the ac shifts of the dressed levels), the
 complex amplitude `amp = g_n` (for interference diagnostics), and the carrier
 Rabi frequency `carrier`.
 """
-function sideband_amplitude(
+function sideband_rabi(
     d::DressedTransition;
-    sideband::Int,
+    sideband::Integer,
     modulation=HarmonicPhaseModulation(),
 )
     dt = d.dt
@@ -162,35 +158,30 @@ function sideband_amplitude(
 
     a = gn(sideband)
     (
-        Ω=uconvert(u"ms^-1", 2 * abs(a)),
+        Ω=uconvert(u"µs^-1", 2 * abs(a)),
         δ_res=uconvert(
             u"µs^-1",
             d.ε_upper[α_upper] - d.ε_lower[α_lower] + sideband * dt.drive_frequency,
         ),
-        amp=uconvert(u"ms^-1", a),
-        carrier=uconvert(u"ms^-1", 2 * abs(gn(0))),
+        amp=uconvert(u"µs^-1", a),
+        carrier=uconvert(u"µs^-1", 2 * abs(gn(0))),
     )
 end
 
 """
-    sideband_rabi(dt::DrivenTransition; sideband, modulation = none, harmonic_cutoff = 8, num_time_samples = 256)
+    sideband_rabi(dt::DrivenTransition, method = DressedStates(); sideband, modulation = none)
 
 Convenience wrapper: dresses the transition and evaluates
-[`sideband_amplitude`](@ref).
+[`sideband_rabi`](@ref).
 """
 function sideband_rabi(
-    dt::DrivenTransition;
-    sideband::Int,
+    dt::DrivenTransition,
+    method::DressedStates=DressedStates();
+    sideband::Integer,
     modulation=HarmonicPhaseModulation(),
-    harmonic_cutoff::Int=8,
-    num_time_samples::Int=256,
 )
-    sideband_amplitude(
-        dress(dt; harmonic_cutoff, num_time_samples);
-        sideband,
-        modulation,
-    )
+    sideband_rabi(dress(dt, method); sideband, modulation)
 end
 
-export DressedTransition, dress, sideband_amplitude, sideband_rabi
+export DressedTransition, dress, sideband_rabi
 public dress_manifold

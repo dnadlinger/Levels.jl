@@ -10,19 +10,19 @@ magnetic field, any number of harmonic drive terms at the fundamental drive
 frequency (e.g. an ac magnetic field via [`zeeman_drive`](@ref)), and the laser
 coupling matrix, optionally phase-modulated (e.g. [`HarmonicPhaseModulation`](@ref)
 for excess micromotion). Two engines evaluate it: fast dressed-state Floquet
-perturbation theory ([`dress`](@ref), [`sideband_amplitude`](@ref)), and exact
+perturbation theory ([`dress`](@ref), [`sideband_rabi`](@ref)), and exact
 monodromy-matrix propagation of the time-dependent Schrödinger equation
-([`exact_sideband`](@ref), [`stroboscopic_populations`](@ref)) as a
+([`sideband_rabi`](@ref), [`stroboscopic_populations`](@ref)) as a
 nonperturbative cross-check.
 
-The ac Zeeman shifts themselves — with or without a probe laser — are available
-directly through the second-order perturbation sum [`ac_zeeman_shift`](@ref)
-(with [`ac_zeeman_contributions`](@ref) diagnostics and near-resonance warnings)
-and its nonperturbative counterpart [`floquet_zeeman_shift`](@ref); for
-hyperfine species these operate on the exact
-[`Levels.hyperfine_manifold`](@ref) eigenstates, whose ``F`` mixing the
-hyperfine [`DrivenTransition`](@ref) method likewise accounts for by rotating
-couplings and drives into the field eigenbasis.
+The quasienergy shifts of the states themselves — with or without a probe laser —
+are available directly through [`quasienergy_shift`](@ref), by second-order
+perturbation theory (with [`quasienergy_shift_contributions`](@ref) diagnostics
+and near-resonance warnings) or nonperturbative Floquet dressing, and for a
+magnetic field phasor through [`ac_zeeman_shift`](@ref); for hyperfine species
+these operate on the exact [`Levels.hyperfine_manifold`](@ref) eigenstates, whose
+``F`` mixing the hyperfine [`DrivenTransition`](@ref) method likewise accounts for
+by rotating couplings and drives into the field eigenbasis.
 
 Cf. Joshi et al., "Characterization of ion-trap-induced ac magnetic fields",
 Phys. Rev. A **110**, 063101 (2024),
@@ -52,9 +52,10 @@ using ..Levels:
     zeeman_hamiltonian,
     zeeman_shift
 
+include("methods.jl")
 include("driving.jl")
 include("floquet.jl")
-include("ac_zeeman.jl")
+include("quasienergy.jl")
 include("tdse.jl")
 include("quantum_toolbox.jl")
 

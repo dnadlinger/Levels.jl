@@ -14,6 +14,21 @@ struct HarmonicDrive{M<:AbstractMatrix}
 end
 
 """
+Returns the positive-frequency Fourier component ``H_1 = Σ_i ½ e^{iφ_i} X_i``
+of the given [`HarmonicDrive`](@ref)s ``Σ_i X_i \\cos(Ω t + φ_i)``, restricted
+to the basis index range `r`, so that the drive term reads
+``H_1 e^{iΩt} + H_1^† e^{-iΩt}`` (the convention of [`dress_manifold`](@ref)
+and of the perturbative [`quasienergy_shift`](@ref)).
+"""
+function harmonic_block(drives, r)
+    H1 = zeros(ComplexF64, length(r), length(r)) .* u"µs^-1"
+    for drive in drives
+        H1 .+= (0.5 * cis(drive.phase)) .* drive.amplitude[r, r]
+    end
+    H1
+end
+
+"""
     zeeman_drive(species, basis, B; phase = 0.0)
 
 Returns the [`HarmonicDrive`](@ref) describing an ac magnetic field
@@ -90,7 +105,7 @@ H(t) = \\mathrm{diag}(\\texttt{frame}) - δ P_\\mathrm{upper}
 with ``f(t) = e^{-i φ_\\mathrm{mod}(t)} / 2`` the laser phase-modulation factor.
 The laser detuning ``δ`` from the probed transition and the phase modulation
 ``φ_\\mathrm{mod}`` are supplied at evaluation time (cf.
-[`full_hamiltonian`](@ref), [`sideband_amplitude`](@ref)), so one model instance
+[`full_hamiltonian`](@ref), [`sideband_rabi`](@ref)), so one model instance
 can serve e.g. a whole modulation-index scan.
 
 Constructed via the `DrivenTransition(species, basis, probe; ...)` method; all

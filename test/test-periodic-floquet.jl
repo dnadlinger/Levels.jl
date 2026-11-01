@@ -6,7 +6,7 @@
         β = hypot(β_I, β_Q)
         modulation = HarmonicPhaseModulation(β_I, β_Q)
         for sb in (+1, -1)
-            r = sideband_amplitude(d; sideband=sb, modulation)
+            r = sideband_rabi(d; sideband=sb, modulation)
             @test uconvert(NoUnits, r.Ω / Ω0) ≈ abs(besselj(1, β)) rtol = 1e-10
             @test uconvert(NoUnits, r.carrier / Ω0) ≈ abs(besselj(0, β)) rtol = 1e-10
             @test r.δ_res ≈ sb * Ω_RF   # no ac fields: no resonance shift
@@ -25,13 +25,9 @@ end
     for tr in (TRANSITIONS[1], TRANSITIONS[5], TRANSITIONS[8]), sb in (+1, -1)
         d = dress(make_transition(tr; drives))
         β_B = uconvert(NoUnits, zeeman_sensitivity(sr88, tr) * B_par / Ω_RF)
-        r0 = sideband_amplitude(
-            d;
-            sideband=sb,
-            modulation=HarmonicPhaseModulation(β_B, 0.0),
-        )
+        r0 = sideband_rabi(d; sideband=sb, modulation=HarmonicPhaseModulation(β_B, 0.0))
         @test uconvert(NoUnits, r0.Ω / Ω0) < 1e-9
-        r1 = sideband_amplitude(d; sideband=sb)
+        r1 = sideband_rabi(d; sideband=sb)
         @test uconvert(NoUnits, r1.Ω / Ω0) ≈ abs(besselj(1, β_B)) rtol = 1e-6
     end
 
@@ -41,11 +37,7 @@ end
     d = dress(make_transition(tr; drives=drives0))
     β_B = uconvert(NoUnits, zeeman_sensitivity(sr88, tr) * B_par / Ω_RF)
     for β_I in (-0.002, 0.0, 0.003)
-        r = sideband_amplitude(
-            d;
-            sideband=+1,
-            modulation=HarmonicPhaseModulation(β_I, 0.0),
-        )
+        r = sideband_rabi(d; sideband=+1, modulation=HarmonicPhaseModulation(β_I, 0.0))
         @test uconvert(NoUnits, r.Ω / Ω0) ≈ abs(besselj(1, hypot(β_I, β_B))) rtol = 1e-4
     end
 end
@@ -55,7 +47,7 @@ end
     B_perp = 2.0u"µT"
     drives = [zeeman_drive(sr88, BASIS, [1, 0, 0] .* B_perp; phase=π / 2)]
     dt = make_transition(StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2); drives)
-    d = dress(dt; num_time_samples=16)
+    d = dress(dt, DressedStates(; num_time_samples=16))
 
     for (level, r, ε) in
         (("S_1/2", dt.lower_range, d.ε_lower), ("D_5/2", dt.upper_range, d.ε_upper))
@@ -109,7 +101,7 @@ end
             coupling,
             drives,
         )
-        sideband_amplitude(dress(dt); sideband=sb).Ω
+        sideband_rabi(dress(dt); sideband=sb).Ω
     end
 
     ω_zS = lande_g(sr88, "S_1/2") * μ_B * b_static / u"ħ"

@@ -2,8 +2,7 @@
 # time-dependent Schrödinger equation, and sideband Rabi frequencies from Floquet
 # quasienergy gaps — nonperturbative in every coupling.
 
-using SciMLBase: ODEProblem, solve
-using OrdinaryDiffEqVerner: Vern8
+using SciMLBase: ODEProblem, solve, successful_retcode
 import Optim
 
 """
@@ -47,7 +46,8 @@ the given laser phase modulation.
 Returns the (dimensionless, complex) propagator matrix over the model's basis.
 """
 function monodromy(
-    dt::DrivenTransition;
+    dt::DrivenTransition,
+    method::Monodromy=Monodromy();
     δ=zero(dt.drive_frequency),
     modulation=HarmonicPhaseModulation(),
 )
@@ -67,14 +67,16 @@ function monodromy(
     # High-accuracy reference propagation settings.
     solution = solve(
         problem,
-        Vern8();
-        reltol=1e-10,
-        abstol=1e-12,
+        method.alg;
+        reltol=method.reltol,
+        abstol=method.abstol,
         save_everystep=false,
         save_start=false,
         dense=false,
     )
 
+    successful_retcode(solution) ||
+        error("TDSE propagation failed: $(solution.retcode)")
     last(solution.u)
 end
 
@@ -93,9 +95,9 @@ Wrapped quasienergy gap (plain angular ``s^{-1}``) between the two Floquet state
 carrying the probed lower- and upper-state characters. At a sideband resonance,
 the minimum of this gap over the detuning equals the effective Rabi frequency.
 """
-function probe_gap(dt::DrivenTransition, δ, modulation)
+function probe_gap(dt::DrivenTransition, δ, modulation, method::Monodromy)
     Ω = ustrip(u"s^-1", dt.drive_frequency)
-    ε, V = floquet_from_monodromy(monodromy(dt; δ, modulation), Ω)
+    ε, V = floquet_from_monodromy(monodromy(dt, method; δ, modulation), Ω)
     w_lower = abs2.(V[dt.lower, :])
     w_upper = abs2.(V[dt.upper, :])
     i_lower, i_upper = argmax(w_lower), argmax(w_upper)
@@ -107,35 +109,29 @@ function probe_gap(dt::DrivenTransition, δ, modulation)
 end
 
 """
-    exact_sideband(dt::DrivenTransition; sideband, modulation = none,
-                   bracket_scale = 8.0, harmonic_cutoff = 8, num_time_samples = 256)
+    sideband_rabi(dt::DrivenTransition, method::Monodromy; sideband,
+                  modulation = none)
 
 Computes the exact sideband Rabi frequency by minimising the Floquet quasienergy
 gap over the laser detuning, bracketed around the dressed-state prediction of
-[`sideband_amplitude`](@ref) (whose `harmonic_cutoff`/`num_time_samples` settings are passed through).
+[`sideband_rabi`](@ref) (whose `harmonic_cutoff`/`num_time_samples` settings are passed through).
 
 Returns `(Ω, δ_res)`. This is the gold-standard cross-check for the dressed-state
 engine, nonperturbative in every coupling, so it also includes all laser-induced
 shifts; it is several orders of magnitude slower.
 """
-function exact_sideband(
-    dt::DrivenTransition;
-    sideband::Int,
+function sideband_rabi(
+    dt::DrivenTransition,
+    method::Monodromy;
+    sideband::Integer,
     modulation=HarmonicPhaseModulation(),
-    bracket_scale::Real=8.0,
-    harmonic_cutoff::Int=8,
-    num_time_samples::Int=256,
 )
-    estimate = sideband_amplitude(
-        dress(dt; harmonic_cutoff, num_time_samples);
-        sideband,
-        modulation,
-    )
+    estimate = sideband_rabi(dress(dt, method.estimate); sideband, modulation)
 
     δ_estimate = ustrip(u"s^-1", estimate.δ_res)
-    halfwidth = max(bracket_scale * ustrip(u"s^-1", estimate.Ω), 2π * 100)
+    halfwidth = max(method.bracket_scale * ustrip(u"s^-1", estimate.Ω), 2π * 100)
     result = Optim.optimize(
-        δ -> probe_gap(dt, δ * u"s^-1", modulation),
+        δ -> probe_gap(dt, δ * u"s^-1", modulation, method),
         δ_estimate - halfwidth,
         δ_estimate + halfwidth,
         Optim.Brent();
@@ -143,7 +139,7 @@ function exact_sideband(
     )
 
     (
-        Ω=uconvert(u"ms^-1", Optim.minimum(result) * u"s^-1"),
+        Ω=uconvert(u"µs^-1", Optim.minimum(result) * u"s^-1"),
         δ_res=uconvert(u"µs^-1", Optim.minimizer(result) * u"s^-1"),
     )
 end
@@ -160,12 +156,13 @@ validation. Rows follow the basis order (cf. [`Levels.stateindex`](@ref)).
 """
 function stroboscopic_populations(
     dt::DrivenTransition,
-    num_periods::Int;
+    num_periods::Int,
+    method::Monodromy=Monodromy();
     δ=zero(dt.drive_frequency),
     modulation=HarmonicPhaseModulation(),
     initial::Int=dt.lower,
 )
-    U = monodromy(dt; δ, modulation)
+    U = monodromy(dt, method; δ, modulation)
     num_states = length(dt.basis)
     ψ = zeros(ComplexF64, num_states)
     ψ[initial] = 1
@@ -178,5 +175,5 @@ function stroboscopic_populations(
     populations
 end
 
-export exact_sideband, stroboscopic_populations
+export stroboscopic_populations
 public monodromy

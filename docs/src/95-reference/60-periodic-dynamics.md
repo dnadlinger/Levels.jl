@@ -11,6 +11,13 @@ Modules = [Levels.PeriodicDynamics]
 Pages = ["driving.jl"]
 ```
 
+## Method selection
+
+```@autodocs
+Modules = [Levels.PeriodicDynamics]
+Pages = ["methods.jl"]
+```
+
 ## Dressed-state engine
 
 ```@autodocs
@@ -18,7 +25,7 @@ Modules = [Levels.PeriodicDynamics]
 Pages = ["floquet.jl"]
 ```
 
-## ac Zeeman shifts
+## Quasienergy and ac Zeeman shifts
 
 The time-averaged shifts an ac magnetic drive imparts on the states themselves,
 via second-order Floquet perturbation theory (fast, with per-intermediate-state
@@ -28,7 +35,7 @@ dressing as its cross-check. For hyperfine species, these operate on the exact
 
 ```@autodocs
 Modules = [Levels.PeriodicDynamics]
-Pages = ["ac_zeeman.jl"]
+Pages = ["quasienergy.jl"]
 ```
 
 ## Exact engine
