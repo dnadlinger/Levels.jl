@@ -275,6 +275,13 @@ struct StateSpec{L<:LevelSpec}
     ``m_J`` or ``m_F`` depending on the species).
     """
     m::Rational{Int}
+
+    function StateSpec{L}(level::L, m::Union{Integer,Rational}) where {L<:LevelSpec}
+        j = momentum(level)
+        (abs(m) <= j && isinteger(j - m)) ||
+            throw(ArgumentError("Invalid projection m = $m for level '$level'"))
+        new{L}(level, m)
+    end
 end
 
 """

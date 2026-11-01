@@ -63,7 +63,7 @@ end
     @test StateSpec("P_1/2", 1//2).m == 1//2
 
     # Integer projections convert to the rational field type.
-    @test StateSpec("P_1/2", 0).m == 0//1
+    @test StateSpec("S_1/2 F=4", 0).m == 0//1
 
     # Spectroscopic level parts canonicalise via convert.
     spectro = StateSpec(SpectroscopicSpec("D_5/2"), 3//2)

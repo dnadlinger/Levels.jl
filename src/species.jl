@@ -5,6 +5,51 @@ Generic type representing an atomic species.
 """
 abstract type Species end
 
+function normalise_level_table(entries, value=identity)
+    pairs = [convert(NoHyperfineNumberSpec, k) => value(v) for (k, v) in entries]
+    allunique(first.(pairs)) ||
+        throw(ArgumentError("Duplicate canonical level in data"))
+    Dict(pairs)
+end
+
+function validate_energy(value)
+    (value isa Unitful.Energy && isreal(value) && isfinite(value)) ||
+        throw(ArgumentError("An energy must be a real, finite energy, got $value"))
+    float(uconvert(u"J", value))
+end
+
+function validate_mass(mass)
+    (mass isa Unitful.Mass && isreal(mass) && isfinite(mass) && mass > zero(mass)) ||
+        throw(ArgumentError("The species mass must be a positive, finite mass"))
+end
+
+function normalise_rate_table(entries, energies)
+    result = Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Any}()
+    for (pair, rate) in entries
+        lo, hi = convert.(NoHyperfineNumberSpec, Tuple(pair))
+        for level in (lo, hi)
+            haskey(energies, level) ||
+                throw(ArgumentError("Unknown level '$level' in rate data"))
+        end
+        energies[lo] < energies[hi] ||
+            throw(ArgumentError("Rate keys must be lower => upper"))
+        if !(rate isa ReducedDipole)
+            (
+                rate isa Unitful.Frequency &&
+                isreal(rate) &&
+                isfinite(rate) &&
+                rate >= zero(rate)
+            ) || throw(
+                ArgumentError("An Einstein A must be a non-negative, finite rate"),
+            )
+        end
+        haskey(result, (lo, hi)) &&
+            throw(ArgumentError("Duplicate transition '$lo' => '$hi'"))
+        result[(lo, hi)] = rate
+    end
+    result
+end
+
 """
 Bohr radius ``a_0 = 4 π ε_0 ħ^2 / (m_e e^2)``.
 """
@@ -155,7 +200,14 @@ the equivalent Einstein A coefficients, passing rate entries through
 unchanged.
 """
 function resolve_einstein_as(einstein_as, energies)
-    Dict(pair => resolve_rate(rate, pair, energies) for (pair, rate) in einstein_as)
+    isempty(einstein_as) && return Dict{
+        Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},
+        typeof(1.0u"µs^-1"),
+    }()
+    Dict(
+        pair => float(uconvert(u"µs^-1", resolve_rate(rate, pair, energies))) for
+        (pair, rate) in einstein_as
+    )
 end
 
 """
@@ -408,6 +460,13 @@ function NoHyperfineOneElectronSpecies(;
     lande_g_overrides=Dict{NoHyperfineNumberSpec,Float64}(),
     polarisabilities=Dict{NoHyperfineNumberSpec,LevelPolarisability}(),
 )
+    validate_mass(mass)
+    energies = normalise_level_table(energies, validate_energy)
+    einstein_as = normalise_rate_table(einstein_as, energies)
+    lande_g_overrides = Dict{NoHyperfineNumberSpec,Float64}(
+        normalise_level_table(lande_g_overrides, Float64),
+    )
+    polarisabilities = normalise_level_table(polarisabilities)
     resolved_as = resolve_einstein_as(einstein_as, energies)
     NoHyperfineOneElectronSpecies(
         mass,
@@ -441,7 +500,8 @@ end
 Creates the hyperfine coupling constants of one level, promoting the two
 energies to a common type.
 """
-HyperfineConstants(; a, b=zero(a)) = HyperfineConstants(promote(a, b)...)
+HyperfineConstants(; a, b=zero(a)) =
+    HyperfineConstants(promote(validate_energy(a), validate_energy(b))...)
 
 """
 Atomic species with only one (relevant) electron – all configurations spin-1/2 –
