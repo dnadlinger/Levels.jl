@@ -33,3 +33,32 @@ end
     m = hyperfine_manifold(ca43, "S_1/2"; B)
     @test state_energy(m, m.basis[1]) ≈ u"ħ" * state_offset(m, m.basis[1])
 end
+
+@testitem "Physical wrappers retain time units" tags=[:unit, :fast] begin
+    using Levels.OpticalBloch
+    using Unitful, SparseArrays, LinearAlgebra
+    num_fock = 4
+    a = spdiagm(1 => sqrt.(1.0:(num_fock-1)))
+    function damping(rate, time_unit)
+        BandLiouvillian(
+            spzeros(num_fock, num_fock),
+            [sqrt(rate)*a],
+            1,
+            num_fock;
+            time_unit,
+        )
+    end
+    microseconds = damping(0.3, u"µs")
+    seconds = damping(3e5, u"s")
+    observable = phonon_number_operator(1, num_fock)
+    ρ0 = thermal_state(ones(1, 1), num_fock, 0.5)
+    first = IntegratedTransientSolver(microseconds, observable)
+    second = IntegratedTransientSolver(seconds, observable)
+    @test integral_relaxation_time(first, ρ0) ≈ integral_relaxation_time(second, ρ0)
+    @test integral_relaxation_time(first, ρ0) ≈ (1/0.3)u"µs"
+    times = [0.0, 1.0, 2.0]u"µs"
+    left = cooling_curve(microseconds, ρ0, times)
+    right = cooling_curve(seconds, ρ0, times)
+    @test left.t ≈ right.t
+    @test left.nbar ≈ right.nbar
+end

@@ -42,7 +42,7 @@ module OpticalBloch
 using LinearAlgebra
 using FastGaussQuadrature: gausslegendre
 using OrdinaryDiffEqVerner: Vern7
-using SciMLBase: ODEProblem, solve
+using SciMLBase: ODEProblem, solve, successful_retcode
 using SparseArrays:
     SparseArrays,
     SparseMatrixCSC,

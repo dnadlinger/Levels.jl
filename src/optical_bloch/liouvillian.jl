@@ -43,13 +43,14 @@ relaxation times. The extension constructors take the operators from a
 [`MotionalModel`](@ref) or, for the internal problem alone, a
 [`LindbladModel`](@ref).
 """
-struct BandLiouvillian
+struct BandLiouvillian{T<:Unitful.Units}
     L::SparseMatrixCSC{ComplexF64,Int}
     index::Matrix{Int}
     entries::Vector{Tuple{Int,Int}}
     num_states::Int
     num_fock::Vector{Int}
     bandwidth::Int
+    time_unit::T
 end
 
 fock_sizes(num_fock) = num_fock isa Integer ? [Int(num_fock)] : collect(Int, num_fock)
@@ -63,7 +64,10 @@ function BandLiouvillian(
     num_states::Integer,
     num_fock;
     bandwidth::Union{Nothing,Integer}=nothing,
+    time_unit::Unitful.Units=u"µs",
 )
+    dimension(time_unit) == Unitful.𝐓 ||
+        throw(ArgumentError("time_unit must be a time unit"))
     nf = fock_sizes(num_fock)
     all(>=(1), nf) || throw(ArgumentError("Each Fock ladder needs at least one state"))
     d = num_states * prod(nf)
@@ -91,6 +95,7 @@ function BandLiouvillian(
         num_states,
         nf,
         K,
+        time_unit,
     )
 end
 
@@ -265,12 +270,18 @@ function cooling_curve(
     fock::Bool=false,
     reltol=1e-8,
     abstol=1e-10,
+    alg=Vern7(),
+    kwargs...,
 )
     v0 = band_vector(bl, ρ0)
     L = bl.L
     rhs!(dv, v, _, _) = mul!(dv, L, v)
-    span = (float(first(ts)), float(last(ts)))
-    sol = solve(ODEProblem(rhs!, v0, span), Vern7(); saveat=ts, reltol, abstol)
+    times = eltype(ts) <: Quantity ? ustrip.(bl.time_unit, ts) : collect(float.(ts))
+    span = (first(times), last(times))
+    sol =
+        solve(ODEProblem(rhs!, v0, span), alg; saveat=times, reltol, abstol, kwargs...)
+    successful_retcode(sol) ||
+        error("Master-equation propagation failed: $(sol.retcode)")
     num_modes = length(bl.num_fock)
     rows = [
         expectation_row(bl, phonon_number_operator(bl.num_states, bl.num_fock, m))
@@ -283,7 +294,7 @@ function cooling_curve(
             reduce(hcat, [fock_populations(bl, u, m) for u in sol.u]) for
             m in 1:num_modes
         ] : nothing
-    (; t=collect(sol.t), nbar, fock=populations)
+    (; t=collect(sol.t) .* bl.time_unit, nbar, fock=populations)
 end
 
 """
@@ -310,7 +321,7 @@ see [`integral_relaxation_time`](@ref).
 One sparse LU factorisation of the Liouvillian with one population row
 replaced by the trace functional (the rows of ``\\mathcal{L}`` are linearly
 dependent through ``\\mathrm{Tr}\\,\\mathcal{L}ρ = 0``) yields the steady state
-(forward solve; [`steady_state`](@ref), [`steady_value`](@ref)) and, as
+(forward solve; [`steady_density_matrix`](@ref), [`steady_value`](@ref)) and, as
 ``\\mathrm{Tr}(A \\hat{τ})`` is linear in ``ρ_0``, the adjoint solution
 ``y = M^{-T} a`` for the trace functional ``a`` of each observable, after
 which the relaxation time from *any* initial state costs one dot product.
@@ -393,12 +404,13 @@ function check_solution(M, x, b)
 end
 
 """
-    steady_state(s::IntegratedTransientSolver) -> Matrix{ComplexF64}
+    steady_density_matrix(s::IntegratedTransientSolver) -> Matrix{ComplexF64}
 
 Returns the steady-state density matrix of the solver's Liouvillian (full
 matrix, zero outside the band).
 """
-steady_state(s::IntegratedTransientSolver) = full_matrix(s.liouvillian, s.steady)
+steady_density_matrix(s::IntegratedTransientSolver) =
+    full_matrix(s.liouvillian, s.steady)
 
 """
     steady_value(s::IntegratedTransientSolver, k = 1) -> Float64
@@ -409,12 +421,12 @@ solver's `k`-th observable.
 steady_value(s::IntegratedTransientSolver, k::Integer=1) = s.steady_values[k]
 
 """
-    integral_relaxation_time(s::IntegratedTransientSolver, ρ0, k = 1) -> Float64
+    integral_relaxation_time(s::IntegratedTransientSolver, ρ0, k = 1) -> Unitful.Time
 
 Returns the integral relaxation time
 ``τ_A = ∫_0^∞ (⟨A⟩(t) - ⟨A⟩_∞) \\, dt \\, / \\, (⟨A⟩(0) - ⟨A⟩_∞)`` of the solver's
 `k`-th observable from the initial density matrix `ρ0` (full matrix over the
-layout), in the time unit of the Liouvillian — the time constant for an
+layout), as a unitful time — the time constant for an
 exponential relaxation, and a well-defined "area" time otherwise (for the
 phonon number: the cooling time of Kulosa et al. 2023, Eq. (13)). It is
 undefined (and returns ``±∞``) when the observable starts at its steady value.
@@ -427,10 +439,13 @@ function integral_relaxation_time(
     v0 = band_vector(s.liouvillian, ρ0)
     b = s.steady - v0
     b[s.trace_row] = 0   # Tr τ̂ = 0
-    real(transpose(s.adjoints[k]) * b) /
-    (real(transpose(s.rows[k]) * v0) - s.steady_values[k])
+    (
+        real(transpose(s.adjoints[k]) * b) /
+        (real(transpose(s.rows[k]) * v0) - s.steady_values[k])
+    ) * s.liouvillian.time_unit
 end
 
 export BandLiouvillian, band_vector, full_matrix, expectation_row, fock_populations
 export phonon_number_operator, thermal_populations, thermal_state, cooling_curve
-export IntegratedTransientSolver, steady_state, steady_value, integral_relaxation_time
+export IntegratedTransientSolver,
+    steady_density_matrix, steady_value, integral_relaxation_time

@@ -877,14 +877,15 @@ end
     osc = BandLiouvillian(spzeros(N_f, N_f), [sqrt(κ) * a_f], 1, N_f; bandwidth=2)
     s = IntegratedTransientSolver(osc, phonon_number_operator(1, N_f))
     @test steady_value(s) ≈ 0 atol = 1e-12
-    @test steady_state(s) ≈ [i == j == 1 ? 1.0 : 0.0 for i in 1:N_f, j in 1:N_f] atol = 1e-12
+    @test steady_density_matrix(s) ≈
+          [i == j == 1 ? 1.0 : 0.0 for i in 1:N_f, j in 1:N_f] atol = 1e-12
     for nbar in (0.3, 1.0)
-        @test integral_relaxation_time(s, thermal_state(ones(1, 1), N_f, nbar)) ≈ 1 / κ rtol =
-            1e-9
+        @test integral_relaxation_time(s, thermal_state(ones(1, 1), N_f, nbar)) ≈
+              (1 / κ) * u"µs" rtol = 1e-9
     end
     fock3 = zeros(ComplexF64, N_f, N_f)
     fock3[4, 4] = 1
-    @test integral_relaxation_time(s, fock3) ≈ 1 / κ rtol = 1e-9
+    @test integral_relaxation_time(s, fock3) ≈ (1 / κ) * u"µs" rtol = 1e-9
     # The propagated curve has the same area and end point.
     r = cooling_curve(
         osc,
@@ -893,7 +894,7 @@ end
         fock=true,
     )
     @test r.nbar[1, 1] ≈ sum((0:(N_f-1)) .* thermal_populations(1.0, N_f))
-    @test r.nbar[:, 1] ≈ r.nbar[1, 1] .* exp.(-κ .* r.t) rtol = 1e-6
+    @test r.nbar[:, 1] ≈ r.nbar[1, 1] .* exp.(-κ .* ustrip.(u"µs", r.t)) rtol = 1e-6
     @test size(r.fock[1]) == (N_f, 601) && all(sum(r.fock[1]; dims=1) .≈ 1)
     @test r.fock[1][1, end] ≈ 1 atol = 1e-6
     # Spontaneous decay of a two-level atom from |e⟩: the excited population
@@ -904,9 +905,10 @@ end
     s_atom = IntegratedTransientSolver(atom, [P_e, [1.0 0; 0 0.0]])
     @test steady_value(s_atom, 1) ≈ 0 atol = 1e-12
     @test steady_value(s_atom, 2) ≈ 1
-    @test integral_relaxation_time(s_atom, P_e) ≈ 1 / Γ rtol = 1e-12
-    @test integral_relaxation_time(s_atom, P_e, 2) ≈ 1 / Γ rtol = 1e-12
-    @test integral_relaxation_time(s_atom, [0.5 0; 0 0.5]) ≈ 1 / Γ rtol = 1e-12
+    @test integral_relaxation_time(s_atom, P_e) ≈ (1 / Γ) * u"µs" rtol = 1e-12
+    @test integral_relaxation_time(s_atom, P_e, 2) ≈ (1 / Γ) * u"µs" rtol = 1e-12
+    @test integral_relaxation_time(s_atom, [0.5 0; 0 0.5]) ≈ (1 / Γ) * u"µs" rtol =
+        1e-12
     @test_throws ArgumentError IntegratedTransientSolver(atom, [])
 end
 

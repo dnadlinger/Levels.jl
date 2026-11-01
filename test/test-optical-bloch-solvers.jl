@@ -462,7 +462,9 @@ end
         ts;
         fock=true,
     )
-    @test full.t == collect(ts) && size(full.nbar) == (21, 1) && isnothing(full.fock)
+    @test full.t == collect(ts) .* u"µs" &&
+          size(full.nbar) == (21, 1) &&
+          isnothing(full.fock)
     @test band.nbar ≈ full.nbar rtol = 1e-4
     @test band.fock[1][:, 1] ≈ thermal_populations(1.5, num_fock) atol = 1e-8
     unitful = cooling_curve(exact, ρ_th, ts .* u"µs"; fock=true)
@@ -519,7 +521,7 @@ end
     @test sm.τ_c ≈ ae.τ_c rtol = 0.03
     # Other initial states from the solver carried in the result.
     ρ0 = thermal_state(Matrix(steadystate(s.model).data), it.model.num_fock, 3.0)
-    @test integral_relaxation_time(it.solver, ρ0) * u"µs" ≈ ae.τ_c rtol = 0.02
+    @test integral_relaxation_time(it.solver, ρ0) ≈ ae.τ_c rtol = 0.02
     # The default truncation follows the thermal tail.
     auto = IntegratedTransient(; initial_nbar=2.0)
     @test isnothing(auto.num_fock) &&
@@ -577,8 +579,8 @@ end
         decaying.model,
         level_projector(decaying.model, "P_3/2"),
     )
-    @test integral_relaxation_time(solver, [0 0; 0 1.0]) ≈
-          1 / ustrip(u"µs^-1", 2π * 1.0u"MHz") rtol = 1e-6
+    @test integral_relaxation_time(solver, [0 0; 0 1.0]) ≈ 1 / (2π * 1.0u"MHz") rtol =
+        1e-6
     @test steady_value(solver) ≈ 0 atol = 1e-9
 end
 
@@ -606,6 +608,6 @@ end
     ρ_int = Matrix(steadystate(s.model).data)
     τ5 = integral_relaxation_time(m.solver, thermal_state(ρ_int, num_fock, 5.0))
     τ10 = integral_relaxation_time(m.solver, thermal_state(ρ_int, num_fock, 10.0))
-    @test τ5 < τ10 < ustrip(u"µs", m.τ_c)
-    @test (τ10 - τ5) * ustrip(u"µs^-1", γ) / 5 ≈ 2 rtol = 0.25
+    @test τ5 < τ10 < m.τ_c
+    @test uconvert(NoUnits, (τ10 - τ5) * γ) / 5 ≈ 2 rtol = 0.25
 end

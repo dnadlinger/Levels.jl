@@ -347,11 +347,11 @@ function OpticalBloch.cooling_rates(
     time_unit::Unitful.Units=Unitful.µs,
 )
     require_static(model, "cooling_rates")
-    check_heating_rate(heating_rate)
+    heating_rates = mode_heating_rates(heating_rate, length(mcs))
     L = liouvillian(model; time_unit).data
     ρm = Matrix(ρ.data)
-    h = ustrip(time_unit^-1, heating_rate)
-    map(mcs) do mc
+    map(zip(mcs, heating_rates)) do (mc, rate)
+        h = ustrip(time_unit^-1, rate)
         A_plus, A_minus = mode_rates(L, ρm, mc, time_unit)
         net = A_minus - A_plus
         cooling = net > 0
@@ -581,7 +581,7 @@ function OpticalBloch.cooling_curve(
             reduce(hcat, [reduced_populations(ρ, mm, m) for ρ in sol.states]) for
             m in 1:num_modes
         ]
-        return (; t=times, nbar, fock=populations)
+        return (; t=times .* mm.time_unit, nbar, fock=populations)
     end
     sol = mesolve(
         mm.H,
@@ -592,7 +592,7 @@ function OpticalBloch.cooling_curve(
         progress_bar=Val(false),
         kwargs...,
     )
-    (; t=times, nbar=Matrix(transpose(real.(sol.expect))), fock=nothing)
+    (; t=times .* mm.time_unit, nbar=Matrix(transpose(real.(sol.expect))), fock=nothing)
 end
 
 OpticalBloch.BandLiouvillian(mm::MotionalModel; bandwidth=nothing) = BandLiouvillian(
@@ -601,6 +601,7 @@ OpticalBloch.BandLiouvillian(mm::MotionalModel; bandwidth=nothing) = BandLiouvil
     mm.num_states,
     mm.num_fock;
     bandwidth,
+    time_unit=mm.time_unit,
 )
 
 function OpticalBloch.BandLiouvillian(
@@ -612,7 +613,8 @@ function OpticalBloch.BandLiouvillian(
         hamiltonian_qobj(model; time_unit).data,
         [L.data for L in jump_qobjs(model; time_unit)],
         length(model.basis),
-        Int[],
+        Int[];
+        time_unit,
     )
 end
 
@@ -769,7 +771,7 @@ function OpticalBloch.cooling_metrics(
     solver = IntegratedTransientSolver(mm; bandwidth=method.bandwidth)
     ρ0 = OpticalBloch.thermal_state(Matrix(ρ.data), mm.num_fock, initial_nbar)
     map(1:num_modes) do m
-        τ = integral_relaxation_time(solver, ρ0, m) * time_unit
+        τ = integral_relaxation_time(solver, ρ0, m)
         CoolingMetrics(method, steady_value(solver, m), τ, nothing, nothing, mm, solver)
     end
 end
