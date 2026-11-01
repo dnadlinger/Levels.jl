@@ -1,25 +1,18 @@
 # [Contributing guidelines](@id contributing)
 
-First of all, thanks for the interest!
+Contributions to code, documentation, examples and configuration are welcome.
+Please keep discussions respectful.
 
-We welcome all kinds of contribution, including, but not limited to code, documentation, examples, configuration, issue creating, etc.
+## Reports and proposals
 
-Be polite and respectful.
-
-## Bug reports and discussions
-
-If you think you found a bug, feel free to open an [issue](https://github.com/dnadlinger/Levels.jl/issues).
-Focused suggestions and requests can also be opened as issues.
-Before opening a pull request, start an issue or a discussion on the topic, please.
+Report bugs and propose changes in an
+[issue](https://github.com/dnadlinger/Levels.jl/issues). Describe the behaviour
+and, for a bug, include a small example that reproduces it. Start an issue or
+discussion before opening a pull request.
 
 ## Working on an issue
 
-If you found an issue that interests you, comment on that issue what your plans are.
-If the solution to the issue is clear, you can immediately create a pull request (see below).
-Otherwise, say what your proposed solution is and wait for a discussion around it.
-
-!!! tip
-    Feel free to ping us after a few days if there are no responses.
-
-If your solution involves code (or something that requires running the package locally), check the [developer documentation](91-developer.md).
-Otherwise, you can use the GitHub interface directly to create your pull request.
+Comment on the issue with your proposed approach. If the solution is already
+clear, proceed with a pull request; otherwise, discuss it first. The
+[developer guide](91-developer.md) covers local setup and checks. Documentation
+edits can also be made through GitHub.
