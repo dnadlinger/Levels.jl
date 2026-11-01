@@ -1332,7 +1332,7 @@ end
     toy(i_nuc, consts) = HyperfineOneElectronSpecies(;
         mass=sr88.mass,
         nuclear_spin=i_nuc,
-        nuclear_g=2e-4,
+        nuclear_g=-2e-4 * uconvert(NoUnits, Unitful.mp / Unitful.me),
         energies=sr88.energies,
         hyperfine=Dict(convert(NoHyperfineNumberSpec, k) => v for (k, v) in consts),
         einstein_as=sr88.einstein_as,
@@ -1418,7 +1418,7 @@ end
     toy = HyperfineOneElectronSpecies(;
         mass=sr88.mass,
         nuclear_spin=3//2,
-        nuclear_g=2e-4,
+        nuclear_g=-2e-4 * uconvert(NoUnits, Unitful.mp / Unitful.me),
         energies=sr88.energies,
         hyperfine=Dict(
             convert(NoHyperfineNumberSpec, k) => HyperfineConstants(; a=0.0u"J") for

@@ -529,9 +529,9 @@ struct HyperfineOneElectronSpecies{
     nuclear_spin::Rational{Int}
 
     """
-    The nuclear g-factor ``g_I``, in Bohr magnetons and in the convention
-    ``H_Z = μ_B B (g_J m_J + g_I m_I)``, i.e. with the electron-like sign
-    absorbed such that ``μ_I = -g_I I μ_B``.
+    The conventional signed nuclear g-factor ``g_I = μ_I/(I μ_N)``, in
+    nuclear magnetons. The Zeeman convention is
+    ``H_Z = B (g_J μ_B m_J - g_I μ_N m_I)``.
 
     This is the effective moment of the nucleus bound in the ion (not corrected
     for diamagnetic shielding), which is the appropriate value for the Zeeman
@@ -592,6 +592,18 @@ function HyperfineOneElectronSpecies(;
     lande_g_overrides=Dict{NoHyperfineNumberSpec,Float64}(),
     polarisabilities=Dict{NoHyperfineNumberSpec,LevelPolarisability}(),
 )
+    validate_mass(mass)
+    (nuclear_spin >= 0 && isinteger(2nuclear_spin)) || throw(
+        ArgumentError("nuclear_spin must be a non-negative integer or half-integer"),
+    )
+    isfinite(nuclear_g) || throw(ArgumentError("nuclear_g must be finite"))
+    energies = normalise_level_table(energies, validate_energy)
+    einstein_as = normalise_rate_table(einstein_as, energies)
+    hyperfine = normalise_level_table(hyperfine)
+    lande_g_overrides = Dict{NoHyperfineNumberSpec,Float64}(
+        normalise_level_table(lande_g_overrides, Float64),
+    )
+    polarisabilities = normalise_level_table(polarisabilities)
     resolved_as = resolve_einstein_as(einstein_as, energies)
     HyperfineOneElectronSpecies(
         mass,

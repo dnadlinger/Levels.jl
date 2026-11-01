@@ -110,7 +110,7 @@ end
     moment_operators(species, fs_level) -> (; x, y, z)
 
 Returns the Cartesian components of the magnetic-moment operator
-``\\vec{M} = (μ_B / ħ) (g_J \\vec{J} + g_I \\vec{I})`` of the given
+``\\vec{M} = (g_J μ_B \\vec{J} - g_I μ_N \\vec{I}) / ħ`` of the given
 fine-structure manifold — the Zeeman Hamiltonian is ``\\vec{B} ⋅ \\vec{M}`` —
 in the ``|m_J, m_I⟩`` product basis, in angular frequency units per flux
 density.
@@ -134,8 +134,8 @@ function moment_operators(species::HyperfineOneElectronSpecies, fs_level)
     eye_j = Matrix{Float64}(I, Int(2j + 1), Int(2j + 1))
     component(op) = uconvert.(
         u"µs^-1/mT",
-        (BOHR_MAGNETON / u"ħ") .*
-        (g_j .* kron(op(j), eye_i) .+ g_i .* kron(eye_j, op(i))),
+        (g_j * BOHR_MAGNETON / u"ħ") .* kron(op(j), eye_i) .-
+        (g_i * NUCLEAR_MAGNETON / u"ħ") .* kron(eye_j, op(i)),
     )
     (x=component(jx_matrix), y=component(jy_matrix), z=component(jz_matrix))
 end
@@ -198,7 +198,7 @@ end
     zeeman_hamiltonian(species::HyperfineOneElectronSpecies, basis, B)
 
 Returns the matrix of the Zeeman Hamiltonian
-``\\vec{B} ⋅ (μ_B / ħ) (g_J \\vec{J} + g_I \\vec{I})`` over the given hyperfine
+``\\vec{B} ⋅ (g_J μ_B \\vec{J} - g_I μ_N \\vec{I}) / ħ`` over the given hyperfine
 basis, in angular frequency units.
 
 `B` is the static Cartesian magnetic-field 3-vector, with the quantisation axis
@@ -508,7 +508,7 @@ end
 """
 Returns the field derivative ``dE/dB`` of the given adiabatically-labelled
 eigenstate at the manifold's field, via the Hellmann–Feynman theorem:
-the expectation value of ``∂H/∂B = (μ_B/ħ)(g_J J_z + g_I I_z)`` in the
+the expectation value of ``∂H/∂B = (g_J μ_B J_z - g_I μ_N I_z) / ħ`` in the
 eigenstate (exact per ``m_F`` block, as both operators commute with ``F_z``).
 """
 function state_moment(m::HyperfineManifold, state)

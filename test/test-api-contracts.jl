@@ -1,4 +1,4 @@
-@testitem "Species and state input validation" tags=[:unit, :fast] begin
+@testitem "Species input and nuclear-moment conventions" tags=[:unit, :fast] begin
     using Unitful
     species = NoHyperfineOneElectronSpecies(;
         mass=40u"u",
@@ -6,6 +6,7 @@
         einstein_as=Dict(("S_1/2", "P_1/2") => ReducedDipole(3 * Levels.DIPOLE_AU)),
     )
     @test einstein_a(species, "S_1/2", "P_1/2") > 0u"s^-1"
+    @test ca43.nuclear_g * ca43.nuclear_spin ≈ -1.315350
     @test_throws ArgumentError HyperfineConstants(; a=1u"m")
     @test_throws ArgumentError StateSpec("S_1/2", 3//2)
     @test_throws ArgumentError StateSpec("S_1/2", 0)

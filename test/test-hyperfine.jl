@@ -34,7 +34,7 @@
     # term: g_F = g_J⋅[F(F+1)+J(J+1)−I(I+1)]/(2F(F+1)) + g_I⋅[…].
     g_f4 = lande_g(ca43, "S_1/2 F=4")
     g_f3 = lande_g(ca43, "S_1/2 F=3")
-    g_i = ca43.nuclear_g
+    g_i = -ca43.nuclear_g * uconvert(NoUnits, Unitful.me / Unitful.mp)
     @test g_f4 ≈ 2.00225664 * (1 / 8) + g_i * (7 / 8) rtol = 1e-12
     @test g_f3 ≈ 2.00225664 * (-1 / 8) + g_i * (9 / 8) rtol = 1e-12
     @test_throws ArgumentError lande_g(ca43, "S_1/2 F=5")
@@ -86,7 +86,7 @@ end
     i_nuc = 7 / 2
     a_hz = ustrip(u"Hz", ca43.hyperfine[NoHyperfineNumberSpec(0, 1//2)].a / u"h")
     g_j = lande_g(ca43, "S_1/2")
-    g_i = ca43.nuclear_g
+    g_i = -ca43.nuclear_g * uconvert(NoUnits, Unitful.me / Unitful.mp)
     μb_h = ustrip(u"Hz/T", Levels.BOHR_MAGNETON / u"h")
 
     function breit_rabi(b, f, m_f)
@@ -220,7 +220,7 @@ end
                 b[2] .* kron(jy_matrix(1//2), eye_i) .+
                 b[3] .* kron(jz_matrix(1//2), eye_i)
             ) .+
-            ca43.nuclear_g * (
+            (-ca43.nuclear_g * uconvert(NoUnits, Unitful.me / Unitful.mp)) * (
                 b[1] .* kron(eye_j, jx_matrix(i_nuc)) .+
                 b[2] .* kron(eye_j, jy_matrix(i_nuc)) .+
                 b[3] .* kron(eye_j, jz_matrix(i_nuc))

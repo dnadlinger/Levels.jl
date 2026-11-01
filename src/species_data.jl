@@ -428,9 +428,9 @@ const ca43 = HyperfineOneElectronSpecies(;
     # for the Zeeman Hamiltonian [Hanley2021]. (Older work, e.g. the [Benhelm2007]
     # fit, instead used the shielding-corrected free-nucleus value −1.317643 of
     # N. J. Stone, At. Data Nucl. Data Tables 90, 75 (2005), 0.17% away.) In the
-    # H_Z = μ_B B (g_J m_J + g_I m_I) convention used here,
-    # g_I = −(μ_I/μ_N)(mₑ/mₚ)/I ≈ +2.0467e-4.
-    nuclear_g=(-(-1.315350) * uconvert(NoUnits, Unitful.me / Unitful.mp) / (7 // 2)),
+    # H_Z = B (g_J μ_B m_J − g_I μ_N m_I) convention used here,
+    # g_I = μ_I / (I μ_N), with the conventional nuclear sign.
+    nuclear_g=-1.315350 / (7 // 2),
     energies=Dict(
         convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
             "S_1/2" => 0u"J",

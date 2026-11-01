@@ -69,7 +69,7 @@
     const SR88_TOY_HF = HyperfineOneElectronSpecies(;
         mass=sr88.mass,
         nuclear_spin=1//2,
-        nuclear_g=2e-4,
+        nuclear_g=-2e-4 * uconvert(NoUnits, Unitful.mp / Unitful.me),
         energies=sr88.energies,
         lande_g_overrides=sr88.lande_g_overrides,
         hyperfine=Dict(
@@ -587,7 +587,7 @@ end
     @test ishermitian(strip_h(hf.hamiltonian))
     e_hf = sort(eigvals(Hermitian(strip_h(hf.hamiltonian))))
     e_fs = eigvals(Hermitian(strip_h(fs.hamiltonian)))
-    u_I = SR88_TOY_HF.nuclear_g * ustrip(u"µs^-1", Levels.BOHR_MAGNETON * B / u"ħ")
+    u_I = -SR88_TOY_HF.nuclear_g * ustrip(u"µs^-1", Levels.NUCLEAR_MAGNETON * B / u"ħ")
     @test e_hf ≈ sort([e + m_I * u_I for e in e_fs for m_I in (-1 / 2, 1 / 2)]) atol = 1e-8
     total_hf = sum(L' * L for L in hf.jump_operators)
     for (i, state) in enumerate(hf_basis)

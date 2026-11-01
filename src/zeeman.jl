@@ -6,6 +6,9 @@ Unitful.
 """
 const BOHR_MAGNETON = Unitful.q * u"ħ" / (2 * Unitful.me)
 
+"The nuclear magneton ``μ_N = e ħ / (2 m_p)``."
+const NUCLEAR_MAGNETON = Unitful.q * u"ħ" / (2 * Unitful.mp)
+
 # Magnitude of the free-electron g-factor, 2.00231930436092(36) [CODATA2022]
 # (E. Tiesinga et al., Rev. Mod. Phys. 97, 025002 (2025), doi:10.1103/RevModPhys.97.025002).
 const FREE_ELECTRON_G = 2.00231930436092
@@ -38,10 +41,10 @@ hyperfine ``F`` level it is the **low-field** ``g_F``,
 
 ```math
 g_F = g_J \\frac{F(F+1) + J(J+1) - I(I+1)}{2 F (F+1)}
-    + g_I \\frac{F(F+1) + I(I+1) - J(J+1)}{2 F (F+1)},
+    - g_I (μ_N/μ_B) \\frac{F(F+1) + I(I+1) - J(J+1)}{2 F (F+1)},
 ```
 
-with ``g_I`` in the Bohr-magneton convention of the species; note that at
+with ``g_I`` in the nuclear-magneton convention of the species; note that at
 finite field the hyperfine Zeeman effect is nonlinear (cf.
 [`zeeman_shift`](@ref) and [`hyperfine_manifold`](@ref)), so ``g_F m_F`` is
 only the ``B → 0`` slope.
@@ -76,7 +79,8 @@ function lande_g(species::HyperfineOneElectronSpecies, level)
     iszero(f) && return zero(g_j)
     c_j = (f * (f + 1) + j * (j + 1) - i * (i + 1)) / (2 * f * (f + 1))
     c_i = (f * (f + 1) + i * (i + 1) - j * (j + 1)) / (2 * f * (f + 1))
-    g_j * c_j + species.nuclear_g * c_i
+    g_j * c_j -
+    species.nuclear_g * uconvert(NoUnits, NUCLEAR_MAGNETON / BOHR_MAGNETON) * c_i
 end
 
 """
@@ -163,4 +167,4 @@ function zeeman_hamiltonian(
 end
 
 export lande_g, zeeman_shift, zeeman_sensitivity, zeeman_hamiltonian
-public BOHR_MAGNETON, ls_lande_g
+public BOHR_MAGNETON, NUCLEAR_MAGNETON, ls_lande_g
