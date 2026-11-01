@@ -16,8 +16,9 @@
     # B_⊥ x̂ + B_∥ ẑ, 50 µT each (the reference README scenario).
     const B_DRIVE = [0.05u"mT", 0.0u"mT", 0.05u"mT"]
 
-    s_manifold(b=B0) = hyperfine_manifold(ca43, "S_1/2"; B=b)
-    d_manifold(b=B0) = hyperfine_manifold(ca43, "D_5/2"; B=b)
+    # The atom: both clock manifolds at the static field, solved once.
+    clock_structure(b=B0) = Eigenstructure(ca43, "S_1/2", "D_5/2"; B=b)
+    const S_CLOCK = clock_structure()
 end
 
 @testitem "PT ac Zeeman shift vs reference implementation" tags=[:unit, :fast] setup=[
@@ -28,59 +29,76 @@ end
     # The stretched S(4,+4) state is an exact product state, so a pure π
     # (B_∥) drive shifts it by exactly zero…
     @test iszero(
-        ac_zeeman_shift(s_manifold(), S_PROBE, Ω_RF, [0.0u"mT", 0.0u"mT", 0.05u"mT"]),
+        ac_zeeman_shift(S_CLOCK, S_PROBE, Ω_RF, [0.0u"mT", 0.0u"mT", 0.05u"mT"]),
     )
     # …and its whole shift comes from the transverse component.
-    r = ac_zeeman_shift(ca43, S_PROBE => D_PROBE, Ω_RF, B_DRIVE; B=B0)
+    r = ac_zeeman_shift(S_CLOCK, S_PROBE => D_PROBE, Ω_RF, B_DRIVE)
+    @test ac_zeeman_shift(S_CLOCK, S_PROBE, Ω_RF, [0.05u"mT", 0.0u"mT", 0.0u"mT"]) ≈
+          r.lower rtol = 1e-12
+    # The state may also be given as a basis index.
     @test ac_zeeman_shift(
-        s_manifold(),
-        S_PROBE,
+        S_CLOCK,
+        stateindex(Levels.basis(S_CLOCK), S_PROBE),
         Ω_RF,
-        [0.05u"mT", 0.0u"mT", 0.0u"mT"],
-    ) ≈ r.lower rtol = 1e-12
+        B_DRIVE,
+    ) == r.lower
 
     # No π/σ cross terms at second order: the ∥ and ⊥ shifts add exactly, and
     # the relative temporal phase of the two components is irrelevant.
-    m_d = d_manifold()
-    δ_par = ac_zeeman_shift(m_d, D_PROBE, Ω_RF, [0.0u"mT", 0.0u"mT", 0.05u"mT"])
-    δ_perp = ac_zeeman_shift(m_d, D_PROBE, Ω_RF, [0.05u"mT", 0.0u"mT", 0.0u"mT"])
+    δ_par = ac_zeeman_shift(S_CLOCK, D_PROBE, Ω_RF, [0.0u"mT", 0.0u"mT", 0.05u"mT"])
+    δ_perp = ac_zeeman_shift(S_CLOCK, D_PROBE, Ω_RF, [0.05u"mT", 0.0u"mT", 0.0u"mT"])
     @test δ_par + δ_perp ≈ r.upper rtol = 1e-12
     drives_dephased = [
-        zeeman_drive(ca43, m_d.basis, [0.05u"mT", 0.0u"mT", 0.0u"mT"]; phase=0.0),
-        zeeman_drive(ca43, m_d.basis, [0.0u"mT", 0.0u"mT", 0.05u"mT"]; phase=1.234),
+        zeeman_drive(S_CLOCK, [0.05u"mT", 0.0u"mT", 0.0u"mT"]; phase=0.0),
+        zeeman_drive(S_CLOCK, [0.0u"mT", 0.0u"mT", 0.05u"mT"]; phase=1.234),
     ]
-    @test quasienergy_shift(m_d, D_PROBE, Ω_RF, drives_dephased) ≈ r.upper rtol = 1e-12
+    @test quasienergy_shift(S_CLOCK, D_PROBE, Ω_RF, drives_dephased) ≈ r.upper rtol =
+        1e-12
+    # A structure over the one manifold gives the same state shift.
+    @test ac_zeeman_shift(Eigenstructure(ca43, "D_5/2"; B=B0), D_PROBE, Ω_RF, B_DRIVE) ≈
+          r.upper rtol = 1e-12
+    # The perturbation sum needs the whole manifold.
+    @test_throws ArgumentError ac_zeeman_shift(
+        Eigenstructure(ca43, "D_5/2 F=4"; B=B0),
+        D_PROBE,
+        Ω_RF,
+        B_DRIVE,
+    )
 
     # Polarisation of the transverse field: σ⁺ and σ⁻ rotating fields differ,
     # and a linear field is their mean (all at equal total |B|²).
     b_lin = [0.05u"mT", 0.0u"mT", 0.0u"mT"]
     b_plus = (0.05u"mT" / sqrt(2)) .* [1.0, -1.0im, 0.0]
     b_minus = (0.05u"mT" / sqrt(2)) .* [1.0, 1.0im, 0.0]
-    δ_lin = ac_zeeman_shift(m_d, D_PROBE, Ω_RF, b_lin)
-    δ_plus = ac_zeeman_shift(m_d, D_PROBE, Ω_RF, b_plus)
-    δ_minus = ac_zeeman_shift(m_d, D_PROBE, Ω_RF, b_minus)
+    δ_lin = ac_zeeman_shift(S_CLOCK, D_PROBE, Ω_RF, b_lin)
+    δ_plus = ac_zeeman_shift(S_CLOCK, D_PROBE, Ω_RF, b_plus)
+    δ_minus = ac_zeeman_shift(S_CLOCK, D_PROBE, Ω_RF, b_minus)
     @test !isapprox(δ_plus, δ_minus; rtol=1e-3)
     @test δ_lin ≈ (δ_plus + δ_minus) / 2 rtol = 1e-12
 
     # The phasor decomposition of zeeman_drives equals an explicitly built
     # two-drive representation.
     drives_manual = [
-        zeeman_drive(ca43, m_d.basis, real.(b_plus); phase=0.0),
-        zeeman_drive(ca43, m_d.basis, imag.(b_plus); phase=(-π / 2)),
+        zeeman_drive(S_CLOCK, real.(b_plus); phase=0.0),
+        zeeman_drive(S_CLOCK, imag.(b_plus); phase=(-π / 2)),
     ]
-    @test quasienergy_shift(m_d, D_PROBE, Ω_RF, drives_manual) ≈ δ_plus rtol = 1e-12
+    @test quasienergy_shift(S_CLOCK, D_PROBE, Ω_RF, drives_manual) ≈ δ_plus rtol = 1e-12
 
     # Contribution breakdown: entries carry adiabatic labels, sum to the total,
     # and are sorted by decreasing magnitude.
     contributions = quasienergy_shift_contributions(
-        m_d,
+        S_CLOCK,
         D_PROBE,
         Ω_RF,
-        zeeman_drives(ca43, m_d.basis, B_DRIVE),
+        zeeman_drives(S_CLOCK, B_DRIVE),
     )
     @test sum(c.shift for c in contributions) ≈ r.upper rtol = 1e-12
     @test issorted([abs(c.shift) for c in contributions]; rev=true)
     @test contributions[1].state isa StateSpec{HyperfineNumberSpec}
+    @test all(
+        Levels.fine_structure(c.state.level) == NoHyperfineNumberSpec("D_5/2") for
+        c in contributions
+    )
 end
 
 @testitem "DC limit reproduces static curvature" tags=[:unit] setup=[Ca43ClockSetup] begin
@@ -95,18 +113,17 @@ end
     f(b) = ustrip(
         u"Hz",
         cyclic(
-            state_offset(d_manifold(b * u"mT"), D_PROBE) -
-            state_offset(s_manifold(b * u"mT"), S_PROBE),
+            state_offset(clock_structure(b * u"mT"), D_PROBE) -
+            state_offset(clock_structure(b * u"mT"), S_PROBE),
         ),
     )
     curvature = central_fdm(7, 2)(f, ustrip(u"mT", B0)) # Hz/mT²
     b_par = 0.05 # mT
     slow = ac_zeeman_shift(
-        ca43,
+        S_CLOCK,
         S_PROBE => D_PROBE,
         angular(100.0u"Hz"),
-        [0.0u"mT", 0.0u"mT", b_par * u"mT"];
-        B=B0,
+        [0.0u"mT", 0.0u"mT", b_par * u"mT"],
     )
     @test ustrip(u"Hz", cyclic(slow.shift)) ≈ curvature * b_par^2 / 4 rtol = 1e-3
 end
@@ -117,34 +134,32 @@ end
     # resonances (S_1/2: intra-F Zeeman splittings ~1.7 MHz at B₀; D_5/2:
     # ΔF = ±1 hyperfine bands at ~5–25 MHz). rtol 2e-2 as in the reference
     # test suite; the residual is the next PT order.
-    for (manifold, state, frequencies) in (
-        (s_manifold(), S_PROBE, (10.0, 30.0, 60.0)),
-        (d_manifold(), D_PROBE, (30.0, 60.0)),
-    )
+    for (state, frequencies) in ((S_PROBE, (10.0, 30.0, 60.0)), (D_PROBE, (30.0, 60.0)))
         for f_mhz in frequencies
             ω = angular(f_mhz * u"MHz")
-            pt = ac_zeeman_shift(manifold, state, ω, B_DRIVE)
-            fl = ac_zeeman_shift(manifold, state, ω, B_DRIVE, Floquet())
+            pt = ac_zeeman_shift(S_CLOCK, state, ω, B_DRIVE)
+            fl = ac_zeeman_shift(S_CLOCK, state, ω, B_DRIVE, Floquet())
             @test pt ≈ fl rtol = 2e-2
         end
     end
 
     # Harmonic-truncation convergence of the Floquet reference.
-    m_d = d_manifold()
     ω = angular(30.0u"MHz")
-    @test ac_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=4)) ≈
-          ac_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=6)) rtol =
+    @test ac_zeeman_shift(S_CLOCK, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=4)) ≈
+          ac_zeeman_shift(S_CLOCK, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=6)) rtol =
         1e-4
 end
 
 @testitem "Near-resonance warnings" tags=[:unit] setup=[Ca43ClockSetup] begin
     # Driving close to a D_5/2 internal splitting: the PT sum warns that its
     # result is unreliable there.
-    m_d = d_manifold()
-    Δ = abs(state_offset(m_d, StateSpec("D_5/2 F=5", 3)) - state_offset(m_d, D_PROBE))
+    Δ = abs(
+        state_offset(S_CLOCK, StateSpec("D_5/2 F=5", 3)) -
+        state_offset(S_CLOCK, D_PROBE),
+    )
     ω = Δ + angular(50.0u"kHz")
     @test_logs (:warn, r"Near-resonant term") match_mode = :any ac_zeeman_shift(
-        m_d,
+        S_CLOCK,
         D_PROBE,
         ω,
         [0.05u"mT", 0.0u"mT", 0.0u"mT"],
@@ -153,7 +168,7 @@ end
     # A strong drive on resonance spreads the bare state over several Floquet
     # modes; the dressed-state identification then warns as ambiguous.
     @test_logs (:warn, r"Ambiguous dressed-state") match_mode = :any ac_zeeman_shift(
-        m_d,
+        S_CLOCK,
         D_PROBE,
         Δ,
         [2.0u"mT", 0.0u"mT", 0.0u"mT"],
@@ -164,44 +179,43 @@ end
 @testitem "Hyperfine DrivenTransition" tags=[:unit] setup=[Ca43ClockSetup] begin
     using Levels.PeriodicDynamics: full_hamiltonian
 
-    basis = StateBasis(ca43, "S_1/2", "D_5/2")
+    basis = Levels.basis(S_CLOCK)
     n, ε = beam_vectors(π / 2, π / 4)
     coupling = rabi_normalised(
-        quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n),
+        relative_couplings(S_CLOCK, "S_1/2" => "D_5/2", ε, n),
         basis,
         S_PROBE => D_PROBE,
         angular(10.0u"kHz"),
     )
-    drives = zeeman_drives(ca43, basis, B_DRIVE)
+    drives = zeeman_drives(S_CLOCK, B_DRIVE)
     dt = DrivenTransition(
-        ca43,
-        basis,
+        S_CLOCK,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        B=B0,
         coupling,
         drives,
     )
 
     # The rotating frame vanishes on the probed pair and reproduces the
-    # manifold eigen-energies (relative to the probed states) elsewhere.
+    # structure's eigen-energies (relative to the probed states) elsewhere.
     @test iszero(dt.frame[dt.lower])
     @test iszero(dt.frame[dt.upper])
-    m_s = s_manifold()
     for i in dt.lower_range
-        @test dt.frame[i] ≈ state_offset(m_s, basis[i]) - state_offset(m_s, S_PROBE) atol =
+        @test dt.frame[i] ≈
+              state_offset(S_CLOCK, basis[i]) - state_offset(S_CLOCK, S_PROBE) atol =
             1e-9u"rad/µs"
     end
 
     # The model Hamiltonian is Hermitian, and the drive term seen by the model
-    # equals the eigenbasis-rotated coupled-basis drive.
+    # is the eigenbasis Zeeman Hamiltonian of the structure.
     h = full_hamiltonian(dt, 0.01u"µs")
     @test h ≈ h'
+    @test drives[1].amplitude == zeeman_hamiltonian(S_CLOCK, B_DRIVE)
 
     # The PT shift evaluated on the model's manifold blocks agrees exactly
-    # with the manifold-level wrapper (three-way consistency with the
+    # with the structure-level wrapper (three-way consistency with the
     # reference values is covered in the PT item).
-    wrapper = ac_zeeman_shift(ca43, S_PROBE => D_PROBE, Ω_RF, B_DRIVE; B=B0)
+    wrapper = ac_zeeman_shift(S_CLOCK, S_PROBE => D_PROBE, Ω_RF, B_DRIVE)
     @test quasienergy_shift(dt, dt.upper) - quasienergy_shift(dt, dt.lower) ≈
           wrapper.shift rtol = 1e-12
 
@@ -211,42 +225,35 @@ end
     sb = sideband_rabi(dt, DressedStates(; num_time_samples=32); sideband=0)
     @test abs(sb.δ_res - wrapper.shift) < angular(10.0u"Hz")
 
-    # Constructor validation.
+    # Constructor validation: same-manifold probe, wrong level kind, incomplete
+    # manifolds, non-block-diagonal drives.
     @test_throws ArgumentError DrivenTransition(
-        ca43,
-        basis,
+        S_CLOCK,
         StateSpec("S_1/2 F=4", 4) => StateSpec("S_1/2 F=3", 3);
         drive_frequency=Ω_RF,
-        B=B0,
         coupling,
         drives,
     )
     @test_throws ArgumentError DrivenTransition(
-        ca43,
-        basis,
+        S_CLOCK,
         StateSpec("S_1/2", 1//2) => D_PROBE;
         drive_frequency=Ω_RF,
-        B=B0,
         coupling,
         drives,
     )
-    incomplete = StateBasis(ca43, "S_1/2 F=4", "D_5/2")
+    incomplete = Eigenstructure(ca43, "S_1/2 F=4", "D_5/2"; B=B0)
     @test_throws ArgumentError DrivenTransition(
-        ca43,
         incomplete,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        B=B0,
         coupling=zeros(ComplexF64, 57, 57) .* u"rad/µs",
         drives=HarmonicDrive[],
     )
     bad_drive = HarmonicDrive(coupling .+ coupling', 0.0)
     @test_throws ArgumentError DrivenTransition(
-        ca43,
-        basis,
+        S_CLOCK,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        B=B0,
         coupling,
         drives=[bad_drive],
     )
@@ -263,7 +270,7 @@ end
     B_perp = 5.0u"µT"
     dt = make_transition(
         TRANSITIONS[1];
-        drives=[zeeman_drive(sr88, BASIS, [B_perp, 0.0u"µT", 0.0u"µT"])],
+        drives=[zeeman_drive(S0, [B_perp, 0.0u"µT", 0.0u"µT"])],
     )
     for (level, range) in (("S_1/2", dt.lower_range), ("D_5/2", dt.upper_range))
         g = lande_g(sr88, level)
@@ -284,22 +291,19 @@ end
     # the hyperfine DrivenTransition agrees with the dressed-state engine (and
     # thus, to PT accuracy, with quasienergy_shift) — the ⁴³Ca⁺ analogue of the
     # sr88 cross-engine item in test-periodic-tdse.jl.
-    basis = StateBasis(ca43, "S_1/2", "D_5/2")
     n, ε = beam_vectors(π / 2, π / 4)
     coupling = rabi_normalised(
-        quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n),
-        basis,
+        relative_couplings(S_CLOCK, "S_1/2" => "D_5/2", ε, n),
+        Levels.basis(S_CLOCK),
         S_PROBE => D_PROBE,
         angular(2.0u"kHz"),
     )
     dt = DrivenTransition(
-        ca43,
-        basis,
+        S_CLOCK,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        B=B0,
         coupling,
-        drives=zeeman_drives(ca43, basis, B_DRIVE),
+        drives=zeeman_drives(S_CLOCK, B_DRIVE),
     )
     fl = sideband_rabi(dt, DressedStates(; num_time_samples=32); sideband=0)
     ex = sideband_rabi(

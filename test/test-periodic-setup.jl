@@ -12,6 +12,8 @@
     const Ω_RF = angular(50.0u"MHz")
     const Ω0 = angular(100.0u"kHz")
     const μ_B = Unitful.q * u"ħ" / (2 * Unitful.me)
+    # The atom: ⁸⁸Sr⁺ S₁/₂ + D₅/₂ at the static field, solved once.
+    const S0 = Eigenstructure(sr88, BASIS; B=B0)
 
     # The eight probed transitions, sorted by increasing magnetic-field
     # sensitivity χ as in thesis fig. 5.12.
@@ -20,10 +22,10 @@
         by=t -> zeeman_sensitivity(sr88, t),
     )
 
-    function probe_coupling(probe; Ω0=Ω0)
+    function probe_coupling(probe; Ω0=Ω0, structure=S0)
         n, ε = beam_vectors(π / 2, π / 4)
         rabi_normalised(
-            quadrupole_couplings(BASIS, "S_1/2" => "D_5/2", ε, n),
+            relative_couplings(structure, "S_1/2" => "D_5/2", ε, n),
             BASIS,
             probe,
             Ω0,
@@ -34,9 +36,9 @@
         probe;
         drives=HarmonicDrive[],
         drive_frequency=Ω_RF,
-        B=B0,
-        coupling=probe_coupling(probe),
+        structure=S0,
+        coupling=probe_coupling(probe; structure),
     )
-        DrivenTransition(sr88, BASIS, probe; drive_frequency, B, coupling, drives)
+        DrivenTransition(structure, probe; drive_frequency, coupling, drives)
     end
 end

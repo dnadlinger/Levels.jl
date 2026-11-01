@@ -333,13 +333,11 @@ The level energies are the directly measured ⁴⁰Ca⁺ transition frequencies 
 S``_{1/2}``: the 729 nm clock transition `[Zhang2023]`, from which D``_{3/2}`` follows
 via the frequency-comb Raman measurement of the 3d fine-structure interval
 `[Solaro2018]`, and the 397 nm `[Gebert2015]` and 393 nm `[Shi2017]` lines. As a
-consistency check, the 866, 850 and 854 nm intervals implied by these four levels
-agree with the collinear-spectroscopy values of `[Muller2020]` (Table III) to within
-≤ 0.15 MHz (1σ): 346 000 235.14 vs 346 000 235.13(14) MHz, 352 682 481.84 vs
-352 682 481.93(13) MHz and 350 862 882.82 vs 350 862 882.63(13) MHz; Müller's own D1/D2
-values (755 222 765.66(14) and 761 905 012.53(16) MHz) agree with the ones used within
-1.5σ. The Einstein A coefficients, g-factors and polarisability data are shared with
-[`ca43`](@ref), all being ⁴⁰Ca⁺ measurements in the first place.
+consistency check, the implied 866, 850 and 854 nm intervals agree with the
+collinear-spectroscopy values of `[Muller2020]` (Table III) to within 0.2 MHz
+(1.5σ). The Einstein A coefficients and electronic g-factors measured in ⁴⁰Ca⁺,
+and the polarisability model combining measured dipoles with calculated static
+anchors, are shared with [`ca43`](@ref).
 
 # References
 
@@ -388,8 +386,8 @@ const ca40 = NoHyperfineOneElectronSpecies(;
 ⁴³Ca⁺ ion (nuclear spin ``I = 7/2``).
 
 Hyperfine centroids are referenced to the S``_{1/2}`` centroid; all hyperfine
-``A``/``B`` constants are entered as stated in the cited measurements (the signs follow
-from ``μ_I < 0``). The electronic g-factors and Einstein A coefficients marked as such
+``A``/``B`` constants, including their signs, follow the cited measurements.
+The electronic g-factors and Einstein A coefficients marked as such
 are ⁴⁰Ca⁺ measurements, entered uncorrected. For the Einstein A coefficients and
 g(S``_{1/2}``) the isotope dependence is far below the quoted uncertainties; for
 g(D``_{5/2}``), known to 5 × 10⁻⁸ in ⁴⁰Ca⁺, the leading-order reduced-mass shift (cf.

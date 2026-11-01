@@ -23,7 +23,8 @@ struct DephasingLabel
 end
 
 """
-The Lindblad master equation of the internal states of a [`LaserScheme`](@ref)
+The Lindblad master equation of the internal states of an
+[`Eigenstructure`](@ref Levels.Eigenstructure) under a [`LaserScheme`](@ref),
 in the rotating frame of its [`RotatingFrame`](@ref),
 
 ```math
@@ -32,22 +33,33 @@ in the rotating frame of its [`RotatingFrame`](@ref),
 H(t) = H_0 + \\sum_j \\left( M_j e^{-i w_j t} + M_j^† e^{+i w_j t} \\right),
 ```
 
-over the states of `basis`: `hamiltonian` is the static ``H_0`` (Hermitian,
-rad µs⁻¹) — the frame diagonal plus the couplings ``(C + C^†)/2`` of all
-time-independent beam components, with `C` from [`coupling_matrix`](@ref) — and
-`harmonics` the ``(w_j, M_j)`` pairs of the components left with a beat note
-(empty for a static model). `couplings` keeps the complex coupling matrix
-``C_b`` of each beam (rad µs⁻¹, upper⟨row|lower⟩⟨col|, exact at the static field)
-as it entered the Hamiltonian, beat-note components included — the per-beam
-split that the motional layer needs, e.g. to attach each beam's displacement
-operator in [`motional_model`](@ref). `jump_operators` (µs⁻¹ᐟ²) are labelled by
+over the states of `basis` (the structure's basis, in its field eigenbasis):
+`hamiltonian` is the static ``H_0`` (Hermitian, rad µs⁻¹) — the frame diagonal
+plus the couplings ``(C + C^†)/2`` of all time-independent beam components,
+with `C` from [`coupling_matrix`](@ref) — and `harmonics` the ``(w_j, M_j)``
+pairs of the components left with a beat note (empty for a static model).
+`couplings` keeps the complex coupling matrix ``C_b`` of each beam (rad µs⁻¹,
+upper⟨row|lower⟩⟨col|, exact at the static field) as it entered the
+Hamiltonian, beat-note components included — the per-beam split that the
+motional layer needs, e.g. to attach each beam's displacement operator in
+[`motional_model`](@ref). `jump_operators` (µs⁻¹ᐟ²) are labelled by
 `jump_labels` ([`DecayLabel`](@ref), [`DephasingLabel`](@ref)).
 
 For a hyperfine species the basis states denote the adiabatically-labelled
 eigenstates at the static field, with exact at-field amplitudes throughout.
-Constructed via [`lindblad_model`](@ref).
+Constructed via [`lindblad_model`](@ref); `structure` and `scheme` are kept
+for the motional layer.
 """
-struct LindbladModel{B<:StateBasis,F<:RotatingFrame,H<:Quantity,W<:Quantity,J<:Quantity}
+struct LindbladModel{
+    S<:Eigenstructure,
+    B<:StateBasis,
+    F<:RotatingFrame,
+    H<:Quantity,
+    W<:Quantity,
+    J<:Quantity,
+}
+    structure::S
+    scheme::LaserScheme
     basis::B
     frame::F
     hamiltonian::Matrix{H}
@@ -55,26 +67,6 @@ struct LindbladModel{B<:StateBasis,F<:RotatingFrame,H<:Quantity,W<:Quantity,J<:Q
     harmonics::Vector{Tuple{W,Matrix{H}}}
     jump_operators::Vector{Matrix{J}}
     jump_labels::Vector{Union{DecayLabel,DephasingLabel}}
-end
-
-# Energies of the basis states at the static field relative to the zero-field
-# centroids of their fine-structure levels — the one place the species kind is
-# dispatched on: first-order Zeeman shifts for a fine-structure species, exact
-# hyperfine + Zeeman eigen-energies (adiabatic labels) for a hyperfine one.
-function centroid_energies(species, basis::StateBasis{NoHyperfineNumberSpec}, B)
-    [uconvert(ANGULAR_UNIT, zeeman_shift(species, state; B)) for state in basis]
-end
-
-function centroid_energies(species, basis::StateBasis{HyperfineNumberSpec}, B)
-    manifolds = Dict(
-        fs => hyperfine_manifold(species, fs; B) for fs in fine_structure_levels(basis)
-    )
-    [
-        uconvert(
-            ANGULAR_UNIT,
-            state_offset(manifolds[fine_structure(state.level)], state),
-        ) for state in basis
-    ]
 end
 
 # All (lower, upper) fine-structure pairs of the basis levels connected by a
@@ -97,17 +89,19 @@ function decay_pairs(species, levels)
 end
 
 """
-    lindblad_model(species, scheme::LaserScheme; decay = :grouped, open_channels = :error)
+    lindblad_model(s::Eigenstructure, scheme::LaserScheme; decay = :grouped, open_channels = :error)
 
-Assembles the [`LindbladModel`](@ref) of the scheme from the atomic data.
+Assembles the [`LindbladModel`](@ref) of the scheme on the structure `s` —
+which fixes the species, the static field and the states kept — from the
+atomic data. All matrices use the structure's field eigenbasis and ordering.
 
 **Hamiltonian.** The frame diagonal holds each state's energy at the static
-field relative to its level's zero-field centroid (Zeeman shift, or the exact
-hyperfine + Zeeman eigen-energy) minus its frame frequency of
-[`rotating_frame`](@ref); every beam adds ``(C + C^†)/2`` with the complex Rabi
-frequencies of [`coupling_matrix`](@ref) over the two fine-structure manifolds it
-connects (all their ``F`` levels for a hyperfine species) — into the static part
-for its time-independent components, as harmonic terms for those with a beat
+field relative to its level's zero-field centroid ([`Levels.offsets`](@ref))
+minus the corresponding frame offset of [`rotating_frame`](@ref); every
+beam adds ``(C + C^†)/2`` with the complex Rabi frequencies of
+[`coupling_matrix`](@ref) over the two fine-structure manifolds it connects
+(all their ``F`` levels for a hyperfine species) — into the static part for
+its time-independent components, as harmonic terms for those with a beat
 note.
 
 **Spontaneous emission.** For every pair of basis levels with an Einstein A
@@ -122,21 +116,23 @@ against the photon bandwidth, ``\\sum_q L_q^† L_q = A \\, P_\\mathrm{upper}``.
 well-resolved hyperfine structure; in a per-state frame — `frame_kind =
 :states` — it is also what makes an operator whose components see different
 frame differences time-independent, at the price of the coherence-transfer
-terms between them, and is then required). An upper level with decay channels
-to levels missing from the basis raises an error naming them, unless
+terms between them, and is then required). Omitting states truncates the
+*model* to the retained eigenstates: an upper level with decay channels to
+levels missing from the structure raises an error naming them, unless
 `open_channels = :drop` discards those channels (the level then lives longer
-than its physical lifetime); missing F levels or Zeeman states are treated by the same policy.
+than its physical lifetime); missing F levels or Zeeman states are treated by
+the same policy.
 
 **Laser linewidth.** A beam with non-zero `linewidth` ``γ`` (FWHM) adds the
 phase-diffusion operator ``\\sqrt{γ} \\sum_i n_{b,i} P_i`` with ``P_i`` the state
 projectors and ``n_{b,i}`` the signed traversal counts of the beam on the frame
-tree, so that a coherence between two states decays at half the summed
-linewidths of the beams whose frequencies define their relative frame — a
-result independent of the frame reference. Linewidths of beams outside the
+tree. The coherence between states ``i`` and ``j`` decays at
+``(1/2) ∑_b γ_b (n_{b,i} - n_{b,j})^2``, independently of the frame reference.
+Linewidths of beams outside the
 frame tree are not representable this way and raise an error.
 """
 function lindblad_model(
-    species,
+    s::Eigenstructure,
     scheme::LaserScheme;
     decay::Symbol=:grouped,
     open_channels::Symbol=:error,
@@ -147,15 +143,15 @@ function lindblad_model(
         ArgumentError("open_channels must be :error or :drop, got $open_channels"),
     )
 
-    basis = scheme.basis
-    B = scheme.B
+    species = s.species
+    basis = s.basis
     num_states = length(basis)
-    couplings = beam_couplings(species, scheme)
-    frame = rotating_frame(species, scheme, couplings)
+    couplings = beam_couplings(s, scheme)
+    frame = rotating_frame(s, scheme, couplings)
     levels = frame.levels
 
     # --- Hamiltonian ---------------------------------------------------------
-    energies = centroid_energies(species, basis, B)
+    energies = offsets(s)
     H = zeros(typeof(complex(1.0) * ANGULAR_UNIT), num_states, num_states)
     for i in 1:num_states
         H[i, i] = complex(1.0) * (energies[i] - frame.offsets[i])
@@ -191,9 +187,7 @@ function lindblad_model(
     for (lo, hi) in pairs
         rank = multipole_rank(lo => hi)
         a = einstein_a(species, lo => hi)
-        lower_levels = unique!([l for l in basis.levels if fine_structure(l) == lo])
-        upper_levels = unique!([l for l in basis.levels if fine_structure(l) == hi])
-        amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)
+        amplitude = amplitude_lookup(s, lo, hi, rank)
         for q in (-rank):rank
             L = zeros(J, num_states, num_states)
             components = Tuple{Int,Int}[]
@@ -278,14 +272,24 @@ function lindblad_model(
         push!(jump_labels, DephasingLabel(b))
     end
 
-    LindbladModel(basis, frame, H, couplings, harmonics, jump_operators, jump_labels)
+    LindbladModel(
+        s,
+        scheme,
+        basis,
+        frame,
+        H,
+        couplings,
+        harmonics,
+        jump_operators,
+        jump_labels,
+    )
 end
 
 """
     decay_operators(model::LindbladModel) -> (operators, labels)
     dephasing_operators(model::LindbladModel) -> (operators, labels)
 
-Return the subsets of the model's jump operators (with their labels) that
+Returns the subsets of the model's jump operators (with their labels) that
 describe spontaneous emission ([`DecayLabel`](@ref)) or laser phase diffusion
 ([`DephasingLabel`](@ref)).
 """

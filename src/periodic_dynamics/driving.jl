@@ -1,5 +1,6 @@
-# The driven-transition model: rotating-frame Hamiltonian assembly from static
-# field, harmonic drive terms, and the (possibly phase-modulated) laser coupling.
+# The driven-transition model: rotating-frame Hamiltonian assembly from the
+# structure's eigen-energies, harmonic drive terms, and the (possibly
+# phase-modulated) laser coupling.
 
 """
 A Hermitian drive term ``X \\cos(Ω t + φ)`` at the fundamental drive frequency
@@ -14,7 +15,7 @@ struct HarmonicDrive{M<:AbstractMatrix}
 end
 
 """
-Returns the positive-frequency Fourier component ``H_1 = Σ_i ½ e^{iφ_i} X_i``
+Returns the ``e^{+iΩt}`` Fourier component ``H_1 = Σ_i ½ e^{iφ_i} X_i``
 of the given [`HarmonicDrive`](@ref)s ``Σ_i X_i \\cos(Ω t + φ_i)``, restricted
 to the basis index range `r`, so that the drive term reads
 ``H_1 e^{iΩt} + H_1^† e^{-iΩt}`` (the convention of [`dress_manifold`](@ref)
@@ -29,17 +30,19 @@ function harmonic_block(drives, r)
 end
 
 """
-    zeeman_drive(species, basis, B; phase = 0.0)
+    zeeman_drive(s::Eigenstructure, b; phase = 0.0)
 
 Returns the [`HarmonicDrive`](@ref) describing an ac magnetic field
-``\\vec{B} \\cos(Ω t + φ)`` with the Cartesian amplitude vector `B`, via
-[`Levels.zeeman_hamiltonian`](@ref).
+``\\vec{b} \\cos(Ω t + φ)`` with the real Cartesian amplitude vector `b`, via
+[`Levels.zeeman_hamiltonian`](@ref)`(s, b)`: the drive matrix is expressed in
+the field eigenbasis of the structure, indexed by its basis, like every
+matrix of a [`DrivenTransition`](@ref) built on `s`.
 """
-zeeman_drive(species, basis, B; phase=0.0) =
-    HarmonicDrive(zeeman_hamiltonian(species, basis; B), Float64(phase))
+zeeman_drive(s::Eigenstructure, b; phase=0.0) =
+    HarmonicDrive(zeeman_hamiltonian(s, b), Float64(phase))
 
 """
-    zeeman_drives(species, basis, b; phase = 0.0)
+    zeeman_drives(s::Eigenstructure, b; phase = 0.0)
 
 Returns the [`HarmonicDrive`](@ref)s describing an ac magnetic field given as a
 complex Cartesian amplitude phasor `b`,
@@ -47,20 +50,18 @@ complex Cartesian amplitude phasor `b`,
 ``\\mathrm{Re}(\\vec{b}) \\cos(Ω t + φ)`` plus, for genuinely complex `b`, a
 second ``\\mathrm{Im}(\\vec{b}) \\cos(Ω t + φ - π/2)`` (identically zero
 components are dropped). A real `b` is a linearly polarised field; e.g.
-``\\vec{b} = B_0/\\sqrt{2} \\, (1, -i, 0)`` rotates in the x–y plane.
+``\\vec{b} = B_0/\\sqrt{2} \\, (1, -i, 0)`` rotates in the x–y plane. The
+matrices are in the field eigenbasis of `s` (cf. [`zeeman_drive`](@ref)).
 """
-function zeeman_drives(species, basis, b; phase=0.0)
+function zeeman_drives(s::Eigenstructure, b; phase=0.0)
     drives = HarmonicDrive[]
     re = real.(collect(b))
     if !all(iszero, re)
-        push!(drives, zeeman_drive(species, basis, re; phase=Float64(phase)))
+        push!(drives, zeeman_drive(s, re; phase=Float64(phase)))
     end
     im_part = imag.(collect(b))
     if !all(iszero, im_part)
-        push!(
-            drives,
-            zeeman_drive(species, basis, im_part; phase=Float64(phase) - π / 2),
-        )
+        push!(drives, zeeman_drive(s, im_part; phase=Float64(phase) - π / 2))
     end
     drives
 end
@@ -94,22 +95,25 @@ end
 phase_function(modulation, _) = t -> float(modulation(t * u"s"))
 
 """
-Rotating-frame (optical RWA) model of a laser-probed transition between the
-Zeeman states of two levels under periodic driving:
+Rotating-frame model of a laser-probed transition between two manifolds, in the
+optical rotating-wave approximation:
 
 ```math
 H(t) = \\mathrm{diag}(\\texttt{frame}) - δ P_\\mathrm{upper}
 + \\sum_i X_i \\cos(Ω t + φ_i) + f(t) L + f(t)^* L^†,
+\\qquad f(t) = e^{-iφ_\\mathrm{mod}(t)}/2.
 ```
 
-with ``f(t) = e^{-i φ_\\mathrm{mod}(t)} / 2`` the laser phase-modulation factor.
-The laser detuning ``δ`` from the probed transition and the phase modulation
-``φ_\\mathrm{mod}`` are supplied at evaluation time (cf.
-[`full_hamiltonian`](@ref), [`sideband_rabi`](@ref)), so one model instance
-can serve e.g. a whole modulation-index scan.
+`frame`, drive amplitudes `X_i`, laser coupling `L` and detuning `δ` are in
+angular-frequency units. Detuning from the probed component and phase
+modulation are supplied at evaluation time through [`full_hamiltonian`](@ref)
+or [`sideband_rabi`](@ref), so one model can serve a parameter scan.
 
-Constructed via the `DrivenTransition(species, basis, probe; ...)` method; all
-fields are in angular frequency units.
+`DrivenTransition(s, probe; …)` constructs the model in the structure's field
+eigenbasis. The keyword constructor
+`DrivenTransition(; basis, drive_frequency, frame, drives, coupling, lower,
+upper, lower_range, upper_range)` accepts manually assembled data without
+validation; all arrays must use the declared basis and ordering.
 """
 Base.@kwdef struct DrivenTransition{
     B<:StateBasis,
@@ -192,72 +196,73 @@ function normalise_driven_matrices(coupling, drives)
 end
 
 """
-    DrivenTransition(species, basis, probe::Pair; drive_frequency, B,
-                     coupling, drives = HarmonicDrive[])
+    DrivenTransition(s::Eigenstructure, probe::Pair; drive_frequency, coupling,
+                     drives = HarmonicDrive[])
 
-Assembles the rotating-frame model for probing the `lower => upper` pair of
-Zeeman states `probe`.
+Assembles a periodic model probing the `lower => upper` states of `s`.
+The static frame diagonal uses [`Levels.offsets`](@ref) relative to that pair.
 
-The rotating-frame energies are the Zeeman shifts in `B` (the static
-magnetic flux density along the quantisation axis ẑ) relative to the probed pair.
-`coupling` is the complex matrix of laser carrier Rabi frequencies (angular
-units) in the upper⟨row|lower⟩⟨col| block, e.g. from
-[`Levels.rabi_normalised`](@ref) for a beam geometry, or built directly for
-couplings only present via mediator levels. `drives` are the harmonic terms at
-`drive_frequency`, e.g. from [`zeeman_drive`](@ref).
+`coupling` is a complex angular Rabi-frequency matrix over `basis(s)`, with
+entries only in the upper-row, lower-column block. It may come from
+`Levels.coupling_matrix(s, …)`, from a relative matrix scaled with
+`Levels.rabi_normalised`, or from manually specified eigenstate couplings.
+A coupled-basis operator must first pass through `Levels.to_eigenbasis`.
+`drives` contains [`HarmonicDrive`](@ref)s at `drive_frequency`, for example
+from [`zeeman_drives`](@ref)`(s, b)`. All input matrices use the structure's
+field eigenbasis; the constructor performs no rotation.
 
-The basis must consist of exactly the two probed levels; the harmonic drives
-must be block-diagonal in them.
-
-For a [`HyperfineOneElectronSpecies`](@ref), the basis must consist of the two
-**complete** fine-structure manifolds the probed hyperfine states belong to
-(all ``F``, all ``m_F``, contiguous per manifold — e.g. from
-`StateBasis(species, "S_1/2", "D_5/2")`). The basis states then denote the
-**adiabatically-labelled eigenstates** of the hyperfine + Zeeman Hamiltonian at
-`B` (cf. [`Levels.hyperfine_manifold`](@ref)): the rotating-frame
-energies are the exact manifold eigen-energies, and `coupling` and `drives` —
-supplied in the coupled zero-field ``|F, m_F⟩`` basis, e.g. from
-[`Levels.quadrupole_couplings`](@ref) and [`zeeman_drives`](@ref) — are rotated
-into that eigenbasis internally via [`Levels.eigenbasis_transform`](@ref),
-which accounts exactly for the ``F`` mixing at the working field. Always
-supply the zero-field coupled-basis matrices: a matrix already rotated to the
-eigenbasis (e.g. with `eigenbasis_transform` by hand) would be rotated twice.
+The basis must consist of exactly the two complete fine-structure manifolds
+of the probe, each contiguous. Drives must be block-diagonal in these
+manifolds. Complete manifolds are required for the within-manifold Floquet
+dressing; see [`Levels.iscomplete`](@ref).
 """
 function DrivenTransition(
-    species::NoHyperfineOneElectronSpecies,
-    basis::StateBasis{NoHyperfineNumberSpec},
+    s::Eigenstructure,
     probe::Pair;
     drive_frequency,
-    B,
     coupling,
     drives=HarmonicDrive[],
 )
-    lower_state = convert(StateSpec{NoHyperfineNumberSpec}, probe.first)
-    upper_state = convert(StateSpec{NoHyperfineNumberSpec}, probe.second)
-    if lower_state.level == upper_state.level
-        throw(ArgumentError("Probed states must belong to two different levels"))
-    end
-    if Set(basis.levels) != Set([lower_state.level, upper_state.level])
+    basis = s.basis
+    lower_state = validate_state_kind(s.species, probe.first)
+    upper_state = validate_state_kind(s.species, probe.second)
+    fs_lower = fine_structure(lower_state.level)
+    fs_upper = fine_structure(upper_state.level)
+    if fs_lower == fs_upper
         throw(
             ArgumentError(
-                "Basis must consist of exactly the two probed levels " *
+                "Probed states must belong to two different fine-structure levels",
+            ),
+        )
+    end
+    manifolds = unique!([fine_structure(level) for level in basis.levels])
+    if Set(manifolds) != Set([fs_lower, fs_upper])
+        throw(
+            ArgumentError(
+                "The structure must consist of exactly the two probed manifolds " *
                 "(spectator manifolds are not supported)",
             ),
         )
     end
-    lower_range = staterange(basis, lower_state.level)
-    upper_range = staterange(basis, upper_state.level)
-
-    validate_driven_blocks(length(basis), coupling, drives, lower_range, upper_range)
-
-    # Rotating-frame diagonal at δ = 0: Zeeman shifts relative to the probed pair.
-    frame = map(collect(basis)) do state
-        reference = state.level == lower_state.level ? lower_state : upper_state
-        uconvert(
-            u"rad/µs",
-            zeeman_shift(species, state; B) - zeeman_shift(species, reference; B),
+    for fs in (fs_lower, fs_upper)
+        iscomplete(s, fs) || throw(
+            ArgumentError(
+                "The structure must contain the complete '$fs' manifold: the " *
+                "Floquet dressing runs over the whole manifold",
+            ),
         )
     end
+    lower_range = staterange(basis, fs_lower)
+    upper_range = staterange(basis, fs_upper)
+    validate_driven_blocks(length(basis), coupling, drives, lower_range, upper_range)
+
+    # Rotating-frame diagonal at δ = 0: eigen-energies relative to the probed pair.
+    lower = stateindex(basis, lower_state)
+    upper = stateindex(basis, upper_state)
+    energies = offsets(s)
+    frame = [
+        uconvert(u"rad/µs", energies[i] - energies[i in lower_range ? lower : upper]) for i in 1:length(basis)
+    ]
 
     coupling, drives = normalise_driven_matrices(coupling, drives)
 
@@ -267,93 +272,8 @@ function DrivenTransition(
         frame,
         drives,
         coupling,
-        lower=stateindex(basis, lower_state),
-        upper=stateindex(basis, upper_state),
-        lower_range,
-        upper_range,
-    )
-end
-
-# Canonicalises a probed-state specification and checks it names a hyperfine
-# (F) level.
-function hyperfine_probe_state(state::StateSpec)
-    spec = parse_level(state.level)
-    if !(spec isa HyperfineNumberSpec)
-        throw(
-            ArgumentError(
-                "Probed state '$state' must specify a hyperfine (F) level " *
-                "for a hyperfine species",
-            ),
-        )
-    end
-    StateSpec(spec, state.m)
-end
-
-function DrivenTransition(
-    species::HyperfineOneElectronSpecies,
-    basis::StateBasis{HyperfineNumberSpec},
-    probe::Pair;
-    drive_frequency,
-    B,
-    coupling,
-    drives=HarmonicDrive[],
-)
-    lower_state = hyperfine_probe_state(probe.first)
-    upper_state = hyperfine_probe_state(probe.second)
-    fs_lower = fine_structure(lower_state.level)
-    fs_upper = fine_structure(upper_state.level)
-    if fs_lower == fs_upper
-        throw(
-            ArgumentError(
-                "Probed states must belong to two different fine-structure manifolds",
-            ),
-        )
-    end
-    lower_range = staterange(basis, fs_lower)
-    upper_range = staterange(basis, fs_upper)
-    num_states = length(basis)
-    if length(lower_range) + length(upper_range) != num_states
-        throw(
-            ArgumentError(
-                "Basis must consist of exactly the two probed manifolds " *
-                "(spectator manifolds are not supported)",
-            ),
-        )
-    end
-    validate_driven_blocks(num_states, coupling, drives, lower_range, upper_range)
-
-    m_lower = hyperfine_manifold(species, fs_lower; B)
-    m_upper = hyperfine_manifold(species, fs_upper; B)
-    # The transform (and its complete-manifold validation) aligns the (possibly
-    # reordered) user basis with the label-aligned eigen-solutions.
-    v = eigenbasis_transform(basis, m_lower, m_upper)
-
-    # Rotating-frame diagonal at δ = 0: exact eigen-energies relative to the
-    # probed pair.
-    frame = map(collect(basis)) do state
-        m, reference =
-            fine_structure(state.level) == fs_lower ? (m_lower, lower_state) :
-            (m_upper, upper_state)
-        state_offset(m, state) - state_offset(m, reference)
-    end
-
-    # Rotate the coupled-basis coupling and drives into the field eigenbasis
-    # (v is block-diagonal in the manifolds, so the block structure of both is
-    # preserved).
-    rotated_coupling = v' * complex.(coupling) * v
-    rotated_drives =
-        [HarmonicDrive(v' * complex.(d.amplitude) * v, d.phase) for d in drives]
-
-    coupling, drives = normalise_driven_matrices(rotated_coupling, rotated_drives)
-
-    DrivenTransition(;
-        basis,
-        drive_frequency,
-        frame,
-        drives,
-        coupling,
-        lower=stateindex(basis, lower_state),
-        upper=stateindex(basis, upper_state),
+        lower,
+        upper,
         lower_range,
         upper_range,
     )

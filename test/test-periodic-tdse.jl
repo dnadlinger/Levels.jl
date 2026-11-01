@@ -3,8 +3,8 @@
 ] begin
     θ = 0.7
     drives = [
-        zeeman_drive(sr88, BASIS, [0, 0, 1] .* 2.5u"µT"; phase=π / 2),
-        zeeman_drive(sr88, BASIS, [cos(θ), sin(θ), 0] .* 25.0u"µT"; phase=π / 2),
+        zeeman_drive(S0, [0, 0, 1] .* 2.5u"µT"; phase=π / 2),
+        zeeman_drive(S0, [cos(θ), sin(θ), 0] .* 25.0u"µT"; phase=π / 2),
     ]
     β_Q = 0.01
     for (tr, sb, β_I) in (
@@ -25,8 +25,8 @@ end
 @testitem "Stroboscopic Rabi flop" tags=[:integration, :slow] setup=[PeriodicSetup] begin
     θ = 0.7
     drives = [
-        zeeman_drive(sr88, BASIS, [0, 0, 1] .* 2.5u"µT"; phase=π / 2),
-        zeeman_drive(sr88, BASIS, [cos(θ), sin(θ), 0] .* 25.0u"µT"; phase=π / 2),
+        zeeman_drive(S0, [0, 0, 1] .* 2.5u"µT"; phase=π / 2),
+        zeeman_drive(S0, [cos(θ), sin(θ), 0] .* 25.0u"µT"; phase=π / 2),
     ]
     tr = TRANSITIONS[7]
     dt = make_transition(tr; drives)

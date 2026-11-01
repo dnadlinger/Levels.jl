@@ -101,40 +101,82 @@ function beam_centroid_offset(species, beam::LaserBeam)
     )
 end
 
-# The complex coupling matrix of each beam over the basis (rad µs⁻¹), exact at the
-# static field.
-function beam_couplings(species, scheme::LaserScheme)
-    B = scheme.B
-    map(scheme.beams) do beam
-        lo, hi = beam_levels(beam)
+# The complex coupling matrix of each beam in the structure's field
+# eigenbasis (rad µs⁻¹), exact at the static field.
+function beam_couplings(s::Eigenstructure, scheme::LaserScheme)
+    Matrix{typeof(complex(1.0) * ANGULAR_UNIT)}[
         coupling_matrix(
-            species,
-            scheme.basis,
-            lo => hi,
+            s,
+            beam_levels(beam)[1] => beam_levels(beam)[2],
             beam.intensity,
             beam.ε,
-            beam.direction;
-            B,
-        )
-    end
+            beam.direction,
+        ) for beam in scheme.beams
+    ]
 end
 
 """
-    rotating_frame(species, scheme::LaserScheme) -> RotatingFrame
-
-Assigns the frame frequencies of the scheme (cf. [`RotatingFrame`](@ref)).
+Validates the beams and frame reference of a scheme against the structure —
+every beam connects two manifolds of the structure, its reference levels are
+of the structure's level kind, and the frame reference (defaulting to the
+upper level of the first beam, or the first manifold) is a manifold of the
+structure — returning the resolved reference level.
 """
-rotating_frame(species, scheme::LaserScheme) =
-    rotating_frame(species, scheme, beam_couplings(species, scheme))
+function validate_scheme(s::Eigenstructure, scheme::LaserScheme)
+    basis = s.basis
+    levels = fine_structure_levels(basis)
+    level_kind = eltype(basis.levels)
+    for (i, beam) in enumerate(scheme.beams)
+        lo, hi = beam_levels(beam)
+        for (which, level) in (("lower", lo), ("upper", hi))
+            if !(level in levels)
+                throw(
+                    ArgumentError(
+                        "Beam $i: $which level '$level' is not part of the structure",
+                    ),
+                )
+            end
+        end
+        if !(beam.frequency.lower isa level_kind)
+            throw(
+                ArgumentError(
+                    "Beam $i: the reference levels must be of the structure's kind " *
+                    "('$(beam.frequency.lower)' for a basis of $level_kind levels)",
+                ),
+            )
+        end
+    end
+    reference = something(scheme.frame_reference, first(levels))
+    if !(reference in levels)
+        throw(
+            ArgumentError(
+                "Frame reference level '$reference' is not part of the structure",
+            ),
+        )
+    end
+    reference
+end
 
-function rotating_frame(species, scheme::LaserScheme, couplings)
-    basis = scheme.basis
+"""
+    rotating_frame(s::Eigenstructure, scheme::LaserScheme) -> RotatingFrame
+
+Assigns the frame frequencies of the scheme on the structure `s` (cf.
+[`RotatingFrame`](@ref)), validating that every beam connects two of its
+manifolds.
+"""
+rotating_frame(s::Eigenstructure, scheme::LaserScheme) =
+    rotating_frame(s, scheme, beam_couplings(s, scheme))
+
+function rotating_frame(s::Eigenstructure, scheme::LaserScheme, couplings)
+    species = s.species
+    basis = s.basis
+    reference = validate_scheme(s, scheme)
     num_states = length(basis)
     num_beams = length(scheme.beams)
     levels = fine_structure_levels(basis)
     offsets_beam = [beam_centroid_offset(species, beam) for beam in scheme.beams]
     E = typeof(1.0 * ANGULAR_UNIT)
-    offsets = zeros(E, num_states)
+    frame_offsets = zeros(E, num_states)
     traversals = zeros(Int, num_states, num_beams)
     tree_beams = Int[]
     beats = Tuple{Int,Int,Int,E}[]
@@ -156,8 +198,8 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
         level_traversals = Dict{NoHyperfineNumberSpec,Vector{Int}}(
             l => zeros(Int, num_beams) for l in levels
         )
-        visited = Set([scheme.frame_reference])
-        queue = [scheme.frame_reference]
+        visited = Set([reference])
+        queue = [reference]
         while !isempty(queue)
             level = popfirst!(queue)
             for (b, beam) in enumerate(scheme.beams)
@@ -178,7 +220,7 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
             end
         end
         for i in 1:num_states
-            offsets[i] = level_offsets[level_of[i]]
+            frame_offsets[i] = level_offsets[level_of[i]]
             traversals[i, :] .= level_traversals[level_of[i]]
         end
         for (b, beam) in enumerate(scheme.beams)
@@ -193,7 +235,7 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
     else
         # Spanning tree over the states, rooted at the first state of the
         # reference level.
-        root = findfirst(==(scheme.frame_reference), level_of)
+        root = findfirst(==(reference), level_of)
         visited = falses(num_states)
         visited[root] = true
         queue = [root]
@@ -208,7 +250,7 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
                 else
                     continue
                 end
-                offsets[next] = offsets[from] + sign * offsets_beam[b]
+                frame_offsets[next] = frame_offsets[from] + sign * offsets_beam[b]
                 traversals[next, :] .= traversals[from, :]
                 traversals[next, b] += sign
                 visited[next] = true
@@ -219,7 +261,7 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
         end
         for b in 1:num_beams, (i, k) in components[b]
             (b, i, k) in in_tree && continue
-            w = offsets_beam[b] - (offsets[k] - offsets[i])
+            w = offsets_beam[b] - (frame_offsets[k] - frame_offsets[i])
             abs(w) <= 1e-9 * abs(offsets_beam[b]) && continue
             push!(beats, (b, i, k, w))
         end
@@ -227,8 +269,8 @@ function rotating_frame(species, scheme::LaserScheme, couplings)
     RotatingFrame(
         scheme.frame_kind,
         levels,
-        scheme.frame_reference,
-        offsets,
+        reference,
+        frame_offsets,
         traversals,
         tree_beams,
         beats,

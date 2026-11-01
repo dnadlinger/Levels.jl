@@ -3,24 +3,19 @@ using Unitful
 """
     RelativeFrequency(lower => upper, offset)
 
-A laser frequency given relative to the zero-field `lower` → `upper`
-transition frequency — the reference point at which all Zeeman components of
-the two levels are degenerate — plus `offset` (an angular frequency, e.g.
-`angular(1.5u"MHz")`).
+Specifies a laser frequency as the named zero-field level interval plus
+`offset`, an angular frequency such as `angular(1.5u"MHz")`.
 
-The point of the parametrisation is precision: consumers such as the
-near-resonant machinery of [`light_shift`](@ref) only ever use `offset`
-together with exactly-known Zeeman and hyperfine splittings, so the tabulated
-transition energy — and its uncertainty, typically tens of MHz, far coarser
-than the Zeeman structure — drops out. Only converting to an absolute
-frequency via [`Levels.photon_energy`](@ref)`(species, laser)` reintroduces
-it.
+Detunings from components of this pair can then be formed without subtracting
+large optical frequencies: the tabulated centroid interval cancels, leaving
+the offset and hyperfine/Zeeman splittings. Those splittings retain the
+uncertainties and approximations of the species data and structure model.
+[`photon_energy`](@ref)`(species, laser)` resolves the absolute frequency and
+therefore includes the tabulated centroid interval again.
 
-For a [`HyperfineOneElectronSpecies`](@ref) the levels must be ``F`` levels
-(`"S_1/2 F=4"`), whose Zeeman components are degenerate at zero field; the
-reference interval then includes the zero-field hyperfine shifts of the two
-levels. The reference pair itself need not be a drivable component — it is a
-frequency marker, not a transition to be driven.
+For a hyperfine species the reference names two ``F`` levels, e.g.
+`"S_1/2 F=4"`; their zero-field hyperfine shifts are part of the interval.
+The pair is a frequency marker and need not be a drivable component.
 """
 struct RelativeFrequency{L<:LevelSpec,D<:Unitful.Frequency}
     "The lower level of the reference transition."
@@ -58,18 +53,25 @@ function RelativeFrequency(pair::Pair, offset)
 end
 
 """
-    RelativeFrequency(species, lower::StateSpec => upper::StateSpec, detuning; B)
+    RelativeFrequency(s::Eigenstructure, lower::StateSpec => upper::StateSpec, detuning)
 
-Returns the laser frequency `detuning` (angular) away from the `lower` →
-`upper` Zeeman component at the static field `B` along ẑ, expressed as a
-[`RelativeFrequency`](@ref) of the two states' levels: the Zeeman shifts of
-the states ([`zeeman_shift`](@ref), exact at-field eigen-energies relative to
-the zero-field ``F`` levels for a hyperfine species) are folded into the
-offset, so the line centre still cancels downstream. This is how a detuning
-quoted "from the resonance" of one component of a scheme — a clock
-transition, a σ⁺ pump — is entered.
+Returns the laser frequency `detuning` (an angular frequency) away from the
+`lower` → `upper` component of the labelled eigenstates of `s` at its static
+field, expressed as a [`RelativeFrequency`](@ref) of the two states' levels:
+the Zeeman shifts of the states ([`zeeman_shift`](@ref), exact at-field
+eigen-energies relative to the zero-field levels) are folded into the offset,
+so the line centre still cancels downstream. This is how a detuning quoted
+"from the resonance" of one component of a scheme — a clock transition, a σ⁺
+pump — is entered. The result stores the frequency determined at
+construction; it does not follow the component into another structure at a
+different field (rebuild it there to keep a fixed detuning from the moving
+resonance).
 """
-function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detuning; B)
+function RelativeFrequency(
+    s::Eigenstructure,
+    pair::Pair{<:StateSpec,<:StateSpec},
+    detuning,
+)
     lower, upper = pair
     if !(detuning isa Unitful.Frequency)
         throw(
@@ -79,7 +81,7 @@ function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detunin
             ),
         )
     end
-    component = zeeman_shift(species, upper; B) - zeeman_shift(species, lower; B)
+    component = zeeman_shift(s, upper) - zeeman_shift(s, lower)
     RelativeFrequency(lower.level => upper.level, detuning + component)
 end
 

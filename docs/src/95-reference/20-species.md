@@ -10,7 +10,8 @@ those, with the zero-field hyperfine shifts added where the quantity is
 frequency-like (cf. the [hyperfine-structure reference](@ref
 reference-hyperfine)).
 
-Frequencies and rates are in angular units throughout.
+Transition frequencies are angular frequencies; Einstein A coefficients are decay
+rates, with no factor of 2π. See [Frequencies, rates and energies](@ref units).
 
 ```@autodocs
 Modules = [Levels]

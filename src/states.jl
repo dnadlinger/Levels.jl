@@ -2,13 +2,13 @@
 Specifies a particular electronic level within a species.
 
 That is, all the quantum numbers to specify a state, except for the projection
-of the total angular momentum on the quantization axis.
+of the total angular momentum on the quantisation axis.
 """
 abstract type LevelSpec end
 
 """
-Specifies a particular electronic state using the relevant low-field
-quantum numbers.
+Specifies a fine-structure level by its orbital and total electronic angular
+momenta, `l` and `j`.
 
 The total spin quantum number is implicitly assumed to be ``1/2`` (cf.
 [`NoHyperfineOneElectronSpecies`](@ref)).
@@ -47,7 +47,7 @@ end
 HyperfineNumberSpec(s::AbstractString) = convert(HyperfineNumberSpec, s)
 
 """
-Specifies a particular electronic state using spectroscopic notation.
+Specifies a level using spectroscopic notation.
 """
 struct SpectroscopicSpec <: LevelSpec
     val::String

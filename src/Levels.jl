@@ -10,6 +10,7 @@ include("basis.jl")
 include("species.jl")
 include("zeeman.jl")
 include("hyperfine.jl")
+include("structure.jl")
 
 include("multipole.jl")
 include("rates.jl")

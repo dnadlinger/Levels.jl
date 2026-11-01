@@ -6,6 +6,7 @@ Pages = [
     "15-basis.md",
     "20-species.md",
     "25-zeeman.md",
+    "26-structure.md",
     "27-hyperfine.md",
     "30-species-data.md",
     "40-rates.md",
@@ -14,6 +15,7 @@ Pages = [
     "47-polarisability.md",
     "50-optics.md",
     "60-periodic-dynamics.md",
+    "65-optical-bloch.md",
     "70-quantum-toolbox.md",
 ]
 ```

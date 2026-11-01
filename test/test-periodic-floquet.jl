@@ -21,7 +21,7 @@ end
     # Drive phase π/2 (capacitive load): the FM sidebands add coherently to
     # in-phase EMM and the sideband vanishes exactly at β_I = χ B_par / Ω_rf, for
     # both sidebands and all χ.
-    drives = [zeeman_drive(sr88, BASIS, [0, 0, 1] .* B_par; phase=π / 2)]
+    drives = [zeeman_drive(S0, [0, 0, 1] .* B_par; phase=π / 2)]
     for tr in (TRANSITIONS[1], TRANSITIONS[5], TRANSITIONS[8]), sb in (+1, -1)
         d = dress(make_transition(tr; drives))
         β_B = uconvert(NoUnits, zeeman_sensitivity(sr88, tr) * B_par / Ω_RF)
@@ -32,7 +32,7 @@ end
     end
 
     # Drive phase 0: modulation in quadrature with in-phase EMM — hyperbolic floor.
-    drives0 = [zeeman_drive(sr88, BASIS, [0, 0, 1] .* B_par; phase=0.0)]
+    drives0 = [zeeman_drive(S0, [0, 0, 1] .* B_par; phase=0.0)]
     tr = TRANSITIONS[8]
     d = dress(make_transition(tr; drives=drives0))
     β_B = uconvert(NoUnits, zeeman_sensitivity(sr88, tr) * B_par / Ω_RF)
@@ -45,7 +45,7 @@ end
 @testitem "Transverse ac field: ac Zeeman shifts" tags=[:unit] setup=[PeriodicSetup] begin
     # Quasienergy shifts of the dressed levels against Joshi et al. Eq. (14).
     B_perp = 2.0u"µT"
-    drives = [zeeman_drive(sr88, BASIS, [1, 0, 0] .* B_perp; phase=π / 2)]
+    drives = [zeeman_drive(S0, [1, 0, 0] .* B_perp; phase=π / 2)]
     dt = make_transition(StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2); drives)
     d = dress(dt, DressedStates(; num_time_samples=16))
 
@@ -90,17 +90,10 @@ end
         L
     end
 
+    s_static = Eigenstructure(sr88, BASIS; B=b_static)
     function twophoton(coupling, sb; θ=0.0)
-        drives = [zeeman_drive(sr88, BASIS, [cos(θ), sin(θ), 0] .* B_perp; phase=π / 2)]
-        dt = DrivenTransition(
-            sr88,
-            BASIS,
-            probe;
-            drive_frequency=Ω_rf,
-            B=b_static,
-            coupling,
-            drives,
-        )
+        drives = [zeeman_drive(s_static, [cos(θ), sin(θ), 0] .* B_perp; phase=π / 2)]
+        dt = DrivenTransition(s_static, probe; drive_frequency=Ω_rf, coupling, drives)
         sideband_rabi(dress(dt); sideband=sb).Ω
     end
 

@@ -1,5 +1,6 @@
-# Specification types: the laser beams, the internal-state problem (basis, beams,
-# static field) and the motional modes — parameters only, no atomic data.
+# Specification types: the laser beams, the laser scheme (beams and rotating-frame
+# choice) and the motional modes — parameters only, no atomic data; the atom is
+# the Eigenstructure the scheme is applied to.
 
 """
 One running-wave laser beam.
@@ -97,82 +98,33 @@ Returns the fine-structure levels of a basis, in order of first appearance.
 fine_structure_levels(basis::StateBasis) = unique!(fine_structure.(basis.levels))
 
 """
-The internal-state problem: the Zeeman (or hyperfine) states kept, the laser
-beams driving them, and the static magnetic field along the quantisation axis
-ẑ.
+A collection of laser beams and a rotating-frame choice, applied to an
+[`Eigenstructure`](@ref Levels.Eigenstructure) by [`lindblad_model`](@ref).
 
-`frame_reference` names the level whose rotating-frame frequency is its own
-zero-field centroid; the frame frequencies of the levels (or, with
-`frame_kind = :states`, the individual states) connected to it by beams follow
-from the beam frequencies (cf. [`RotatingFrame`](@ref)). It defaults to the
-upper level of the first beam. The choice does not affect any observable — it
-only fixes which level's states sit at their bare Zeeman (hyperfine) energies
-on the diagonal of the rotating-frame Hamiltonian. `frame_kind` selects the
-per-level (default) or per-state frame construction.
-
-For a hyperfine species the field must be non-zero, as the basis states denote
-the adiabatically-labelled field eigenstates (cf. [`hyperfine_manifold`](@ref)).
-
-Constructed via `LaserScheme(basis, beams; B, frame_reference)`; the
-atomic data enter only when a [`LindbladModel`](@ref) is derived from it.
+Constructed with `LaserScheme(beams; frame_reference, frame_kind)`.
+`frame_kind` selects one frame frequency per fine-structure level (`:levels`,
+default) or per state (`:states`); see [`RotatingFrame`](@ref).
+`frame_reference` sets the root level's frame frequency to its zero-field
+centroid. It defaults to the upper level of the first beam, or the first
+basis level if there are no beams. Changing this reference leaves observables
+unchanged. Beams and reference levels are validated when the frame is built.
 """
-struct LaserScheme{B<:StateBasis,F<:Quantity}
-    basis::B
+struct LaserScheme
     beams::Vector{LaserBeam}
-    B::F
-    frame_reference::NoHyperfineNumberSpec
+    frame_reference::Union{Nothing,NoHyperfineNumberSpec}
     frame_kind::Symbol
 end
 
-function LaserScheme(
-    basis::StateBasis,
-    beams;
-    B,
-    frame_reference=nothing,
-    frame_kind::Symbol=:levels,
-)
+function LaserScheme(beams; frame_reference=nothing, frame_kind::Symbol=:levels)
     beams = LaserBeam[beams...]
     frame_kind in (:levels, :states) ||
         throw(ArgumentError("frame_kind must be :levels or :states, got $frame_kind"))
-    isempty(basis) && throw(ArgumentError("The basis must contain at least one state"))
-    if dimension(B) != dimension(1.0u"T")
-        throw(ArgumentError("The static field must be a flux density, got $B"))
-    end
-    levels = fine_structure_levels(basis)
-    level_kind = eltype(basis.levels)
-    for (i, beam) in enumerate(beams)
-        lo, hi = beam_levels(beam)
-        for (which, level) in (("lower", lo), ("upper", hi))
-            if !(level in levels)
-                throw(
-                    ArgumentError(
-                        "Beam $i: $which level '$level' is not part of the basis",
-                    ),
-                )
-            end
-        end
-        if !(beam.frequency.lower isa level_kind)
-            throw(
-                ArgumentError(
-                    "Beam $i: the reference levels must be of the basis' kind " *
-                    "('$(beam.frequency.lower)' for a basis of $level_kind levels)",
-                ),
-            )
-        end
-    end
     reference = if isnothing(frame_reference)
-        isempty(beams) ? first(levels) : beam_levels(first(beams))[2]
+        isempty(beams) ? nothing : beam_levels(first(beams))[2]
     else
         fine_structure(frame_reference)
     end
-    if !(reference in levels)
-        throw(
-            ArgumentError(
-                "Frame reference level '$reference' is not part of the basis",
-            ),
-        )
-    end
-    LaserScheme(basis, beams, B, reference, frame_kind)
+    LaserScheme(beams, reference, frame_kind)
 end
 
 """

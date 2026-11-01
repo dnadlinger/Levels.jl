@@ -99,9 +99,9 @@ end
 Dresses the two manifolds of the given model by its harmonic drives, returning a
 [`DressedTransition`](@ref).
 
-`harmonic_cutoff` is the Floquet harmonic truncation of the dressing; `num_time_samples` the number of
-uniform time samples per drive period used for the Fourier analysis of the laser
-coupling in [`sideband_rabi`](@ref).
+`method.harmonic_cutoff` sets the Floquet truncation;
+`method.num_time_samples` sets the uniform time sampling per period for the
+Fourier analysis of the laser coupling in [`sideband_rabi`](@ref).
 """
 function dress(dt::DrivenTransition, method::DressedStates=DressedStates())
     harmonic_cutoff = method.harmonic_cutoff

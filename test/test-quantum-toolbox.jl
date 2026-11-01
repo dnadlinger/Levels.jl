@@ -40,6 +40,16 @@
     @test expect(projection(sb, StateSpec("S_1/2", 1 // 2)), ket) ≈ 1
     @test abs(expect(projection(sb, StateSpec("S_1/2", -1 // 2)), ket)) < 1e-15
 
+    # The same conversions over an Eigenstructure address its basis.
+    s = Eigenstructure(sr88, sb; B=0.5u"mT")
+    @test QuantumObject(A .* u"ms^-1", s).data ≈ A ./ 1e3
+    @test QuantumObject(v, s).data == v
+    @test basis(s, "P_1/2", 1 // 2) == basis(sb, "P_1/2", 1 // 2)
+    @test projection(s, StateSpec("S_1/2", 1 // 2), StateSpec("P_1/2", -1 // 2)) ==
+          projection(sb, StateSpec("S_1/2", 1 // 2), StateSpec("P_1/2", -1 // 2))
+    @test projection(s, StateSpec("S_1/2", 1 // 2)) ==
+          projection(sb, StateSpec("S_1/2", 1 // 2))
+
     # Error paths: size mismatches, non-time dimensions, bad reference units.
     @test_throws ArgumentError QuantumObject(zeros(ComplexF64, n + 1, n + 1), sb)
     @test_throws ArgumentError QuantumObject(zeros(ComplexF64, n + 1), sb)
@@ -54,7 +64,7 @@ end
 
     dt = make_transition(
         TRANSITIONS[3];
-        drives=zeeman_drives(sr88, BASIS, [12.0 + 5.0im, 5.0 - 3.0im, 8.0im] .* u"µT"),
+        drives=zeeman_drives(S0, [12.0 + 5.0im, 5.0 - 3.0im, 8.0im] .* u"µT"),
     )
     δ = angular(1.23u"kHz")
     fh = fourier_hamiltonians(dt; δ)
@@ -129,14 +139,13 @@ end
         QuantumObject(sqrt(a_sp) .* C, sb)
     end
 
+    structure = Eigenstructure(sr88, sb; B=0.4955125u"mT")
     model(b) = DrivenTransition(
-        sr88,
-        sb,
+        structure,
         bright => excited;
         drive_frequency=angular(50.48559u"MHz"),
-        B=0.4955125u"mT",
         coupling,
-        drives=zeeman_drives(sr88, sb, b),
+        drives=zeeman_drives(structure, b),
     )
     # Direct sparse factorisation instead of the preconditioned-GMRES default:
     # the system is tiny and the cross-checks below resolve ≲1e-10.

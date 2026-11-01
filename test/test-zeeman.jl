@@ -23,17 +23,19 @@ end
     s_up = StateSpec("S_1/2", 1//2)
     d_up = StateSpec("D_5/2", 5//2)
 
-    shift = zeeman_shift(sr88, s_up; B=0.5u"mT")
+    s = Eigenstructure(sr88, "S_1/2", "D_5/2"; B=0.5u"mT")
+    shift = zeeman_shift(s, s_up)
     @test shift ≈
           uconvert(u"rad/µs", lande_g(sr88, "S_1/2") / 2 * μ_B * 0.5u"mT" / u"ħ")
-    @test zeeman_shift(sr88, StateSpec("S_1/2", -1//2); B=0.5u"mT") ≈ -shift
+    @test zeeman_shift(s, StateSpec("S_1/2", -1//2)) ≈ -shift
+    @test zeeman_shift(Eigenstructure(sr88, "S_1/2"; B=-0.5u"mT"), s_up) ≈ -shift
 
     # χ of the strongest S ↔ D transition, in the (non-angular) units of thesis
     # fig. 5.12: (g_D·5/2 − g_S·1/2)·μ_B/h — 27.9889 MHz/mT with the g-factor
     # overrides (27.9923 with the Landé values the thesis used).
     χ = zeeman_sensitivity(sr88, s_up => d_up)
     @test uconvert(u"MHz/mT", χ / 2π) ≈ 27.98892u"MHz/mT" rtol = 1e-5
-    @test zeeman_sensitivity(sr88, s_up => d_up) == χ
+    @test zeeman_sensitivity(s, s_up => d_up) == χ
 
     # The eight quadrupole components sorted by sensitivity: ±{11.2, 22.4, 28.0,
     # 39.2} MHz/mT, antisymmetric under m → −m.
@@ -56,16 +58,18 @@ end
     basis = StateBasis(["S_1/2", "D_5/2"])
 
     # Field along the quantisation axis: diagonal of first-order shifts.
-    H = zeeman_hamiltonian(sr88, basis; B=[0.0, 0.0, 0.5]u"mT")
+    H = zeeman_hamiltonian(sr88, basis, [0.0, 0.0, 0.5]u"mT")
     @test all(iszero, H - Diagonal(diag(H)))
+    s = Eigenstructure(sr88, basis; B=0.5u"mT")
     for (i, state) in enumerate(basis)
-        @test real(H[i, i]) ≈ zeeman_shift(sr88, state; B=0.5u"mT")
+        @test real(H[i, i]) ≈ zeeman_shift(s, state)
     end
+    @test H ≈ coupled_hamiltonian(s)
 
     # General field direction: Hermitian, block-diagonal in the levels, and each
     # block matches g μ_B/ħ B·J on the spin-j matrices.
     B = [0.3, -0.2, 0.7]u"mT"
-    H = zeeman_hamiltonian(sr88, basis; B)
+    H = zeeman_hamiltonian(sr88, basis, B)
     @test H ≈ H'
     s_range = staterange(basis, "S_1/2")
     d_range = staterange(basis, "D_5/2")
@@ -84,10 +88,15 @@ end
         StateSpec("D_5/2", -1//2),
         StateSpec("S_1/2", -1//2),
     ])
-    Hs = zeeman_hamiltonian(sr88, scrambled; B)
+    Hs = zeeman_hamiltonian(sr88, scrambled, B)
     @test Hs ≈ Hs'
     @test Hs[1, 3] ≈ H[2, 1]   # ⟨S,+1/2| · |S,−1/2⟩
     @test Hs[3, 1] ≈ H[1, 2]
     i = stateindex(basis, "D_5/2", -1//2)
     @test Hs[2, 2] ≈ H[i, i]
+
+    # The static field is not a keyword of the Hamiltonian, and the vector must
+    # have three components.
+    @test_throws MethodError zeeman_hamiltonian(sr88, basis; B)
+    @test_throws ArgumentError zeeman_hamiltonian(sr88, basis, [0.3, 0.7]u"mT")
 end

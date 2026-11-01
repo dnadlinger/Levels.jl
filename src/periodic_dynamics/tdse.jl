@@ -37,13 +37,12 @@ function stripped_hamiltonian(dt::DrivenTransition, δ, modulation)
 end
 
 """
-    monodromy(dt::DrivenTransition; δ = 0, modulation = none)
+    monodromy(dt::DrivenTransition, method = Monodromy(); δ = 0, modulation = none)
 
-Computes the one-drive-period propagator (monodromy matrix) of
-``i \\dot{ψ} = H(t) ψ`` at laser detuning `δ` from the probed transition, with
-the given laser phase modulation.
-
-Returns the (dimensionless, complex) propagator matrix over the model's basis.
+Computes the one-drive-period propagator of ``i \\dot ψ = H(t)ψ`` at laser
+detuning `δ` from the probed component and the given phase modulation.
+`method` supplies the ODE algorithm and tolerances. Returns a dimensionless
+complex matrix over the model's basis.
 """
 function monodromy(
     dt::DrivenTransition,
@@ -92,8 +91,8 @@ end
 
 """
 Wrapped quasienergy gap (plain angular ``s^{-1}``) between the two Floquet states
-carrying the probed lower- and upper-state characters. At a sideband resonance,
-the minimum of this gap over the detuning equals the effective Rabi frequency.
+carrying the probed lower- and upper-state characters. At an isolated sideband resonance,
+the minimum gap over detuning gives the effective Rabi frequency.
 """
 function probe_gap(dt::DrivenTransition, δ, modulation, method::Monodromy)
     Ω = ustrip(u"rad/s", dt.drive_frequency)
@@ -112,13 +111,15 @@ end
     sideband_rabi(dt::DrivenTransition, method::Monodromy; sideband,
                   modulation = none)
 
-Computes the exact sideband Rabi frequency by minimising the Floquet quasienergy
-gap over the laser detuning, bracketed around the dressed-state prediction of
-[`sideband_rabi`](@ref) (whose `harmonic_cutoff`/`num_time_samples` settings are passed through).
+Returns `(; Ω, δ_res)` by minimising the Floquet quasienergy gap over laser
+detuning near an isolated sideband resonance. The search is centred on the
+prediction from `method.estimate`, a [`DressedStates`](@ref) configuration,
+and its width is set by `method.bracket_scale`.
 
-Returns `(Ω, δ_res)`. This is the gold-standard cross-check for the dressed-state
-engine, nonperturbative in every coupling, so it also includes all laser-induced
-shifts; it is several orders of magnitude slower.
+One-period TDSE propagation includes the laser coupling nonperturbatively,
+including its light shifts. `method.alg`, `method.reltol` and `method.abstol`
+control propagation accuracy; the detuning search also has finite tolerance.
+This provides a slower cross-check of the first-order dressed-state result.
 """
 function sideband_rabi(
     dt::DrivenTransition,
@@ -148,7 +149,7 @@ end
     stroboscopic_populations(dt::DrivenTransition, num_periods::Int;
                              δ = 0, modulation = none, initial = dt.lower)
 
-Propagates the model exactly from the basis state with index `initial`
+Propagates the full model from the basis state with index `initial`
 (defaulting to the probed lower state) and returns the populations of all basis
 states at the stroboscopic times ``k T`` for ``k = 0 … `` `num_periods`, as a
 `length(basis) × (num_periods + 1)` matrix — a direct TDSE Rabi flop for

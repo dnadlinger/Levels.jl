@@ -7,41 +7,30 @@
 # mode, last mode fastest — the `tensor` order of the solvers.
 
 """
-    BandLiouvillian(H, c_ops, num_states, num_fock; bandwidth = nothing)
+    BandLiouvillian(H, c_ops, num_states, num_fock; bandwidth = nothing, time_unit = u"µs")
     BandLiouvillian(mm::MotionalModel; bandwidth = nothing)       (extension)
     BandLiouvillian(model::LindbladModel; time_unit = u"µs")      (extension)
 
-The master-equation generator
-``\\mathcal{L}ρ = -i[H, ρ] + \\sum_k (L_k ρ L_k^† - \\tfrac{1}{2}\\{L_k^† L_k, ρ\\})``
-of an internal ⊗ Fock model — sparse `H` and jump operators `c_ops` as plain
-matrices over `num_states` internal states and one Fock ladder of
-`num_fock[m]` states per mode (internal index slowest, last mode fastest) —
-restricted to the density-matrix elements ``ρ_{(i\\,\\vec{n}),(j\\,\\vec{m})}``
-with ``|n_m - m_m| ≤ \\mathtt{bandwidth}`` for every mode: a Galerkin
-truncation of the motional coherences, the full Liouvillian for
-`bandwidth = nothing` (or no modes at all, `num_fock = Int[]`, for a purely
-internal model).
+The Lindblad generator on internal ⊗ Fock space, restricted to density-matrix
+elements ``ρ_{(i\\vec n),(j\\vec m)}`` with
+``|n_ℓ-m_ℓ|≤\\mathtt{bandwidth}`` for every mode ``ℓ``. `bandwidth = nothing`
+retains all coherences; `num_fock = Int[]` gives an internal-only model.
 
-The far-off-diagonal coherences are both weakly driven — the displacement
-matrix elements of [`displacement_elements`](@ref) fall off as
-``(η\\sqrt{n})^{|n - m|}/|n - m|!`` — and detuned by ``ω_m |n - m|``, so the
-restriction converges quickly (a bandwidth of 4 reproduces steady states and
-relaxation times of the quenched-sideband-cooling example to ``10^{-5}``),
-while the dimension drops from ``(N_\\mathrm{int} \\prod_m N_m)^2`` to about
-``N_\\mathrm{int}^2 \\prod_m (2K + 1) N_m``, which is what makes Fock ladders
-of hundreds of states — a Doppler-cooled ion — affordable.
+Plain `H` and `c_ops` matrices use an internal factor of `num_states`, followed
+by Fock factors of sizes `num_fock` (last mode fastest). Their entries use
+inverse `time_unit` and inverse square-root `time_unit`, respectively.
+The model constructors supply these matrices and their time scale.
 
-Fields: `L` (sparse, the restricted generator over the band index set),
-`index` (full ``(r, c)`` → band index, `0` outside the band), `entries` (band
-index → ``(r, c)``), `num_states`, `num_fock` and `bandwidth`.
-[`band_vector`](@ref) and [`full_matrix`](@ref) convert between density
-matrices and band vectors, [`expectation_row`](@ref) gives the trace functional
-of an observable, [`fock_populations`](@ref) the motional populations;
-[`cooling_curve`](@ref) integrates the band equation and
-[`IntegratedTransientSolver`](@ref) solves it for steady states and
-relaxation times. The extension constructors take the operators from a
-[`MotionalModel`](@ref) or, for the internal problem alone, a
-[`LindbladModel`](@ref).
+For bandwidth ``K`` small compared with the Fock sizes, the generator's
+dimension falls from ``(N_\\mathrm{int}∏_ℓN_ℓ)^2`` to about
+``N_\\mathrm{int}^2∏_ℓ[(2K+1)N_ℓ]``. This is a projection of the Liouvillian;
+increase bandwidth and Fock sizes to check convergence.
+
+`L` stores the sparse generator. `entries` maps band indices to density-matrix
+indices `(r, c)`; `index` maps back, with zero outside the band.
+[`band_vector`](@ref) and [`full_matrix`](@ref) convert representations.
+[`cooling_curve`](@ref) propagates the equation and
+[`IntegratedTransientSolver`](@ref) finds steady states and relaxation times.
 """
 struct BandLiouvillian{T<:Unitful.Units}
     L::SparseMatrixCSC{ComplexF64,Int}
@@ -162,9 +151,10 @@ end
 """
     expectation_row(bl::BandLiouvillian, A::AbstractMatrix) -> Vector{ComplexF64}
 
-Returns the row vector `a` with `transpose(a) * v == tr(A * ρ)` for the band
-vector `v` of any density matrix `ρ` — the trace functional of the observable
-`A` on the band.
+Returns the trace functional `a` with
+`transpose(a) * v == tr(A * full_matrix(bl, v))`.
+For an arbitrary density matrix, contributions from coherences outside the
+band are omitted.
 """
 expectation_row(bl::BandLiouvillian, A::AbstractMatrix) =
     ComplexF64[A[c, r] for (r, c) in bl.entries]
@@ -302,39 +292,29 @@ end
     IntegratedTransientSolver(mm::MotionalModel; bandwidth = nothing, observables)   (extension)
     IntegratedTransientSolver(model::LindbladModel, observables; time_unit)       (extension)
 
-The integrated-transient Liouvillian method: the time integral of the
-transient towards the steady state,
+Solves for a unique steady state and integrated transients of a relaxing
+Liouvillian. The transient integral satisfies
 
 ```math
-\\hat{τ} = ∫_0^∞ (ρ(t) - ρ_∞) \\, dt, \\qquad
-\\mathcal{L} \\hat{τ} = ρ_∞ - ρ_0, \\quad \\mathrm{Tr}\\, \\hat{τ} = 0,
+\\hat τ = ∫_0^∞[ρ(t)-ρ_∞]\\,dt, \\qquad
+\\mathcal L\\hat τ = ρ_∞-ρ_0, \\qquad \\mathrm{Tr}\\hat τ=0.
 ```
 
-solved as a linear system instead of propagating in time, from which the
-*integral relaxation time* of any observable ``A`` follows as
-``τ_A = \\mathrm{Tr}(A \\hat{τ}) / (\\mathrm{Tr}(A ρ_0) - \\mathrm{Tr}(A ρ_∞))``
-(Il'enkov et al., JETP **123**, 1 (2016); Kulosa et al., New J. Phys. **25**,
-053008 (2023), Sec. 3, Eqs. (10)–(14), there the "τ-matrix method"; for the
-integral relaxation time cf. Garanin, Phys. Rev. E **54**, 3250 (1996)) —
-see [`integral_relaxation_time`](@ref).
+For an observable ``A``, the integral relaxation time is
+``τ_A = \\mathrm{Tr}(A\\hat τ)/[\\mathrm{Tr}(Aρ_0)-\\mathrm{Tr}(Aρ_∞)]``.
+This is the τ-matrix method of Il'enkov et al., JETP **123**, 1 (2016), and
+Kulosa et al., New J. Phys. **25**, 053008 (2023), Sec. 3, Eqs. (10)–(14);
+see also [`integral_relaxation_time`](@ref).
 
-One sparse LU factorisation of the Liouvillian with one population row
-replaced by the trace functional (the rows of ``\\mathcal{L}`` are linearly
-dependent through ``\\mathrm{Tr}\\,\\mathcal{L}ρ = 0``) yields the steady state
-(forward solve; [`steady_density_matrix`](@ref), [`steady_value`](@ref)) and, as
-``\\mathrm{Tr}(A \\hat{τ})`` is linear in ``ρ_0``, the adjoint solution
-``y = M^{-T} a`` for the trace functional ``a`` of each observable, after
-which the relaxation time from *any* initial state costs one dot product.
-`observables` is one matrix on the internal ⊗ Fock space, or a vector of them
-(the extension defaults to the phonon-number operators of the modes).
+One sparse LU factorisation replaces a population row by the trace constraint.
+A forward solve gives the steady state; a transposed solve per observable
+stores the linear functional needed for its transient integral. Later
+initial states require only dot products. `observables` is one matrix or a
+vector of matrices; the motional-model form defaults to phonon numbers.
 
-Strict partial pivoting is enforced in UMFPACK: its default threshold
-pivoting silently returns wrong solutions once the steady state spans ~100
-orders of magnitude along a Fock ladder (``N ≳ 170`` at ``η = 0.1``). The
-factorisation is released immediately (it lives outside the Julia heap, so
-scans with hundreds of factorisations would otherwise exhaust the memory).
-Both solves are checked using normwise backward error. The steady state is
-also checked for negative populations and a non-unit trace (tolerance `atol`).
+Strict partial pivoting and iterative refinement handle poorly scaled Fock
+ladders. Solves are checked by normwise backward error; steady populations
+and trace are checked to `atol`. The factorisation is released after use.
 """
 struct IntegratedTransientSolver
     liouvillian::BandLiouvillian
@@ -429,7 +409,8 @@ Returns the integral relaxation time
 layout), as a unitful time — the time constant for an
 exponential relaxation, and a well-defined "area" time otherwise (for the
 phonon number: the cooling time of Kulosa et al. 2023, Eq. (13)). It is
-undefined (and returns ``±∞``) when the observable starts at its steady value.
+undefined when the observable starts at its steady value; division by zero
+then produces `Inf` or `NaN`.
 """
 function integral_relaxation_time(
     s::IntegratedTransientSolver,

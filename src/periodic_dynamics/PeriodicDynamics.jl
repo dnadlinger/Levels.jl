@@ -1,28 +1,17 @@
 """
-Simulation of optical transitions between Zeeman manifolds under periodic driving,
-e.g. by the rf fields of a Paul trap: ac Zeeman coupling, laser phase modulation
-from excess micromotion, and the resulting sidebands, shifts, and modifications to
-the effective Rabi frequencies.
+Periodic driving of laser-probed atomic transitions: ac Zeeman coupling,
+micromotion phase modulation, sideband Rabi frequencies and resonance shifts.
 
-The model is assembled in the frame rotating at the laser frequency (optical RWA):
-a [`DrivenTransition`](@ref) collects the rotating-frame energies for a static
-magnetic field, any number of harmonic drive terms at the fundamental drive
-frequency (e.g. an ac magnetic field via [`zeeman_drive`](@ref)), and the laser
-coupling matrix, optionally phase-modulated (e.g. [`HarmonicPhaseModulation`](@ref)
-for excess micromotion). Two engines evaluate it: fast dressed-state Floquet
-perturbation theory ([`dress`](@ref), [`sideband_rabi`](@ref)), and exact
-monodromy-matrix propagation of the time-dependent Schrödinger equation
-([`sideband_rabi`](@ref), [`stroboscopic_populations`](@ref)) as a
-nonperturbative cross-check.
+An [`Eigenstructure`](@ref Levels.Eigenstructure) supplies the static atom.
+[`DrivenTransition`](@ref) adds the probe laser and harmonic drives in the
+optical rotating-wave approximation. Its matrices use the structure's field
+eigenbasis, including field-induced hyperfine mixing.
 
-The quasienergy shifts of the states themselves — with or without a probe laser —
-are available directly through [`quasienergy_shift`](@ref), by second-order
-perturbation theory (with [`quasienergy_shift_contributions`](@ref) diagnostics
-and near-resonance warnings) or nonperturbative Floquet dressing, and for a
-magnetic field phasor through [`ac_zeeman_shift`](@ref); for hyperfine species
-these operate on the exact [`Levels.hyperfine_manifold`](@ref) eigenstates, whose
-``F`` mixing the hyperfine [`DrivenTransition`](@ref) method likewise accounts for
-by rotating couplings and drives into the field eigenbasis.
+[`sideband_rabi`](@ref) offers two methods: [`DressedStates`](@ref) dresses
+the manifolds with the periodic drive and treats the laser to first order;
+[`Monodromy`](@ref) propagates the full model and finds an avoided-crossing
+gap. [`quasienergy_shift`](@ref) evaluates laser-free shifts with
+[`PerturbationTheory`](@ref) or nonperturbative [`Floquet`](@ref) dressing.
 
 Cf. Joshi et al., "Characterization of ion-trap-induced ac magnetic fields",
 Phys. Rev. A **110**, 063101 (2024),
@@ -35,22 +24,17 @@ using Unitful
 
 using ..Levels:
     Levels,
-    HyperfineManifold,
-    HyperfineNumberSpec,
-    HyperfineOneElectronSpecies,
-    NoHyperfineNumberSpec,
-    NoHyperfineOneElectronSpecies,
+    Eigenstructure,
     StateBasis,
     StateSpec,
-    eigenbasis_transform,
     fine_structure,
-    hyperfine_manifold,
+    iscomplete,
+    offsets,
     parse_level,
-    state_offset,
     stateindex,
     staterange,
-    zeeman_hamiltonian,
-    zeeman_shift
+    validate_state_kind,
+    zeeman_hamiltonian
 
 include("methods.jl")
 include("driving.jl")

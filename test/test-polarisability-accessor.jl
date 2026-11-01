@@ -32,8 +32,10 @@
               α0 + (w[3] - w[1]) * m / (2j) * α1 + (3w[2] - 1) / 2 * tensor * α2
         @test polarisability(species, state, laser, 3ε) ≈ contracted
         @test polarisability(species, state, 2π * u"c" / laser, ε) ≈ contracted
-        @test light_shift(species, state, laser, intensity, ε; parts=:background) ≈
+        zero_field = Eigenstructure(species, [state]; B=0.0u"mT")
+        @test light_shift(zero_field, state, laser, intensity, ε; parts=:background) ≈
               -intensity * contracted / (2 * u"c" * u"ε0" * u"ħ")
+        @test polarisability(zero_field, state, laser, ε) ≈ contracted
     end
 
     # The 397 nm line is guarded at 0.03 nm (57 GHz), but not 1 nm (2 THz).
@@ -57,9 +59,15 @@
     @test length(polarisability(ca43, s, λ_397 + 1.0u"nm")) == 3
 
     state = StateSpec("D_5/2 F=4", 3)
-    for B in (0.0u"mT", [0, 0, 1]u"mT", 1u"s", NaN * u"mT", (1 + im)u"mT")
-        @test_throws ArgumentError polarisability(ca43, state, 0u"rad/s", ε; B)
-    end
+    # The field enters through the structure, whose constructor validates it;
+    # the zero-field structure reproduces the species form.
+    @test_throws MethodError polarisability(ca43, state, 0u"rad/s", ε; B=0.5u"mT")
+    @test polarisability(
+        Eigenstructure(ca43, "D_5/2"; B=0.0u"mT"),
+        state,
+        0u"rad/s",
+        ε,
+    ) ≈ polarisability(ca43, state, 0u"rad/s", ε)
     @test_throws ArgumentError polarisability(ca43, state, 0u"rad/s", zeros(3))
     @test_throws ArgumentError polarisability(
         sr88,
@@ -85,9 +93,15 @@
     # Fine-structure eigenvectors are unchanged. A large field exposes the
     # otherwise tiny Zeeman correction to the denominators.
     fine = StateSpec("D_5/2", 3//2)
-    @test polarisability(sr88, fine, 0u"rad/s", ε; B=0.5u"mT") ≈
-          polarisability(sr88, fine, 0u"rad/s", ε) rtol = 1e-6
+    @test polarisability(
+        Eigenstructure(sr88, "D_5/2"; B=0.5u"mT"),
+        fine,
+        0u"rad/s",
+        ε,
+    ) ≈ polarisability(sr88, fine, 0u"rad/s", ε) rtol = 1e-6
     B = 10.0u"T"
+    strong = Eigenstructure(sr88, "D_5/2"; B)
+    zs(level, m) = lande_g(sr88, level) * m * Levels.BOHR_MAGNETON * B / u"ħ"
     w = Levels.polarisation_weights(ε)
     data = level_polarisability(sr88, fine.level)
     j, m = fine.level.j, fine.m
@@ -99,10 +113,7 @@
         Levels.dipole_cg(j, m, q, upper.j)^2 *
         (w[q+2] + w[2-q]) / (
             sr88.energies[upper] - sr88.energies[fine.level] +
-            u"ħ" * (
-                zeeman_shift(sr88, StateSpec(upper, m + q); B) -
-                zeeman_shift(sr88, fine; B)
-            )
+            u"ħ" * (zs(upper, m + q) - zs(fine.level, m))
         ),
     )
     expected =
@@ -112,9 +123,9 @@
             channel(upper, d, q) for
             (upper, d) in data.reduced_dipoles, q in -1:1 if abs(m + q) <= upper.j
         )
-    @test polarisability(sr88, fine, 0u"rad/s", ε; B) ≈ expected rtol = 1e-12
+    @test polarisability(strong, fine, 0u"rad/s", ε) ≈ expected rtol = 1e-12
     @test !isapprox(
-        polarisability(sr88, fine, 0u"rad/s", ε; B),
+        polarisability(strong, fine, 0u"rad/s", ε),
         polarisability(sr88, fine, 0u"rad/s", ε);
         rtol=1e-6,
     )
@@ -125,22 +136,21 @@ end
 
     # Check E1/E2 amplitudes for both species kinds and fields. The tolerance
     # allows rotation roundoff on entries that vanish by symmetry.
-    cache = Dict{NoHyperfineNumberSpec,Levels.ManifoldSolution}()
     for (species, lo, hi, B) in (
-        (sr88, "S_1/2", "P_3/2", nothing),
+        (sr88, "S_1/2", "P_3/2", 0.0u"mT"),
         (sr88, "S_1/2", "D_5/2", 0.5u"mT"),
-        (ca43, "D_5/2", "P_3/2", nothing),
+        (ca43, "D_5/2", "P_3/2", 0.0u"mT"),
         (ca43, "S_1/2", "D_5/2", 0.5u"mT"),
     )
-        empty!(cache)
-        m_lo = Levels.manifold_solution(species, fine_structure(lo), B, cache)
-        m_hi = Levels.manifold_solution(species, fine_structure(hi), B, cache)
+        s = Eigenstructure(species, lo, hi; B)
+        m_lo = Levels.manifold_solution(s, lo)
+        m_hi = Levels.manifold_solution(s, hi)
         rank = Levels.multipole_rank(lo => hi)
         amplitudes = Levels.relative_amplitudes(species, m_lo, m_hi, rank)
-        for (i, s) in enumerate(m_lo.basis), (k, t) in enumerate(m_hi.basis)
+        for (i, st) in enumerate(m_lo.basis), (k, t) in enumerate(m_hi.basis)
             expected =
-                isnothing(B) ? transition_amplitude(species, s => t; rank) :
-                transition_amplitude(species, s => t; rank, B)
+                iszero(B) ? transition_amplitude(species, st => t; rank) :
+                transition_amplitude(s, st => t; rank)
             @test amplitudes[k, i] ≈ expected atol = 1e-12
         end
     end
@@ -155,7 +165,7 @@ end
     # tensored with the nuclear identity, rather than F-basis CG × β factors.
     function product_sum(state, laser, B, ε)
         fs = fine_structure(state.level)
-        source = hyperfine_manifold(ca43, fs; B)
+        source = Levels.solve_manifold(ca43, fs, B)
         v = Levels.coupling_transform(ca43, fs) * source.states
         index = stateindex(source.basis, state)
         data = level_polarisability(ca43, fs)
@@ -165,7 +175,7 @@ end
         ħω = Levels.photon_energy(laser)
         α = 0.0u"C*m^2/V"
         for (other, d) in data.reduced_dipoles
-            target = hyperfine_manifold(ca43, other; B)
+            target = Levels.solve_manifold(ca43, other, B)
             u = Levels.coupling_transform(ca43, other) * target.states
             for q in -1:1
                 electronic = [
@@ -205,18 +215,28 @@ end
         ε in ([0, 0, 1], [1, im, 0], elliptical)
 
         B = 0.4958333u"mT"
-        α = polarisability(ca43, state, laser, ε; B)
+        s = Eigenstructure(ca43, [state]; B)
+        α = polarisability(s, state, laser, ε)
         @test α ≈ product_sum(state, laser, B, ε) rtol = 1e-12
-        @test polarisability(ca43, state, laser, ε; B=1e-8u"mT") ≈
-              polarisability(ca43, state, laser, ε) rtol = 1e-7
+        @test polarisability(
+            Eigenstructure(ca43, [state]; B=1e-8u"mT"),
+            state,
+            laser,
+            ε,
+        ) ≈ polarisability(ca43, state, laser, ε) rtol = 1e-7
         # Simultaneous field/projection reversal exchanges the circular parts.
         mirror = StateSpec(state.level, -state.m)
-        @test polarisability(ca43, mirror, laser, conj.(ε); B=(-B)) ≈ α rtol = 1e-11
+        @test polarisability(
+            Eigenstructure(ca43, [mirror]; B=(-B)),
+            mirror,
+            laser,
+            conj.(ε),
+        ) ≈ α rtol = 1e-11
         intensity = 10.0u"W/m^2"
-        c = LightShiftCoefficients(ca43, [state], laser; B)
+        c = LightShiftCoefficients(s, laser)
         expected = -intensity * α / (2 * u"c" * u"ε0" * u"ħ")
         @test light_shift(c, state, intensity, ε; parts=:background) ≈ expected
-        @test light_shift(ca43, state, laser, intensity, ε; B) ≈ expected
+        @test light_shift(s, state, laser, intensity, ε) ≈ expected
     end
 
     # Partial/scrambled bases address full-manifold eigenstates correctly.
@@ -226,15 +246,22 @@ end
         StateSpec("D_5/2 F=3", -2),
     ]
     B, laser = 0.5u"mT", 422.0u"nm"
-    c = LightShiftCoefficients(ca43, states, laser; B)
+    partial = Eigenstructure(ca43, states; B)
+    c = LightShiftCoefficients(partial, laser)
     for state in states
         @test light_shift(c, state, 1u"W/m^2", elliptical; parts=:background) ≈
-              -1u"W/m^2" * polarisability(ca43, state, laser, elliptical; B) /
+              -1u"W/m^2" * polarisability(partial, state, laser, elliptical) /
               (2 * u"c" * u"ε0" * u"ħ")
+        @test polarisability(partial, state, laser, elliptical) ≈ polarisability(
+            Eigenstructure(ca43, "S_1/2", "D_5/2"; B),
+            state,
+            laser,
+            elliptical,
+        )
     end
     d = first(states)
     @test !isapprox(
-        polarisability(ca43, d, 0u"rad/s", [0, 0, 1]; B),
+        polarisability(partial, d, 0u"rad/s", [0, 0, 1]),
         polarisability(ca43, d, 0u"rad/s", [0, 0, 1]);
         rtol=1e-3,
     )
@@ -246,16 +273,17 @@ end
     state = StateSpec("S_1/2 F=4", 4)
     B = 0.5u"mT"
     laser = RelativeFrequency("S_1/2 F=4" => "P_1/2 F=4", angular(50.0u"GHz"))
-    c = LightShiftCoefficients(ca43, StateBasis(ca43, "S_1/2", "P_1/2"), laser; B)
+    s = Eigenstructure(ca43, "S_1/2", "P_1/2"; B)
+    c = LightShiftCoefficients(s, laser)
     ω = Levels.photon_energy(ca43, laser) / u"ħ"
     _, ε = beam_vectors(0.4, 0.6, 0.8)
     intensity = 10.0u"W/m^2"
     # The split must recover the plain sum on the same eigenstates. Use the
     # internal form because the public accessor guards this 50 GHz detuning.
     w = Levels.polarisation_weights(ε)
-    plain = sum(w .* Levels.state_polarisabilities(ca43, state, u"ħ" * ω, B))
+    plain = sum(w .* Levels.state_polarisabilities(s, state, u"ħ" * ω))
     full = -intensity * plain / (2 * u"c" * u"ε0" * u"ħ")
-    @test_throws ArgumentError polarisability(ca43, state, ω, ε; B)
+    @test_throws ArgumentError polarisability(s, state, ω, ε)
     @test light_shift(c, state, intensity, ε) ≈ full rtol = 1e-8
     @test light_shift(c, state, intensity, ε) ≈
           light_shift(c, state, intensity, ε; parts=:background) +
@@ -285,7 +313,8 @@ end
         ),
     )
     B, state = 0.5u"mT", StateSpec("D_5/2 F=4", 3)
-    manifold = hyperfine_manifold(remainder, fs; B)
+    structure = Eigenstructure(remainder, fs; B)
+    manifold = Levels.manifold_solution(structure, fs)
     index = stateindex(manifold.basis, state)
     U = Levels.coupling_transform(remainder, fs)
     j, i_nuc = fs.j, remainder.nuclear_spin
@@ -293,7 +322,7 @@ end
         3 - 7 * (3m^2 - j * (j + 1)) / (j * (2j - 1)) for m in (-j):j for
         _ in (-i_nuc):i_nuc
     ])
-    H0 = ustrip.(u"rad/µs", Levels.manifold_hamiltonian(remainder, fs; B))
+    H0 = ustrip.(u"rad/µs", coupled_hamiltonian(structure))
     # Symmetric finite perturbation of the full Hamiltonian is independent of
     # taking an expectation in the field eigenvector inside the implementation.
     perturbation = 1e-4
@@ -301,7 +330,7 @@ end
     energy_index = argmin(abs.(eigvals(Symmetric(H0)) .- target_energy))
     plus = eigvals(Symmetric(H0 + perturbation * (U' * operator * U)))[energy_index]
     minus = eigvals(Symmetric(H0 - perturbation * (U' * operator * U)))[energy_index]
-    @test polarisability(remainder, state, 0u"rad/s", [0, 0, 1]; B) / au ≈
+    @test polarisability(structure, state, 0u"rad/s", [0, 0, 1]) / au ≈
           (plus - minus) / (2perturbation) rtol = 1e-6
 
     # The established approximation for an intermediate without constants is
@@ -332,6 +361,6 @@ end
         (k, m) in enumerate([m for m in (-j):j for _ in (-i_nuc):i_nuc])
     )
     expected += data.static_scalar + data.static_tensor * tensor
-    @test polarisability(missing, state, 0u"rad/s", [0, 0, 1]; B) ≈ expected rtol =
-        1e-12
+    @test polarisability(Eigenstructure(missing, fs; B), state, 0u"rad/s", [0, 0, 1]) ≈
+          expected rtol = 1e-12
 end

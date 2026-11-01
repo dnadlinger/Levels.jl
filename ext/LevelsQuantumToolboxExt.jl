@@ -14,7 +14,7 @@ module LevelsQuantumToolboxExt
 
 using LinearAlgebra: Diagonal, I, diag, eigen, norm, tr
 using Unitful
-using Levels: Levels, StateBasis, stateindex
+using Levels: Levels, Eigenstructure, StateBasis, stateindex
 using Levels.PeriodicDynamics: PeriodicDynamics, DrivenTransition
 using Levels.OpticalBloch:
     OpticalBloch,
@@ -145,27 +145,52 @@ function QuantumToolbox.QuantumObject(
 end
 
 """
+    QuantumObject(A::AbstractMatrix, s::Eigenstructure; time_unit = u"µs")
+    QuantumObject(v::AbstractVector, s::Eigenstructure; time_unit = u"µs")
+
+The same conversions over the basis of an [`Levels.Eigenstructure`](@ref),
+for matrices and vectors expressed in its field eigenbasis.
+"""
+QuantumToolbox.QuantumObject(
+    A::AbstractVecOrMat,
+    s::Eigenstructure;
+    time_unit::Unitful.Units=Unitful.µs,
+) = QuantumObject(A, s.basis; time_unit)
+
+"""
     basis(b::StateBasis, state)
     basis(b::StateBasis, level, m)
+    basis(s::Eigenstructure, state)
+    basis(s::Eigenstructure, level, m)
 
-Returns the ket `QuantumObject` for the given state of the [`StateBasis`](@ref)
-(cf. [`Levels.stateindex`](@ref) for the accepted state forms).
+Returns the ket `QuantumObject` for the given state of the [`StateBasis`](@ref),
+or of the basis of an [`Levels.Eigenstructure`](@ref) (cf.
+[`Levels.stateindex`](@ref) for the accepted state forms).
 """
 QuantumToolbox.fock(b::StateBasis, state) =
     QuantumToolbox.fock(length(b), stateindex(b, state) - 1)
 QuantumToolbox.fock(b::StateBasis, level, m) =
     QuantumToolbox.fock(length(b), stateindex(b, level, m) - 1)
+QuantumToolbox.fock(s::Eigenstructure, state) = QuantumToolbox.fock(s.basis, state)
+QuantumToolbox.fock(s::Eigenstructure, level, m) =
+    QuantumToolbox.fock(s.basis, level, m)
 
 """
     projection(b::StateBasis, ket[, bra])
+    projection(s::Eigenstructure, ket[, bra])
 
 Returns the projection operator ``|ket⟩⟨bra|`` between states of the
-[`StateBasis`](@ref) (cf. [`Levels.stateindex`](@ref) for the accepted state
-forms); `bra` defaults to `ket`, giving the population projector.
+[`StateBasis`](@ref), or of the basis of an [`Levels.Eigenstructure`](@ref)
+(cf. [`Levels.stateindex`](@ref) for the accepted state forms); `bra` defaults
+to `ket`, giving the population projector.
 """
 QuantumToolbox.projection(b::StateBasis, ket, bra) =
     QuantumToolbox.projection(length(b), stateindex(b, ket) - 1, stateindex(b, bra) - 1)
 QuantumToolbox.projection(b::StateBasis, ket) = QuantumToolbox.projection(b, ket, ket)
+QuantumToolbox.projection(s::Eigenstructure, ket, bra) =
+    QuantumToolbox.projection(s.basis, ket, bra)
+QuantumToolbox.projection(s::Eigenstructure, ket) =
+    QuantumToolbox.projection(s.basis, ket)
 
 function PeriodicDynamics.fourier_hamiltonians(
     dt::DrivenTransition;

@@ -13,13 +13,14 @@
     # of the basis, is a two-level system with Γ = (2/3) A (the σ⁺ decay
     # channel) — its steady state is the saturation formula exactly.
     basis = StateBasis([StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)])
+    two_level = Eigenstructure(sr88, basis; B=0.0u"mT")
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     Γ = 2 / 3 * einstein_a(sr88, "S_1/2" => "P_1/2")
     I_sat = saturation_intensity(sr88, "S_1/2" => "P_1/2")
     for (s, δ_over_Γ) in ((0.5, 0.0), (2.0, 1.5), (7.0, -3.0))
         beam = LaserBeam("S_1/2" => "P_1/2", δ_over_Γ * Γ, s * I_sat, ε_σ, n_z)
-        scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
-        model = lindblad_model(sr88, scheme; open_channels=:drop)
+        scheme = LaserScheme([beam]; frame_reference="S_1/2")
+        model = lindblad_model(two_level, scheme; open_channels=:drop)
         ρ = steadystate(model)
         Ω = 2 * abs(model.hamiltonian[2, 1])
         # In the frame of the lower level, the upper state sits at minus the
@@ -37,14 +38,11 @@
     # A density matrix of the wrong size is rejected.
     beam = LaserBeam("S_1/2" => "P_1/2", 0.0u"rad/µs", I_sat, ε_σ, n_z)
     two = lindblad_model(
-        sr88,
-        LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2");
+        two_level,
+        LaserScheme([beam]; frame_reference="S_1/2");
         open_channels=:drop,
     )
-    eight = lindblad_model(
-        CA40_NONREL_G,
-        lambda_scheme(angular(300.0u"MHz"), angular(290.0u"MHz")),
-    )
+    eight = lambda_model(angular(300.0u"MHz"), angular(290.0u"MHz"))
     @test_throws ArgumentError populations(steadystate(two), eight)
 end
 
@@ -79,7 +77,7 @@ end
     Δ397 = angular(300.0u"MHz")
     u = uconvert(u"rad/µs", Levels.BOHR_MAGNETON * B_LAMBDA / u"ħ")
     function p_population(Δ866)
-        model = lindblad_model(CA40_NONREL_G, lambda_scheme(Δ397, Δ866))
+        model = lambda_model(Δ397, Δ866)
         populations(steadystate(model), model, "P_1/2")
     end
     analytic = Δ397 + 2 * (-1 / 2) * u - 4 / 5 * (3 / 2) * u   # Zeeman shifts g m u
@@ -110,26 +108,18 @@ end
     hf_basis = StateBasis(SR88_TOY_HF, "S_1/2", "P_1/2", "D_3/2")
     fs_basis = StateBasis(["S_1/2", "P_1/2", "D_3/2"])
     hf = lindblad_model(
-        SR88_TOY_HF,
-        LaserScheme(
-            hf_basis,
-            [
-                LaserBeam("S_1/2 F=1" => "P_1/2 F=1", Δ, I0, ε, n),
-                LaserBeam("D_3/2 F=2" => "P_1/2 F=1", -Δ, 4I0, ε, n),
-            ];
-            B,
-        ),
+        Eigenstructure(SR88_TOY_HF, hf_basis; B),
+        LaserScheme([
+            LaserBeam("S_1/2 F=1" => "P_1/2 F=1", Δ, I0, ε, n),
+            LaserBeam("D_3/2 F=2" => "P_1/2 F=1", -Δ, 4I0, ε, n),
+        ]),
     )
     fs = lindblad_model(
-        sr88,
-        LaserScheme(
-            fs_basis,
-            [
-                LaserBeam("S_1/2" => "P_1/2", Δ, I0, ε, n),
-                LaserBeam("D_3/2" => "P_1/2", -Δ, 4I0, ε, n),
-            ];
-            B,
-        ),
+        Eigenstructure(sr88, fs_basis; B),
+        LaserScheme([
+            LaserBeam("S_1/2" => "P_1/2", Δ, I0, ε, n),
+            LaserBeam("D_3/2" => "P_1/2", -Δ, 4I0, ε, n),
+        ]),
     )
     ρ_hf = steadystate(hf)
     ρ_fs = steadystate(fs)
@@ -149,6 +139,7 @@ end
     # α η₀² Γ ρ_ee on both — red detuning cools, blue heats — and the full
     # motional model reproduces n̄ and the relaxation time.
     basis = StateBasis([StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)])
+    two_level = Eigenstructure(sr88, basis; B=0.0u"mT")
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     Γ = 2 / 3 * einstein_a(sr88, "S_1/2" => "P_1/2")
     I_sat = saturation_intensity(sr88, "S_1/2" => "P_1/2")
@@ -157,9 +148,9 @@ end
     for (s, δ_over_ω) in ((0.01, -1.0), (0.01, -0.7), (0.05, -1.0), (0.01, 1.0))
         δ = δ_over_ω * ω_m
         beam = LaserBeam("S_1/2" => "P_1/2", δ, s * I_sat, ε_σ, n_z)
-        scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
-        model = lindblad_model(sr88, scheme; open_channels=:drop)
-        mc = motional_coupling(sr88, scheme, model, mode)
+        scheme = LaserScheme([beam]; frame_reference="S_1/2")
+        model = lindblad_model(two_level, scheme; open_channels=:drop)
+        mc = motional_coupling(model, mode)
         ρ = steadystate(model)
         rates = cooling_rates(model, mc; ρ)
         Ω = 2 * abs(model.hamiltonian[2, 1])
@@ -205,10 +196,10 @@ end
     end
     # Vector form: one steady state shared by several modes.
     beam = LaserBeam("S_1/2" => "P_1/2", -ω_m, 0.01I_sat, ε_σ, n_z)
-    scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
-    model = lindblad_model(sr88, scheme; open_channels=:drop)
+    scheme = LaserScheme([beam]; frame_reference="S_1/2")
+    model = lindblad_model(two_level, scheme; open_channels=:drop)
     modes = [mode, MotionalMode(angular(5.0u"MHz"), [1.0, 0, 1.0])]
-    mcs = motional_coupling(sr88, scheme, model, modes)
+    mcs = motional_coupling(model, modes)
     many = cooling_rates(model, mcs)
     @test length(many) == 2
     @test many[1] == cooling_rates(model, mcs[1])
@@ -240,8 +231,8 @@ end
         P397=1.0u"µW",
         P866=5.0u"µW",
     )
-    model = lindblad_model(CA40_NONREL_G, scheme)
-    mc = motional_coupling(CA40_NONREL_G, scheme, model, mode)
+    model = lindblad_model(LAMBDA, scheme)
+    mc = motional_coupling(model, mode)
     ρ = steadystate(model)
     rates = cooling_rates(model, mc; ρ)
     @test rates.A_minus > rates.A_plus
@@ -261,7 +252,7 @@ end
     # second, off-resonant mode is heated, i.e. its occupation is set by the
     # truncation and the rate model reports NaN).
     modes = [mode, MotionalMode(angular(2.3u"MHz"), [0, 0, 1.0])]
-    mcs = motional_coupling(CA40_NONREL_G, scheme, model, modes)
+    mcs = motional_coupling(model, modes)
     two = motional_model(model, mcs; num_fock=[6, 3])
     ρ_two = steadystate(two)
     nbars = mean_phonon_number(ρ_two, two; method=:thermal_ratio)
@@ -557,8 +548,7 @@ end
     # off-resonant mode barely couples, so its full-model occupation is set by
     # its tiny rates and compares loosely).
     modes = [s.mode, MotionalMode(angular(2.5u"MHz"), Z_AXIS)]
-    mcs =
-        motional_coupling(s.species, s.scheme, s.model, modes; recoil_moment=:isotropic)
+    mcs = motional_coupling(s.model, modes; recoil_moment=:isotropic)
     many_ae = cooling_metrics(s.model, mcs, AdiabaticElimination())
     many_it = cooling_metrics(
         s.model,

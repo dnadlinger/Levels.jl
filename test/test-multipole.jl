@@ -31,7 +31,7 @@ end
     basis = StateBasis(["S_1/2", "D_5/2"])
     n, ε = beam_vectors(0.3, 0.7, 0.4)
     Γ = quadrupole_geometry(ε, n)
-    C = quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n)
+    C = relative_couplings(sr88, basis, "S_1/2" => "D_5/2", ε, n)
 
     # Entries only in the upper⟨row|lower⟩⟨col| block.
     s_range = staterange(basis, "S_1/2")
@@ -91,13 +91,14 @@ end
 end
 
 @testitem "Hyperfine quadrupole couplings" tags=[:unit, :fast] begin
+    using LinearAlgebra
     using Unitful
     using Levels: fine_structure
 
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     n, ε = beam_vectors(0.3, 0.7, 0.2)
     Γ = quadrupole_geometry(ε, n)
-    C = quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n)
+    C = relative_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n)
 
     # Element-wise agreement with the zero-field transition amplitudes in the
     # upper⟨row|lower⟩⟨col| block, zero elsewhere.
@@ -117,18 +118,17 @@ end
         i in 1:length(basis), k in 1:length(basis)
     ) < 1e-13
 
-    # The eigenbasis rotation of the zero-field matrix reproduces the at-field
-    # transition amplitudes component by component.
+    # The structure form is the eigenbasis rotation of the zero-field matrix,
+    # and reproduces the at-field transition amplitudes component by component.
     B = 0.5u"mT"
-    v = eigenbasis_transform(ca43, basis; B)
-    C_B = v' * C * v
-    m_s = hyperfine_manifold(ca43, "S_1/2"; B)
-    m_d = hyperfine_manifold(ca43, "D_5/2"; B)
+    s = Eigenstructure(ca43, basis; B)
+    C_B = relative_couplings(s, "S_1/2" => "D_5/2", ε, n)
+    @test C_B ≈ to_eigenbasis(s, C) atol = 1e-13
     function expected_at_field(ls, us)
         if fine_structure(ls.level) == s_manifold &&
            fine_structure(us.level) == d_manifold
             q = us.m - ls.m
-            abs(q) <= 2 ? transition_amplitude(m_s, m_d, ls => us) * Γ[Int(q)+3] : 0.0im
+            abs(q) <= 2 ? transition_amplitude(s, ls => us) * Γ[Int(q)+3] : 0.0im
         else
             0.0im
         end
@@ -139,18 +139,35 @@ end
     ) < 1e-13
 
     # Restricting to a single F pair picks the corresponding block of the full
-    # matrix and leaves everything else zero.
-    C46 = quadrupole_couplings(ca43, basis, "S_1/2 F=4" => "D_5/2 F=6", ε, n)
+    # matrix and leaves everything else zero — at zero field, where F is a good
+    # quantum number…
+    C46 = relative_couplings(ca43, basis, "S_1/2 F=4" => "D_5/2 F=6", ε, n)
     r4 = staterange(basis, "S_1/2 F=4")
     r6 = staterange(basis, "D_5/2 F=6")
     @test C46[r6, r4] == C[r6, r4]
     C46[r6, r4] .= 0
     @test iszero(C46)
+    # …and at the working field, where the F labels select eigenstates *after*
+    # the rotation of the whole fine-structure pair: rotating the zero-field
+    # F-restricted operator instead is a different (and wrong) operation.
+    C44_B = relative_couplings(s, "S_1/2 F=4" => "D_5/2 F=4", ε, n)
+    r4d = staterange(basis, "D_5/2 F=4")
+    @test C44_B[r4d, r4] == C_B[r4d, r4]
+    C44_B[r4d, r4] .= 0
+    @test iszero(C44_B)
+    rotated_restricted = to_eigenbasis(
+        s,
+        relative_couplings(ca43, basis, "S_1/2 F=4" => "D_5/2 F=4", ε, n),
+    )
+    @test !isapprox(rotated_restricted[r4d, r4], C_B[r4d, r4]; rtol=1e-2)
+    @test norm(
+        rotated_restricted - relative_couplings(s, "S_1/2 F=4" => "D_5/2 F=4", ε, n),
+    ) / norm(C_B[r4d, r4]) > 0.1
 
-    # The no-hyperfine species-first form is a passthrough.
-    nh_basis = StateBasis("S_1/2", "D_5/2")
-    @test quadrupole_couplings(sr88, nh_basis, "S_1/2" => "D_5/2", ε, n) ==
-          quadrupole_couplings(nh_basis, "S_1/2" => "D_5/2", ε, n)
+    # For a fine-structure species the structure form equals the species form.
+    nh = Eigenstructure(sr88, "S_1/2", "D_5/2"; B)
+    @test relative_couplings(nh, "S_1/2" => "D_5/2", ε, n) ==
+          relative_couplings(sr88, Levels.basis(nh), "S_1/2" => "D_5/2", ε, n)
 end
 
 # Vector spherical harmonics Y^{(+1)}_{K,p}(k̂) for K = 1, 2, transcribed from
@@ -286,9 +303,9 @@ end
     @test Levels.quadrupole_weights(collect(ε), collect(n)) ==
           Levels.quadrupole_weights(ε, n)
     basis = StateBasis(["S_1/2", "D_5/2"])
-    @test quadrupole_couplings(basis, "S_1/2" => "D_5/2", collect(ε), collect(n)) ==
-          quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n)
-    B = [12.0, -3.0, 40.0] .* u"µT"
-    @test zeeman_hamiltonian(sr88, basis; B=SVector{3}(B)) ==
-          zeeman_hamiltonian(sr88, basis; B)
+    @test relative_couplings(sr88, basis, "S_1/2" => "D_5/2", collect(ε), collect(n)) ==
+          relative_couplings(sr88, basis, "S_1/2" => "D_5/2", ε, n)
+    b = [12.0, -3.0, 40.0] .* u"µT"
+    @test zeeman_hamiltonian(sr88, basis, SVector{3}(b)) ==
+          zeeman_hamiltonian(sr88, basis, b)
 end

@@ -23,6 +23,7 @@
     )
     const LAMBDA_BASIS = StateBasis(["S_1/2", "D_3/2", "P_1/2"])
     const B_LAMBDA = 3.922e-4u"T"
+    const LAMBDA = Eigenstructure(CA40_NONREL_G, LAMBDA_BASIS; B=B_LAMBDA)
 
     # A 397 nm beam at 140° to the field (mixed π/σ± polarisation) plus an 866 nm
     # beam along the field (σ± only), as in a typical Λ dark-resonance scheme.
@@ -37,7 +38,6 @@
         n397, ε397 = beam_vectors(deg2rad(-140.0), 0.0)
         n866, ε866 = beam_vectors(0.0, 0.0)
         LaserScheme(
-            LAMBDA_BASIS,
             [
                 LaserBeam(
                     "S_1/2" => "P_1/2",
@@ -56,10 +56,11 @@
                     linewidth,
                 ),
             ];
-            B=B_LAMBDA,
             kwargs...,
         )
     end
+    lambda_model(Δ397, Δ866; decay=:grouped, kwargs...) =
+        lindblad_model(LAMBDA, lambda_scheme(Δ397, Δ866; kwargs...); decay)
 
     # Toy hyperfine twin of ⁸⁸Sr⁺ with vanishing hyperfine constants: its
     # at-field model must be the fine-structure model tensored with the nuclear
@@ -109,15 +110,17 @@
         )
         intensity = intensity_for_rabi(species, TOY_S => TOY_P, Ω, σ_MINUS, Z_AXIS)
         beam = LaserBeam("S_1/2" => "P_3/2", δ, intensity, σ_MINUS, Z_AXIS)
-        scheme = LaserScheme(TOY_BASIS, [beam]; B=0.0u"mT", frame_reference="S_1/2")
-        model = lindblad_model(species, scheme)
+        structure = Eigenstructure(species, TOY_BASIS; B=0.0u"mT")
+        scheme = LaserScheme([beam]; frame_reference="S_1/2")
+        model = lindblad_model(structure, scheme)
         mode = MotionalMode(ω, Z_AXIS)
         (;
             species,
+            structure,
             scheme,
             model,
             mode,
-            mc=motional_coupling(species, scheme, model, mode; recoil_moment),
+            mc=motional_coupling(model, mode; recoil_moment),
         )
     end
 end
@@ -160,29 +163,31 @@ end
     )
     @test_throws ArgumentError LaserBeam(beam.frequency, 3.0u"W/m^2", ε, [1.0, 2.0])
 
+    # A scheme is the light alone: beams and frame choice. It is validated
+    # against the atom when the rotating frame is built on a structure.
     basis = StateBasis(["S_1/2", "P_1/2"])
-    scheme = LaserScheme(basis, [beam]; B=0.5u"mT")
+    s = Eigenstructure(sr88, basis; B=0.5u"mT")
+    scheme = LaserScheme([beam])
     @test scheme.frame_reference == convert(NoHyperfineNumberSpec, "P_1/2")   # upper of first beam
-    @test LaserScheme(basis, [beam]; B=0.5u"mT", frame_reference="S_1/2").frame_reference ==
+    @test LaserScheme([beam]; frame_reference="S_1/2").frame_reference ==
           convert(NoHyperfineNumberSpec, "S_1/2")
-    @test LaserScheme(basis, LaserBeam[]; B=0.5u"mT").frame_reference ==
+    @test isnothing(LaserScheme(LaserBeam[]).frame_reference)
+    @test rotating_frame(s, LaserScheme(LaserBeam[])).reference ==
           convert(NoHyperfineNumberSpec, "S_1/2")
-    @test_throws ArgumentError LaserScheme(basis, [beam]; B=0.5u"m")
-    @test_throws ArgumentError LaserScheme(
-        basis,
-        [beam];
-        B=0.5u"mT",
-        frame_reference="D_3/2",
+    @test_throws MethodError LaserScheme(basis, [beam]; B=0.5u"mT")
+    @test_throws ArgumentError rotating_frame(
+        s,
+        LaserScheme([beam]; frame_reference="D_3/2"),
     )
     other = LaserBeam("D_3/2" => "P_1/2", 0.0u"rad/µs", 3.0u"W/m^2", ε, n)
-    @test_throws ArgumentError LaserScheme(basis, [beam, other]; B=0.5u"mT")
-    # Hyperfine reference levels on a fine-structure basis (and vice versa).
+    @test_throws ArgumentError rotating_frame(s, LaserScheme([beam, other]))
+    @test_throws ArgumentError lindblad_model(s, LaserScheme([beam, other]))
+    # Hyperfine reference levels on a fine-structure structure (and vice versa).
     hf_beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=4", 0.0u"rad/µs", 3.0u"W/m^2", ε, n)
-    @test_throws ArgumentError LaserScheme(basis, [hf_beam]; B=0.5u"mT")
-    @test_throws ArgumentError LaserScheme(
-        StateBasis(ca43, "S_1/2", "P_1/2"),
-        [beam];
-        B=0.5u"mT",
+    @test_throws ArgumentError rotating_frame(s, LaserScheme([hf_beam]))
+    @test_throws ArgumentError rotating_frame(
+        Eigenstructure(ca43, "S_1/2", "P_1/2"; B=0.5u"mT"),
+        LaserScheme([beam]),
     )
 
     mode = MotionalMode(angular(1.2u"MHz"), [1.0, 0.0, 1.0])
@@ -196,6 +201,7 @@ end
     OpticalBlochSetup,
 ] begin
     basis = StateBasis(["S_1/2", "P_1/2", "D_3/2"])
+    s = Eigenstructure(sr88, basis; B=0.5u"mT")
     n, ε = beam_vectors(π / 2, π / 4)
     Δ1 = angular(20.0u"MHz")
     Δ2 = angular(-35.0u"MHz")
@@ -207,7 +213,7 @@ end
     traversal(frame, level) = frame.traversals[first(staterange(basis, level)), :]
 
     # Reference P (default): the lower levels sit at minus their beams' detunings.
-    frame = rotating_frame(sr88, LaserScheme(basis, [b422, b1092]; B=0.5u"mT"))
+    frame = rotating_frame(s, LaserScheme([b422, b1092]))
     @test frame.kind == :levels
     @test frame.reference == P
     @test offset(frame, P) == 0.0u"rad/µs"
@@ -225,10 +231,7 @@ end
 
     # Reference S: same frame up to a common shift; the path to D runs up the
     # 422 nm beam and down the 1092 nm one.
-    frame_s = rotating_frame(
-        sr88,
-        LaserScheme(basis, [b422, b1092]; B=0.5u"mT", frame_reference="S_1/2"),
-    )
+    frame_s = rotating_frame(s, LaserScheme([b422, b1092]; frame_reference="S_1/2"))
     @test offset(frame_s, S) == 0.0u"rad/µs"
     @test offset(frame_s, P) ≈ Δ1
     @test offset(frame_s, D) ≈ Δ1 - Δ2
@@ -242,21 +245,21 @@ end
     # one does not (and adds coherently).
     Δ3 = angular(26.0u"MHz")
     b422b = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε, n)
-    frame_b = rotating_frame(sr88, LaserScheme(basis, [b422, b1092, b422b]; B=0.5u"mT"))
+    frame_b = rotating_frame(s, LaserScheme([b422, b1092, b422b]))
     @test frame_b.tree_beams == [1, 2]
     @test !isempty(frame_b.beats) && all(t -> t[1] == 3, frame_b.beats)
     @test all(t -> t[4] ≈ Δ3 - Δ1, frame_b.beats)
     @test length(frame_b.beats) ==
           count(!iszero, coupling_matrix(sr88, basis, "S_1/2" => "P_1/2", I0, ε, n))
-    model_b = lindblad_model(sr88, LaserScheme(basis, [b422, b1092, b422b]; B=0.5u"mT"))
+    model_b = lindblad_model(s, LaserScheme([b422, b1092, b422b]))
     @test length(model_b.harmonics) == 1
     @test model_b.harmonics[1][1] ≈ Δ3 - Δ1
     s_range, p_range = staterange(basis, "S_1/2"), staterange(basis, "P_1/2")
     @test model_b.harmonics[1][2][p_range, s_range] ≈
           coupling_matrix(sr88, basis, "S_1/2" => "P_1/2", I0, ε, n)[p_range, s_range] ./
           2
-    model_1 = lindblad_model(sr88, LaserScheme(basis, [b422, b1092]; B=0.5u"mT"))
-    model_2 = lindblad_model(sr88, LaserScheme(basis, [b422, b1092, b422]; B=0.5u"mT"))
+    model_1 = lindblad_model(s, LaserScheme([b422, b1092]))
+    model_2 = lindblad_model(s, LaserScheme([b422, b1092, b422]))
     @test isempty(model_2.harmonics)
     @test model_2.hamiltonian[p_range, s_range] ≈
           2 .* model_1.hamiltonian[p_range, s_range]
@@ -269,8 +272,8 @@ end
     b408 = LaserBeam("S_1/2" => "P_3/2", Δ4, I0, ε, n)
     b1004 = LaserBeam("D_3/2" => "P_3/2", Δ5, I0, ε, n)
     frame_4 = rotating_frame(
-        sr88,
-        LaserScheme(basis4, [b422, b1092, b408, b1004]; B=0.5u"mT"),
+        Eigenstructure(sr88, basis4; B=0.5u"mT"),
+        LaserScheme([b422, b1092, b408, b1004]),
     )
     @test frame_4.tree_beams == [1, 2, 3]
     @test !isempty(frame_4.beats) && all(t -> t[1] == 4, frame_4.beats)
@@ -278,14 +281,18 @@ end
 
     # A level no beam reaches keeps its centroid as frame frequency.
     basis5 = StateBasis(["S_1/2", "P_1/2", "D_3/2", "D_5/2"])
-    frame_5 = rotating_frame(sr88, LaserScheme(basis5, [b422, b1092]; B=0.5u"mT"))
+    frame_5 = rotating_frame(
+        Eigenstructure(sr88, basis5; B=0.5u"mT"),
+        LaserScheme([b422, b1092]),
+    )
     @test frame_offset(frame_5, basis5, "D_5/2") == 0.0u"rad/µs"
 
     # Hyperfine reference levels: the frame offset across a beam includes the
     # zero-field hyperfine shifts of its reference F levels.
-    hb = StateBasis(ca43, "S_1/2", "P_1/2")
+    hs = Eigenstructure(ca43, "S_1/2", "P_1/2"; B=0.5u"mT")
+    hb = Levels.basis(hs)
     beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=3", Δ1, I0, ε, n)
-    frame_hf = rotating_frame(ca43, LaserScheme(hb, [beam]; B=0.5u"mT"))
+    frame_hf = rotating_frame(hs, LaserScheme([beam]))
     @test frame_offset(frame_hf, hb, S) ≈ -(
         Δ1 + Levels.hyperfine_shift(ca43, "P_1/2 F=3") -
         Levels.hyperfine_shift(ca43, "S_1/2 F=4")
@@ -296,21 +303,16 @@ end
     # tree over the states — the EIT configuration is static there, and the
     # grouped decay operators stay time-independent (the loop closes).
     sp = StateBasis(["S_1/2", "P_1/2"])
+    s_sp = Eigenstructure(sr88, sp; B=0.5u"mT")
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     n_x, ε_π = beam_vectors(π / 2, 0.0)
     pump = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε_σ, n_z)
     probe = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε_π, n_x)
-    levels_frame = rotating_frame(sr88, LaserScheme(sp, [pump, probe]; B=0.5u"mT"))
+    levels_frame = rotating_frame(s_sp, LaserScheme([pump, probe]))
     @test length(levels_frame.beats) == 2   # the two π components
     states_frame = rotating_frame(
-        sr88,
-        LaserScheme(
-            sp,
-            [pump, probe];
-            B=0.5u"mT",
-            frame_kind=:states,
-            frame_reference="S_1/2",
-        ),
+        s_sp,
+        LaserScheme([pump, probe]; frame_kind=:states, frame_reference="S_1/2"),
     )
     @test states_frame.kind == :states
     @test isempty(states_frame.beats)
@@ -326,8 +328,8 @@ end
     @test states_frame.traversals[p_m, :] == [0, 1]
     @test_throws ArgumentError frame_offset(states_frame, sp, "S_1/2")
     eit = lindblad_model(
-        sr88,
-        LaserScheme(sp, [pump, probe]; B=0.5u"mT", frame_kind=:states);
+        s_sp,
+        LaserScheme([pump, probe]; frame_kind=:states);
         open_channels=:drop,
     )
     @test isempty(eit.harmonics)
@@ -336,15 +338,16 @@ end
     # either frame, and a grouped decay operator is then no longer static in the
     # per-state frame either.
     probe2 = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε_π, n_x)
-    two_pi = LaserScheme(sp, [probe, probe2]; B=0.5u"mT", frame_kind=:states)
-    @test !isempty(rotating_frame(sr88, two_pi).beats)
-    @test_throws ArgumentError LaserScheme(sp, [pump]; B=0.5u"mT", frame_kind=:other)
+    two_pi = LaserScheme([probe, probe2]; frame_kind=:states)
+    @test !isempty(rotating_frame(s_sp, two_pi).beats)
+    @test_throws ArgumentError LaserScheme([pump]; frame_kind=:other)
 end
 
 @testitem "Lindblad model of the Λ system" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
     Δ397, Δ866 = angular(300.0u"MHz"), angular(290.0u"MHz")
     scheme = lambda_scheme(Δ397, Δ866)
-    model = lindblad_model(CA40_NONREL_G, scheme)
+    model = lindblad_model(LAMBDA, scheme)
+    @test model.structure === LAMBDA && model.scheme === scheme
     basis = LAMBDA_BASIS
     u = uconvert(u"rad/µs", Levels.BOHR_MAGNETON * B_LAMBDA / u"ħ")
     H = model.hamiltonian
@@ -360,10 +363,7 @@ end
         @test real(H[i, i]) ≈ g[key] * state.m * u + detuning[key] rtol = 1e-12
     end
     # With the S level as reference the whole diagonal shifts by −Δ397.
-    model_s = lindblad_model(
-        CA40_NONREL_G,
-        lambda_scheme(Δ397, Δ866; frame_reference="S_1/2"),
-    )
+    model_s = lindblad_model(LAMBDA, lambda_scheme(Δ397, Δ866; frame_reference="S_1/2"))
     @test real.(diag(model_s.hamiltonian)) ≈ real.(diag(H)) .- Δ397
     @test model_s.hamiltonian - Diagonal(model_s.hamiltonian) ≈ H - Diagonal(H)
 
@@ -429,7 +429,7 @@ end
     @test length(dephasing_operators(model)[1]) == 0
 
     # Component-resolved decay: one operator per state pair, the same ∑ L†L.
-    resolved = lindblad_model(CA40_NONREL_G, scheme; decay=:resolved)
+    resolved = lindblad_model(LAMBDA, scheme; decay=:resolved)
     rops, rlabels = decay_operators(resolved)
     @test length(rops) == 4 + 6 + 8   # P→S (2 × 2), P→D (2 × 3), D→S (E2: all 8 pairs)
     @test all(l.component isa Pair for l in rlabels)
@@ -439,20 +439,17 @@ end
     # Open decay channels: error naming the missing level, or dropped on request.
     open_basis = StateBasis(["S_1/2", "P_1/2"])
     n, ε = beam_vectors(π / 2, π / 4)
-    open_scheme = LaserScheme(
-        open_basis,
-        [LaserBeam("S_1/2" => "P_1/2", Δ397, 1.0u"W/m^2", ε, n)];
-        B=B_LAMBDA,
-    )
+    open_structure = Eigenstructure(CA40_NONREL_G, open_basis; B=B_LAMBDA)
+    open_scheme = LaserScheme([LaserBeam("S_1/2" => "P_1/2", Δ397, 1.0u"W/m^2", ε, n)])
     err = try
-        lindblad_model(CA40_NONREL_G, open_scheme)
+        lindblad_model(open_structure, open_scheme)
         nothing
     catch e
         e
     end
     @test err isa ArgumentError && occursin("D_3/2", err.msg) ||
           occursin("(2, 3//2)", err.msg)
-    dropped = lindblad_model(CA40_NONREL_G, open_scheme; open_channels=:drop)
+    dropped = lindblad_model(open_structure, open_scheme; open_channels=:drop)
     @test length(decay_operators(dropped)[1]) == 3
     tot_dropped = sum(L' * L for L in decay_operators(dropped)[1])
     @test all(
@@ -462,12 +459,10 @@ end
     partial = StateBasis([StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)])
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     partial_model = lindblad_model(
-        sr88,
-        LaserScheme(
-            partial,
-            [LaserBeam("S_1/2" => "P_1/2", 0.0u"rad/µs", 1.0u"W/m^2", ε_σ, n_z)];
-            B=0.0u"mT",
-        );
+        Eigenstructure(sr88, partial; B=0.0u"mT"),
+        LaserScheme([
+            LaserBeam("S_1/2" => "P_1/2", 0.0u"rad/µs", 1.0u"W/m^2", ε_σ, n_z),
+        ]);
         open_channels=:drop,
     )
     @test length(decay_operators(partial_model)[1]) == 1
@@ -475,12 +470,8 @@ end
         u"µs^-1",
         real(sum(L' * L for L in partial_model.jump_operators)[2, 2]),
     ) ≈ 2 / 3 * ustrip(u"µs^-1", einstein_a(sr88, "S_1/2" => "P_1/2"))
-    @test_throws ArgumentError lindblad_model(CA40_NONREL_G, scheme; decay=:other)
-    @test_throws ArgumentError lindblad_model(
-        CA40_NONREL_G,
-        scheme;
-        open_channels=:ignore,
-    )
+    @test_throws ArgumentError lindblad_model(LAMBDA, scheme; decay=:other)
+    @test_throws ArgumentError lindblad_model(LAMBDA, scheme; open_channels=:ignore)
 
     # Level projectors and the population bookkeeping helper.
     @test diag(level_projector(model, "P_1/2")) == [i in p for i in 1:8]
@@ -490,11 +481,8 @@ end
 @testitem "Laser dephasing operators" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
     γ = angular(0.1u"MHz")
     Δ397, Δ866 = angular(300.0u"MHz"), angular(290.0u"MHz")
-    model_p = lindblad_model(CA40_NONREL_G, lambda_scheme(Δ397, Δ866; linewidth=γ))
-    model_s = lindblad_model(
-        CA40_NONREL_G,
-        lambda_scheme(Δ397, Δ866; linewidth=γ, frame_reference="S_1/2"),
-    )
+    model_p = lambda_model(Δ397, Δ866; linewidth=γ)
+    model_s = lambda_model(Δ397, Δ866; linewidth=γ, frame_reference="S_1/2")
     ops_p, labels_p = dephasing_operators(model_p)
     ops_s, _ = dephasing_operators(model_s)
     @test [l.beam for l in labels_p] == [1, 2]
@@ -531,8 +519,8 @@ end
     )
     scheme = lambda_scheme(Δ397, Δ866)
     @test_throws ArgumentError lindblad_model(
-        CA40_NONREL_G,
-        LaserScheme(LAMBDA_BASIS, [scheme.beams; extra]; B=B_LAMBDA),
+        LAMBDA,
+        LaserScheme([scheme.beams; extra]),
     )
 end
 
@@ -548,24 +536,16 @@ end
     # same decay-rate sum rule.
     hf_basis = StateBasis(SR88_TOY_HF, "S_1/2", "P_1/2", "D_3/2")
     fs_basis = StateBasis(["S_1/2", "P_1/2", "D_3/2"])
-    hf_scheme = LaserScheme(
-        hf_basis,
-        [
-            LaserBeam("S_1/2 F=1" => "P_1/2 F=1", Δ, I0, ε, n),
-            LaserBeam("D_3/2 F=2" => "P_1/2 F=1", -Δ, I0, ε, n),
-        ];
-        B,
-    )
-    fs_scheme = LaserScheme(
-        fs_basis,
-        [
-            LaserBeam("S_1/2" => "P_1/2", Δ, I0, ε, n),
-            LaserBeam("D_3/2" => "P_1/2", -Δ, I0, ε, n),
-        ];
-        B,
-    )
-    hf = lindblad_model(SR88_TOY_HF, hf_scheme)
-    fs = lindblad_model(sr88, fs_scheme)
+    hf_scheme = LaserScheme([
+        LaserBeam("S_1/2 F=1" => "P_1/2 F=1", Δ, I0, ε, n),
+        LaserBeam("D_3/2 F=2" => "P_1/2 F=1", -Δ, I0, ε, n),
+    ])
+    fs_scheme = LaserScheme([
+        LaserBeam("S_1/2" => "P_1/2", Δ, I0, ε, n),
+        LaserBeam("D_3/2" => "P_1/2", -Δ, I0, ε, n),
+    ])
+    hf = lindblad_model(Eigenstructure(SR88_TOY_HF, hf_basis; B), hf_scheme)
+    fs = lindblad_model(Eigenstructure(sr88, fs_basis; B), fs_scheme)
     @test length(hf_basis) == 2 * length(fs_basis)
     @test ishermitian(strip_h(hf.hamiltonian))
     e_hf = sort(eigvals(Hermitian(strip_h(hf.hamiltonian))))
@@ -588,12 +568,14 @@ end
     @test length(decay_operators(hf)[1]) == length(decay_operators(fs)[1])
 
     # ⁴³Ca⁺ S₁/₂ ⊕ P₁/₂ at 0.5 mT with the D₃/₂ branch dropped: Hermitian,
-    # trace-preserving on the kept channel, and undefined at zero field.
+    # trace-preserving on the kept channel; at zero field the coupled states
+    # serve as the eigenstates.
     basis = StateBasis(ca43, "S_1/2", "P_1/2")
+    s43 = Eigenstructure(ca43, basis; B)
     beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=4", Δ, I0, ε, n)
-    scheme = LaserScheme(basis, [beam]; B)
-    @test_throws ArgumentError lindblad_model(ca43, scheme)
-    model = lindblad_model(ca43, scheme; open_channels=:drop)
+    scheme = LaserScheme([beam])
+    @test_throws ArgumentError lindblad_model(s43, scheme)
+    model = lindblad_model(s43, scheme; open_channels=:drop)
     @test ishermitian(strip_h(model.hamiltonian))
     total = sum(L' * L for L in model.jump_operators)
     A = ustrip(u"µs^-1", einstein_a(ca43, "S_1/2" => "P_1/2"))
@@ -603,20 +585,25 @@ end
     for i in staterange(basis, "S_1/2")
         @test abs(ustrip(u"µs^-1", total[i, i])) < 1e-12
     end
-    @test_throws ArgumentError lindblad_model(
-        ca43,
-        LaserScheme(basis, [beam]; B=0.0u"mT");
+    zero_field = lindblad_model(
+        Eigenstructure(ca43, basis; B=0.0u"mT"),
+        scheme;
         open_channels=:drop,
+    )
+    @test ishermitian(strip_h(zero_field.hamiltonian))
+    @test real.(diag(zero_field.hamiltonian)[staterange(basis, "S_1/2 F=4")]) ≈ fill(
+        real(diag(zero_field.hamiltonian)[first(staterange(basis, "S_1/2 F=4"))]),
+        9,
     )
 end
 
 @testitem "Motional coupling" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
     Δ397, Δ866 = angular(300.0u"MHz"), angular(290.0u"MHz")
     scheme = lambda_scheme(Δ397, Δ866)
-    model = lindblad_model(CA40_NONREL_G, scheme)
+    model = lindblad_model(LAMBDA, scheme)
     ω_m = angular(1.1u"MHz")
     mode_z = MotionalMode(ω_m, [0, 0, 1.0])
-    mc = motional_coupling(CA40_NONREL_G, scheme, model, mode_z)
+    mc = motional_coupling(model, mode_z)
 
     # Lamb–Dicke factors: the projected value is k·e_m x₀ (signed), the
     # unprojected one |k| x₀.
@@ -698,34 +685,21 @@ end
     @test_throws ArgumentError recoil_moment(3, 0, [0, 0, 1.0])
     # A constant moment replaces the pattern average; isotropic emission gives 1/3.
     @test mc.emission == :exact
-    mc_const =
-        motional_coupling(CA40_NONREL_G, scheme, model, mode_z; recoil_moment=2 / 5)
+    mc_const = motional_coupling(model, mode_z; recoil_moment=2 / 5)
     @test all(==(2 / 5), mc_const.recoil_moments)
     @test mc_const.emission == :constant
-    mc_iso = motional_coupling(
-        CA40_NONREL_G,
-        scheme,
-        model,
-        mode_z;
-        recoil_moment=:isotropic,
-    )
+    mc_iso = motional_coupling(model, mode_z; recoil_moment=:isotropic)
     @test all(≈(1 / 3), mc_iso.recoil_moments)
     @test mc_iso.emission == :isotropic
     @test recoil_moment(0, 0, [0.3, -0.4, 0.5]) ≈ 1 / 3
-    @test_throws ArgumentError motional_coupling(
-        CA40_NONREL_G,
-        scheme,
-        model,
-        mode_z;
-        recoil_moment=:other,
-    )
+    @test_throws ArgumentError motional_coupling(model, mode_z; recoil_moment=:other)
     # The model keeps the per-beam couplings the sideband Hamiltonian is built from.
     @test length(model.couplings) == 2
     @test all(strip_h(model.couplings[b]) ≈ strip_h(C[b]) for b in 1:2)
 
     # Several modes at once.
     modes = [mode_z, MotionalMode(angular(2.0u"MHz"), [1.0, 0, 1.0])]
-    mcs = motional_coupling(CA40_NONREL_G, scheme, model, modes)
+    mcs = motional_coupling(model, modes)
     @test length(mcs) == 2
     @test mcs[1].sideband_hamiltonian == mc.sideband_hamiltonian
     @test mcs[2].projected_lamb_dicke ≈
@@ -947,31 +921,34 @@ end
     )
     # Hyperfine states, exact at field.
     B = 0.5u"mT"
+    s43 = Eigenstructure(ca43, "S_1/2", "P_1/2"; B)
     hf_lower, hf_upper = StateSpec("S_1/2 F=4", -4), StateSpec("P_1/2 F=4", -3)
-    I_hf = intensity_for_rabi(ca43, hf_lower => hf_upper, Ω, ε_σ, n_z; B)
-    @test abs(rabi_frequency(ca43, hf_lower => hf_upper, I_hf, ε_σ, n_z; B)) ≈ Ω
+    I_hf = intensity_for_rabi(s43, hf_lower => hf_upper, Ω, ε_σ, n_z)
+    @test abs(rabi_frequency(s43, hf_lower => hf_upper, I_hf, ε_σ, n_z)) ≈ Ω
 
     # Detuning from a Zeeman component at field: the offset carries the Zeeman
     # shifts of the two states relative to the zero-field line centre.
     δ = angular(1.5u"MHz")
-    rf = RelativeFrequency(sr88, lower => upper, δ; B)
+    s88 = Eigenstructure(sr88, "S_1/2", "P_1/2"; B)
+    rf = RelativeFrequency(s88, lower => upper, δ)
     @test rf.lower == convert(NoHyperfineNumberSpec, "S_1/2")
     @test rf.upper == convert(NoHyperfineNumberSpec, "P_1/2")
-    @test rf.offset ≈ δ + zeeman_shift(sr88, upper; B) - zeeman_shift(sr88, lower; B)
+    @test rf.offset ≈ δ + zeeman_shift(s88, upper) - zeeman_shift(s88, lower)
     # σ⁺ component: (g_P/2 + g_S/2) μ_B B ≈ (9.3 + 28.0)/2 MHz/mT × B with the
     # measured ⁸⁸Sr⁺ sensitivities.
     @test rf.offset ≈ δ + 2π * (28.0 + 9.3) / 2 * u"MHz/mT" * B rtol = 2e-3
     # Hyperfine states: the exact at-field component frequency against the
     # zero-field F-level interval (cancellation noise of the ~10¹⁵ s⁻¹ optical
     # frequencies limits the comparison to ~1 s⁻¹).
-    rf_hf = RelativeFrequency(ca43, hf_lower => hf_upper, δ; B)
+    rf_hf = RelativeFrequency(s43, hf_lower => hf_upper, δ)
     @test rf_hf.lower == hf_lower.level && rf_hf.upper == hf_upper.level
     @test rf_hf.offset ≈
-          δ + Levels.transition_frequency(ca43, hf_lower => hf_upper; B) -
+          δ + transition_frequency(s43, hf_lower => hf_upper) -
           Levels.transition_frequency(ca43, hf_lower.level => hf_upper.level) rtol =
         1e-6
-    @test_throws ArgumentError RelativeFrequency(sr88, lower => upper, 1.0u"m"; B)
-    @test_throws ArgumentError RelativeFrequency(ca43, lower => upper, δ; B)   # F levels required
+    @test_throws ArgumentError RelativeFrequency(s88, lower => upper, 1.0u"m")
+    @test_throws ArgumentError RelativeFrequency(s43, lower => upper, δ)   # F levels required
+    @test_throws MethodError RelativeFrequency(sr88, lower => upper, δ; B)
 
     # Peak intensity of a Gaussian beam.
     @test peak_intensity(1.0u"mW", 50.0u"µm") ≈

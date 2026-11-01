@@ -166,35 +166,29 @@ emission_kind(setting::Symbol) = setting
 emission_kind(::Real) = :constant
 
 """
-    motional_coupling(species, scheme::LaserScheme, model::LindbladModel, mode; recoil_moment = :exact)
-    motional_coupling(species, scheme, model, modes::AbstractVector) -> Vector{MotionalCoupling}
+    motional_coupling(model::LindbladModel, mode; recoil_moment = :exact)
+    motional_coupling(model::LindbladModel, modes::AbstractVector) -> Vector{MotionalCoupling}
 
 Derives the [`MotionalCoupling`](@ref) of one [`MotionalMode`](@ref) (or of each
-of several) to the internal dynamics of `model`, built from `scheme`: the
-projected Lamb–Dicke factor of each beam, the sideband Hamiltonian
-``\\sum_l η_l \\, i (C_l - C_l^†)/2`` (its beat-note harmonics kept alongside),
-and the recoil operators ``\\sqrt{α} η_0 L`` of the spontaneous-emission jump
-operators. `recoil_moment = :exact` evaluates ``α`` per emitted component from
-the radiation patterns ([`recoil_moment`](@ref)), `:isotropic` takes uniform
-emission (``α = 1/3``), and a number uses that constant for every decay (e.g.
-the often-quoted ``2/5``) — in which case only this first-order model is
-available, cf. [`motional_model`](@ref).
+of several) to the internal dynamics of `model` (whose structure supplies the
+species and whose scheme the beams): the projected Lamb–Dicke factor of each
+beam, the sideband Hamiltonian ``\\sum_l η_l \\, i (C_l - C_l^†)/2`` (its
+beat-note harmonics kept alongside), and the recoil operators
+``\\sqrt{α} η_0 L`` of the spontaneous-emission jump operators. `recoil_moment =
+:exact` evaluates ``α`` per emitted component from the radiation patterns
+([`recoil_moment`](@ref)), `:isotropic` takes uniform emission (``α = 1/3``),
+and a number uses that constant for every decay (e.g. the often-quoted
+``2/5``) — in which case only this first-order model is available, cf.
+[`motional_model`](@ref).
 """
 function motional_coupling(
-    species,
-    scheme::LaserScheme,
     model::LindbladModel,
     mode::MotionalMode;
     recoil_moment=:exact,
 )
-    basis = scheme.basis
-    num_states = length(basis)
-    length(model.couplings) == length(scheme.beams) || throw(
-        ArgumentError(
-            "The model carries $(length(model.couplings)) beam couplings but the " *
-            "scheme $(length(scheme.beams)) beams; derive the model from this scheme",
-        ),
-    )
+    species = model.structure.species
+    scheme = model.scheme
+    num_states = length(model.basis)
 
     # Sideband Hamiltonian: coefficient of (a + a†) from e^{ik·r} ≈ 1 + iη(a + a†),
     # i.e. iη C/2 + h.c. per beam, split into static and beat-note parts like the
@@ -241,13 +235,8 @@ function motional_coupling(
     )
 end
 
-motional_coupling(
-    species,
-    scheme::LaserScheme,
-    model::LindbladModel,
-    modes::AbstractVector;
-    recoil_moment=:exact,
-) = [motional_coupling(species, scheme, model, mode; recoil_moment) for mode in modes]
+motional_coupling(model::LindbladModel, modes::AbstractVector; recoil_moment=:exact) =
+    [motional_coupling(model, mode; recoil_moment) for mode in modes]
 
 
 # --- Beyond first order in the Lamb–Dicke parameters ------------------------------
@@ -286,7 +275,8 @@ L_{n_<}^{(|n - m|)}(η^2)
 Kulosa et al., New J. Phys. **25**, 053008 (2023), Eq. (7)), evaluated through
 the three-term recurrence of the Laguerre polynomials; a finite-order series
 is formed in an enlarged Fock space. The red-sideband elements ``⟨n-1|D|n⟩``
-saturate and change sign at ``n ≈ 3.67/η^2``, which no finite order captures.
+have their first sign change near ``n ≈ 3.67/η^2``; the first-order
+Lamb–Dicke model instead grows as ``η√n``.
 """
 function displacement_elements(η::Real, num_fock::Integer; order::Real=Inf)
     validate_lamb_dicke_order(order)

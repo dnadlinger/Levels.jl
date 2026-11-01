@@ -1,41 +1,26 @@
 """
-Multi-level optical Bloch equations: the Lindblad master equation of a chosen
-set of levels of a species under a set of laser beams, assembled from the atomic
-data — and, as a separate layer on top, its coupling to the harmonic motion of
-the trapped ion for laser-cooling calculations.
+Multi-level Lindblad master equations and their coupling to trapped-ion motion
+for laser-cooling calculations.
 
-A [`LaserScheme`](@ref) specifies the problem: the [`StateBasis`](@ref) of the
-levels kept, the [`LaserBeam`](@ref)s (each a [`RelativeFrequency`](@ref)
-detuning from a zero-field line centre, an intensity, a polarisation, a
-direction and optionally a linewidth) and the static magnetic field.
-[`lindblad_model`](@ref) turns it into a [`LindbladModel`](@ref): the
-rotating-frame Hamiltonian — each fine-structure level (or, on request, each
-state) given one frame frequency (cf. [`RotatingFrame`](@ref)) such that every
-beam coupling is time-independent where the beam graph allows it, with beat
-notes kept as harmonic terms otherwise — plus the spontaneous-emission and
-laser-phase-diffusion jump operators. Everything is species-kind agnostic: for a
-[`Levels.HyperfineOneElectronSpecies`](@ref) the basis states denote the
-adiabatically-labelled eigenstates at the static field (cf.
-[`hyperfine_manifold`](@ref)), with exact at-field coupling and decay
-amplitudes.
+[`lindblad_model`](@ref) combines an
+[`Eigenstructure`](@ref Levels.Eigenstructure) with a [`LaserScheme`](@ref):
+the structure supplies the field eigenstates, the scheme supplies beams and
+a rotating-frame choice. The resulting [`LindbladModel`](@ref) contains the
+Hamiltonian, spontaneous-emission operators and laser phase diffusion. Beam
+couplings that cannot be made static in the chosen frame remain as beat-note
+harmonics.
 
-The motional layer never enters that model: a [`MotionalMode`](@ref) (frequency
-and direction) combines with a `LindbladModel` into a
-[`MotionalCoupling`](@ref) — the projected Lamb–Dicke factors per beam, the
-first-order sideband Hamiltonian and the recoil jump operators, one instance
-per mode, plus the emission-direction distributions and displacement
-operators needed beyond first order — consumed by the QuantumToolbox-based
-solvers of the `LevelsQuantumToolboxExt` package extension (steady states,
-adiabatic-elimination cooling rates, full internal ⊗ motional models to any
-order in the Lamb–Dicke parameters, [`cooling_metrics`](@ref) as the common
-front-end). A third, solver-independent layer provides the numerics on the
-assembled equations: the band-restricted [`BandLiouvillian`](@ref), its time
-evolution, and the [`IntegratedTransientSolver`](@ref) for steady states and
-integral relaxation times.
+[`motional_coupling`](@ref) adds a [`MotionalMode`](@ref), giving projected
+Lamb–Dicke factors, sideband couplings and recoil data. With QuantumToolbox
+loaded, [`motional_model`](@ref) builds the internal ⊗ Fock master equation
+and [`cooling_metrics`](@ref) compares rate-equation, integrated-transient and
+Liouvillian-spectrum estimates.
 
-All quantities are unitful and, as in [`Levels.PeriodicDynamics`](@ref),
-normalised to rad µs⁻¹ (jump operators to µs⁻¹ᐟ²); only the numerics layer works
-on the unit-stripped matrices of the solvers.
+The solver-independent [`BandLiouvillian`](@ref) restricts motional
+coherences for numerical calculations. [`IntegratedTransientSolver`](@ref)
+uses a sparse linear solve for steady states and integral relaxation times.
+Hamiltonians use angular-frequency units and jump operators square-root rate
+units; see [Conventions and examples](@ref conventions).
 """
 module OpticalBloch
 
@@ -59,6 +44,7 @@ using Unitful
 
 using ..Levels:
     Levels,
+    Eigenstructure,
     HyperfineNumberSpec,
     LevelSpec,
     NoHyperfineNumberSpec,
@@ -66,20 +52,18 @@ using ..Levels:
     RelativeFrequency,
     StateBasis,
     StateSpec,
-    amplitude_evaluator,
+    amplitude_lookup,
     coupling_matrix,
     einstein_a,
     lifetime,
     fine_structure,
-    hyperfine_manifold,
     hyperfine_shift,
     multipole_rank,
+    offsets,
     parse_level,
     photon_energy,
-    state_offset,
     stateindex,
-    transition_frequency,
-    zeeman_shift
+    transition_frequency
 
 const ANGULAR_UNIT = u"rad/µs"
 const JUMP_UNIT = u"µs^(-1/2)"

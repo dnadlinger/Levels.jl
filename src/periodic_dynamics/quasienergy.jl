@@ -78,8 +78,9 @@ end
     quasienergy_shift_contributions(H0::Diagonal, H1::AbstractMatrix, drive_frequency, α::Integer)
 
 Returns the per-intermediate-state breakdown of [`quasienergy_shift`](@ref): a
-vector of named tuples `(k, sideband, coupling, detuning, shift)` (angular
-frequency units), sorted by decreasing `|shift|`.
+vector of named tuples `(k, sideband, coupling, detuning, shift)`, sorted by
+decreasing `|shift|`. `k` is a basis index, `sideband` is ±1, and `coupling`,
+`detuning` and `shift` are angular frequencies.
 """
 function quasienergy_shift_contributions(
     H0::Diagonal,
@@ -102,83 +103,157 @@ function quasienergy_shift_contributions(
     ]
 end
 
-# The (H0, H1) blocks of a driven hyperfine manifold in its field eigenbasis:
-# H0 the diagonal eigen-energies, H1 = Σᵢ ½ e^{iφᵢ} Xᵢ with the drive
-# amplitudes rotated from the coupled basis.
-function eigenbasis_blocks(m::HyperfineManifold, drives)
+# The manifold index range of a state of the structure, requiring the whole
+# manifold to be present: the perturbation sum runs over all of its states.
+function manifold_range(s::Eigenstructure, state::StateSpec)
+    fs = fine_structure(validate_state_kind(s.species, state).level)
+    if !iscomplete(s, fs)
+        throw(
+            ArgumentError(
+                "The structure must contain the complete '$fs' manifold: " *
+                "quasienergy shifts include couplings to all of its states",
+            ),
+        )
+    end
+    staterange(s.basis, fs)
+end
+
+manifold_range(s::Eigenstructure, state::Integer) = manifold_range(s, s.basis[state])
+
+state_index(s::Eigenstructure, state::Integer) = Int(state)
+state_index(s::Eigenstructure, state::StateSpec) = stateindex(s.basis, state)
+
+# Validates drives before restricting them to individual manifolds, so that
+# couplings between manifolds cannot be silently discarded.
+function validate_shift_drives(
+    s::Eigenstructure,
+    drives::AbstractVector{<:HarmonicDrive},
+)
     isempty(drives) && throw(ArgumentError("At least one drive is required"))
-    num_states = length(m.basis)
+    num_states = length(s.basis)
+    manifolds = [fine_structure(state.level) for state in s.basis]
     for drive in drives
         if size(drive.amplitude) != (num_states, num_states)
             throw(
                 ArgumentError(
-                    "Drive amplitude matrix does not match the manifold basis size",
+                    "Drive amplitude matrix does not match the structure's basis size",
+                ),
+            )
+        end
+        if !all(
+            iszero(drive.amplitude[i, k]) for i in 1:num_states for
+            k in 1:num_states if manifolds[i] != manifolds[k]
+        )
+            throw(
+                ArgumentError(
+                    "Harmonic drives must be block-diagonal in the fine-structure " *
+                    "manifolds; use quasienergy_shift(H0, H1, ...) for a model " *
+                    "with couplings between manifolds",
                 ),
             )
         end
     end
-    h1 = harmonic_block(drives, 1:num_states)
-    Diagonal(m.energies), m.states' * h1 * m.states
+    drives
+end
+
+# The (H0, H1) blocks of a driven manifold of the structure in its field
+# eigenbasis: H0 the diagonal eigen-energies, H1 = Σᵢ ½ e^{iφᵢ} Xᵢ.
+function eigenbasis_blocks(s::Eigenstructure, state, drives)
+    r = manifold_range(s, state)
+    α = state_index(s, state) - first(r) + 1
+    Diagonal(offsets(s)[r]), harmonic_block(validate_shift_drives(s, drives), r), α
 end
 
 """
-    quasienergy_shift(m::HyperfineManifold, state, drive_frequency, drives, method = PerturbationTheory())
+    quasienergy_shift(s::Eigenstructure, state, drive_frequency, drives, method = PerturbationTheory())
 
-Returns the quasienergy shift of the
-adiabatically-labelled eigenstate `state` (a `StateSpec` or basis index) of the
-hyperfine manifold solution `m`, for driving at `drive_frequency` (angular units).
-The default method uses second-order perturbation theory; `Floquet()` performs
-nonperturbative dressing.
+Returns the quasienergy shift of the labelled eigenstate `state` (a `StateSpec`,
+or an index into `basis(s)`) of the structure `s` — which fixes the species,
+the static field and the basis — for driving at `drive_frequency` (angular
+units), as an angular frequency. The default method uses second-order
+perturbation theory; `Floquet()` performs nonperturbative dressing.
 
-`drives` is a vector of [`HarmonicDrive`](@ref)s at `drive_frequency` over the
-manifold's coupled basis (e.g. from [`zeeman_drives`](@ref)), rotated into the
-field eigenbasis internally. [`ac_zeeman_shift`](@ref) accepts a magnetic field
-phasor directly.
+`drives` is a vector of [`HarmonicDrive`](@ref)s at the same `drive_frequency`,
+over `basis(s)` in the structure's field eigenbasis. Every drive must be
+block-diagonal in the fine-structure manifolds; couplings between different
+``F`` levels of one manifold are allowed. The state's whole fine-structure
+manifold must be present and contiguous in the basis
+(cf. [`Levels.iscomplete`](@ref)). The plain-matrix form supports models with
+couplings between manifolds when the caller supplies their full static
+energies and drive matrix.
+
+Magnetic drives may be constructed with [`zeeman_drives`](@ref)`(s, b)`;
+[`ac_zeeman_shift`](@ref) accepts the field phasor directly. Works for both species kinds:
+on the exact hyperfine + Zeeman eigenstates of a hyperfine species, on the
+Zeeman-shifted ``|J, m_J⟩`` states of a fine-structure one.
 """
 function quasienergy_shift(
-    m::HyperfineManifold,
-    state,
+    s::Eigenstructure,
+    state::Union{StateSpec,Integer},
     drive_frequency,
     drives::AbstractVector{<:HarmonicDrive},
     method::QuasienergyShiftMethod=PerturbationTheory(),
 )
-    h0, h1 = eigenbasis_blocks(m, drives)
-    α = manifold_state_index(m, state)
+    h0, h1, α = eigenbasis_blocks(s, state, drives)
     quasienergy_shift(
         h0,
         h1,
         drive_frequency,
         α,
         method;
-        warn_context=(; manifold=m.level, state=m.basis[α]),
+        warn_context=(; state=s.basis[state_index(s, state)]),
     )
 end
 
 """
-    quasienergy_shift_contributions(m::HyperfineManifold, state, drive_frequency, drives)
+    quasienergy_shift_contributions(s::Eigenstructure, state, drive_frequency, drives)
 
-Returns the per-intermediate-state breakdown of the manifold form of
+Returns the per-intermediate-state breakdown of the structure form of
 [`quasienergy_shift`](@ref), with each entry carrying the adiabatic
 [`StateSpec`](@ref) label of its intermediate state:
 `(state, sideband, coupling, detuning, shift)`, sorted by decreasing `|shift|`.
+The drive and manifold restrictions are the same as for [`quasienergy_shift`](@ref).
 """
 function quasienergy_shift_contributions(
-    m::HyperfineManifold,
-    state,
+    s::Eigenstructure,
+    state::Union{StateSpec,Integer},
     drive_frequency,
     drives::AbstractVector{<:HarmonicDrive},
 )
-    h0, h1 = eigenbasis_blocks(m, drives)
-    α = manifold_state_index(m, state)
+    h0, h1, α = eigenbasis_blocks(s, state, drives)
+    r = manifold_range(s, state)
     [
-        (; state=m.basis[t.k], t.sideband, t.coupling, t.detuning, t.shift) for
-        t in quasienergy_shift_contributions(h0, h1, drive_frequency, α)
+        (; state=s.basis[first(r)+t.k-1], t.sideband, t.coupling, t.detuning, t.shift)
+        for t in quasienergy_shift_contributions(h0, h1, drive_frequency, α)
     ]
 end
 
-manifold_state_index(m::HyperfineManifold, state::Integer) = Int(state)
-manifold_state_index(m::HyperfineManifold, state::StateSpec) =
-    stateindex(m.basis, state)
+"""
+    quasienergy_shift(s::Eigenstructure, lower::StateSpec => upper::StateSpec,
+                    drive_frequency, drives, method = PerturbationTheory())
+
+Returns the differential quasienergy shift of the transition between the two labelled
+eigenstates of the structure `s` at its static field, for driving at
+`drive_frequency` (angular units), as a named tuple `(; shift, lower, upper)`
+with `shift = upper - lower` (positive: the transition frequency increases).
+
+`drives` is a vector of [`HarmonicDrive`](@ref)s over `basis(s)`, at the same
+`drive_frequency` and block-diagonal in the fine-structure manifolds.
+The two probed states may lie in the same fine-structure manifold
+(e.g. a microwave qubit) or in two different ones; their manifolds must be
+complete and contiguous in `s`.
+"""
+function quasienergy_shift(
+    s::Eigenstructure,
+    probe::Pair{<:StateSpec,<:StateSpec},
+    drive_frequency,
+    drives::AbstractVector{<:HarmonicDrive},
+    method::QuasienergyShiftMethod=PerturbationTheory(),
+)
+    δ_lower = quasienergy_shift(s, probe.first, drive_frequency, drives, method)
+    δ_upper = quasienergy_shift(s, probe.second, drive_frequency, drives, method)
+    (shift=δ_upper - δ_lower, lower=δ_lower, upper=δ_upper)
+end
 
 """
     quasienergy_shift(H0::Diagonal, H1::AbstractMatrix, drive_frequency, α::Integer, method::Floquet)
@@ -236,85 +311,29 @@ function quasienergy_shift(
 end
 
 """
-    ac_zeeman_shift(m::HyperfineManifold, state, drive_frequency, b, method = PerturbationTheory())
+    ac_zeeman_shift(s::Eigenstructure, state, drive_frequency, b, method = PerturbationTheory())
+    ac_zeeman_shift(s::Eigenstructure, lower::StateSpec => upper::StateSpec,
+                    drive_frequency, b, method = PerturbationTheory())
 
-Returns the ac Zeeman shift of the adiabatically-labelled eigenstate `state` of
-the hyperfine manifold solution `m` under a magnetic field with Cartesian
-amplitude phasor `b`, ``\\vec{B}(t) = \\mathrm{Re}[\\vec{b} e^{-iΩt}]``, where
-`drive_frequency` is the angular frequency ``Ω``. Real phasors describe linearly
-polarised fields; complex phasors also describe elliptical fields.
+Returns the ac Zeeman shift under a magnetic field with Cartesian amplitude
+phasor `b`, ``\\vec{B}(t) = \\mathrm{Re}[\\vec{b} e^{-iΩt}]``, where
+`drive_frequency` is the angular frequency ``Ω``. Real phasors describe
+linearly polarised fields; complex phasors also describe elliptical fields.
 
-Constructs the magnetic [`HarmonicDrive`](@ref)s with [`zeeman_drives`](@ref) and
-forwards to [`quasienergy_shift`](@ref), with the same method choice.
+Constructs the magnetic [`HarmonicDrive`](@ref)s with [`zeeman_drives`](@ref)`(s, b)`
+and forwards to [`quasienergy_shift`](@ref), with the same method choice and
+manifold requirements. `state` is a `StateSpec` or an index into `basis(s)`.
+The state form returns an angular frequency; the pair form returns
+`(; shift, lower, upper)` with `shift = upper - lower`.
 """
 function ac_zeeman_shift(
-    m::HyperfineManifold,
-    state,
+    s::Eigenstructure,
+    probe::Union{StateSpec,Integer,Pair{<:StateSpec,<:StateSpec}},
     drive_frequency,
     b::AbstractVector{<:Quantity},
     method::QuasienergyShiftMethod=PerturbationTheory(),
 )
-    quasienergy_shift(
-        m,
-        state,
-        drive_frequency,
-        zeeman_drives(m.species, m.basis, b),
-        method,
-    )
-end
-
-"""
-    ac_zeeman_shift(species, lower::StateSpec => upper::StateSpec, drive_frequency, b,
-                    method = PerturbationTheory(); B)
-
-Returns the ac Zeeman shift of the transition between the two labelled states at
-the static field `B` along ẑ, under a magnetic field with Cartesian amplitude
-phasor `b`, as a named tuple `(; shift, lower, upper)` with `shift = upper - lower`
-(positive: the transition frequency increases). The two states may lie in the
-same fine-structure manifold (e.g. a microwave qubit) or in two different ones.
-Hyperfine states denote the adiabatically-labelled eigenstates.
-"""
-function ac_zeeman_shift(
-    species::HyperfineOneElectronSpecies,
-    probe::Pair,
-    drive_frequency,
-    b::AbstractVector{<:Quantity},
-    method::QuasienergyShiftMethod=PerturbationTheory();
-    B,
-)
-    lower, upper = probe
-    fs_lower = fine_structure(parse_level(lower.level))
-    fs_upper = fine_structure(parse_level(upper.level))
-    m_lower = hyperfine_manifold(species, fs_lower; B)
-    m_upper = fs_upper == fs_lower ? m_lower : hyperfine_manifold(species, fs_upper; B)
-    δ_lower = ac_zeeman_shift(m_lower, lower, drive_frequency, b, method)
-    δ_upper = ac_zeeman_shift(m_upper, upper, drive_frequency, b, method)
-    (shift=δ_upper - δ_lower, lower=δ_lower, upper=δ_upper)
-end
-
-function ac_zeeman_shift(
-    species::NoHyperfineOneElectronSpecies,
-    probe::Pair,
-    drive_frequency,
-    b::AbstractVector{<:Quantity},
-    method::QuasienergyShiftMethod=PerturbationTheory();
-    B,
-)
-    function shift(state)
-        basis = StateBasis(species, state.level)
-        H0 = Diagonal([zeeman_shift(species, s; B) for s in basis])
-        H1 = harmonic_block(zeeman_drives(species, basis, b), 1:length(basis))
-        quasienergy_shift(
-            H0,
-            H1,
-            drive_frequency,
-            stateindex(basis, state),
-            method;
-            warn_context=(; state),
-        )
-    end
-    lower, upper = shift(probe.first), shift(probe.second)
-    (; shift=upper - lower, lower, upper)
+    quasienergy_shift(s, probe, drive_frequency, zeeman_drives(s, b), method)
 end
 
 export quasienergy_shift, quasienergy_shift_contributions, ac_zeeman_shift

@@ -46,7 +46,7 @@ g_F = g_J \\frac{F(F+1) + J(J+1) - I(I+1)}{2 F (F+1)}
 
 with ``g_I`` in the nuclear-magneton convention of the species; note that at
 finite field the hyperfine Zeeman effect is nonlinear (cf.
-[`zeeman_shift`](@ref) and [`hyperfine_manifold`](@ref)), so ``g_F m_F`` is
+[`zeeman_shift`](@ref) on an [`Eigenstructure`](@ref)), so ``g_F m_F`` is
 only the ``B → 0`` slope.
 """
 function lande_g(species::NoHyperfineOneElectronSpecies, level)
@@ -84,33 +84,25 @@ function lande_g(species::HyperfineOneElectronSpecies, level)
 end
 
 """
-    zeeman_shift(species, state::StateSpec; B)
-
-Returns the first-order Zeeman shift of the given state in a static magnetic field
-`B` along the quantisation axis, in angular frequency units.
-"""
-function zeeman_shift(species::NoHyperfineOneElectronSpecies, state::StateSpec; B)
-    g = lande_g(species, state.level)
-    uconvert(u"rad/µs", g * state.m * BOHR_MAGNETON * B / u"ħ")
-end
-
-"""
     zeeman_sensitivity(species, lower::StateSpec => upper::StateSpec)
-    zeeman_sensitivity(species, transition::Pair)
 
-Returns the first-order magnetic-field sensitivity ``χ`` of the transition
-frequency between the two given states, in angular frequency units per magnetic
-flux density (e.g. convertible to `rad/µs/mT`).
+Returns the zero-field (first-order) magnetic-field sensitivity ``χ`` of the
+transition between the two given states, in angular frequency units per
+magnetic flux density (e.g. convertible to `rad/µs/mT`): the slope
+``(g_u m_u - g_l m_l) μ_B/ħ`` with the Landé factors of [`lande_g`](@ref) —
+``g_J`` for fine-structure states, the low-field ``g_F`` for hyperfine ones.
+For a fine-structure species this is exact at any field; for a hyperfine
+species the sensitivity at a working field is that of the
+[`Eigenstructure`](@ref) form.
 
-The `Pair` form accepts a `lower => upper` pair as produced by
-[`state_pairs`](@ref).
+The pair may be one as produced by [`state_pairs`](@ref).
 """
 function zeeman_sensitivity(
-    species::NoHyperfineOneElectronSpecies,
-    transition::Pair{<:StateSpec,<:StateSpec};
-    B=nothing,
+    species::OneElectronSpecies,
+    transition::Pair{<:StateSpec,<:StateSpec},
 )
-    lower, upper = transition
+    lower = validate_state_kind(species, transition.first)
+    upper = validate_state_kind(species, transition.second)
     g_lower = lande_g(species, lower.level)
     g_upper = lande_g(species, upper.level)
     uconvert(
@@ -119,28 +111,36 @@ function zeeman_sensitivity(
     )
 end
 
-
-
 """
-    zeeman_hamiltonian(species, basis::StateBasis; B)
+    zeeman_hamiltonian(species, basis::StateBasis, b)
 
-Returns the matrix of the Zeeman Hamiltonian ``\\sum_J g_J (μ_B / ħ) \\vec{B} ⋅ \\vec{J}``
-in the given basis, in angular frequency units.
+Returns the matrix of the Zeeman Hamiltonian of a magnetic field with the
+Cartesian 3-vector `b` — ``\\sum_J g_J (μ_B / ħ) \\vec{b} ⋅ \\vec{J}`` for a
+fine-structure species, ``\\vec{b} ⋅ (g_J μ_B \\vec{J} - g_I μ_N \\vec{I}) / ħ``
+for a hyperfine one — over the given basis in the zero-field (coupled) basis
+representation, in angular frequency units.
 
-`B` is the static Cartesian magnetic-field 3-vector, with the quantisation axis
-along z; it must be real for the result to be Hermitian. The result is
-block-diagonal in the levels of the basis, with matrix elements constructed
-per-state, so any basis ordering (or subset of Zeeman sublevels) is supported.
+`b` is a field vector in the laboratory frame with the quantisation axis along
+ẑ, and must be real for the result to be Hermitian. It is the building block
+of perturbing fields (the ac drives of `Levels.PeriodicDynamics.zeeman_drives`),
+not the static working field, which belongs to an [`Eigenstructure`](@ref);
+[`zeeman_hamiltonian(s, b)`](@ref zeeman_hamiltonian(::Eigenstructure, ::Any))
+gives the same operator in a structure's field eigenbasis. The result is
+block-diagonal in the fine-structure levels, with matrix elements constructed
+per state, so any basis ordering or subset of sublevels is supported; for a
+hyperfine species it is not diagonal in ``F`` (the field mixes ``F`` within
+each manifold while staying diagonal in ``m_F`` for a field along ẑ).
 """
 function zeeman_hamiltonian(
     species::NoHyperfineOneElectronSpecies,
-    basis::StateBasis{NoHyperfineNumberSpec};
-    B,
+    basis::StateBasis{NoHyperfineNumberSpec},
+    b,
 )
-    # B·J in terms of ladder operators: B_z J_z + (B_x - iB_y)/2 J₊ + (B_x + iB_y)/2 J₋.
-    b_z = complex(float(B[3]))
-    b_plus = (B[1] + im * B[2]) / 2
-    b_minus = (B[1] - im * B[2]) / 2
+    length(b) == 3 || throw(ArgumentError("The field must be a Cartesian 3-vector"))
+    # b·J in terms of ladder operators: b_z J_z + (b_x - ib_y)/2 J₊ + (b_x + ib_y)/2 J₋.
+    b_z = complex(float(b[3]))
+    b_plus = (b[1] + im * b[2]) / 2
+    b_minus = (b[1] - im * b[2]) / 2
 
     function element(bra, ket)
         j = ket.level.j

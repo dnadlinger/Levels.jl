@@ -116,7 +116,7 @@ end
     # components, including for elliptical polarisation (Δm = ±q asymmetry).
     basis = StateBasis(["S_1/2", "D_5/2"])
     n, ε = beam_vectors(0.3, 0.7, 0.4)
-    C = quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n)
+    C = relative_couplings(sr88, basis, "S_1/2" => "D_5/2", ε, n)
 
     intensity = 5e4u"W/m^2"
     probe = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2)
@@ -161,7 +161,7 @@ end
     basis = StateBasis(["S_1/2", "D_5/2"])
     # k ⊥ B₀, γ = 45°: Δm = 0 suppressed, Δm = ±1, ±2 present.
     n, ε = beam_vectors(π / 2, π / 4)
-    C = quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n)
+    C = relative_couplings(sr88, basis, "S_1/2" => "D_5/2", ε, n)
 
     Ω0 = angular(100.0u"kHz")
     probe = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2)
@@ -303,9 +303,10 @@ end
     intensity = 250.0u"W/m^2"
 
     # Independent reconstruction of the James form with the F-basis angular
-    # factor and the hyperfine-resolved transition frequency.
+    # factor and the fine-structure (centroid) transition frequency: one
+    # physical scale per fine-structure pair.
     a = einstein_a(ca43, "S_1/2" => "D_5/2")
-    ω = Levels.transition_frequency(ca43, s.level => d.level)
+    ω = Levels.transition_frequency(ca43, "S_1/2" => "D_5/2")
     geometry = quadrupole_geometry(ε, n)[Int(d.m-s.m)+3]
     expected = uconvert(
         u"rad/µs",
@@ -314,21 +315,22 @@ end
     )
     @test abs(rabi_frequency(ca43, s => d, intensity, ε, n)) ≈ expected rtol = 1e-12
 
-    # The at-field form scales the plain one by the exact at-field amplitude
-    # ratio, and for a fine-structure species it is the identical (already
-    # exact) result.
+    # The structure form scales the zero-field one by the exact at-field
+    # amplitude ratio, and for a fine-structure species it is the identical
+    # (already exact) result.
     B = 0.5u"mT"
-    @test rabi_frequency(ca43, s => d, intensity, ε, n; B) ≈
+    s43 = Eigenstructure(ca43, "S_1/2", "D_5/2"; B)
+    @test rabi_frequency(s43, s => d, intensity, ε, n) ≈
           rabi_frequency(ca43, s => d, intensity, ε, n) *
-          (transition_amplitude(ca43, s => d; B) / transition_amplitude(ca43, s => d)) rtol =
+          (transition_amplitude(s43, s => d) / transition_amplitude(ca43, s => d)) rtol =
         1e-12
+    s88 = Eigenstructure(sr88, "S_1/2", "D_5/2"; B)
     @test rabi_frequency(
-        sr88,
+        s88,
         StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2),
         intensity,
         ε,
-        n;
-        B,
+        n,
     ) == rabi_frequency(
         sr88,
         StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2),
@@ -336,6 +338,14 @@ end
         ε,
         n,
     )
+    # Rotation identity for the physical coupling scale: the structure-form
+    # matrix is the rotated species-form matrix over the complete coupled
+    # basis, with no F-dependent prefactor in the way.
+    C_B = coupling_matrix(s43, "S_1/2" => "D_5/2", intensity, ε, n)
+    C_0 = coupling_matrix(ca43, coupled_basis(s43), "S_1/2" => "D_5/2", intensity, ε, n)
+    @test C_B ≈ to_eigenbasis(s43, C_0) rtol = 1e-12
+    @test C_B[stateindex(Levels.basis(s43), d), stateindex(Levels.basis(s43), s)] ≈
+          rabi_frequency(s43, s => d, intensity, ε, n)
 
     # An undrivable |Δm| > 2 component vanishes identically, and
     # fine-structure states are rejected for a hyperfine species.
@@ -355,6 +365,20 @@ end
         ε,
         n,
     )
+    @test_throws ArgumentError rabi_frequency(
+        s43,
+        StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 3//2),
+        intensity,
+        ε,
+        n,
+    )
+    # Intensity for a Rabi frequency, both forms.
+    Ω = angular(10.0u"MHz")
+    I_hf = intensity_for_rabi(s43, s => d, Ω, ε, n)
+    @test abs(rabi_frequency(s43, s => d, I_hf, ε, n)) ≈ Ω
+    @test intensity_for_rabi(ca43, s => d, Ω, ε, n) ≈
+          I_hf *
+          abs2(transition_amplitude(s43, s => d) / transition_amplitude(ca43, s => d))
 end
 
 @testitem "At-field transition amplitudes" tags=[:unit, :fast] begin
@@ -363,8 +387,9 @@ end
     using Levels: coupling_transform
 
     B = 0.5u"mT"
-    m_s = hyperfine_manifold(ca43, "S_1/2"; B)
-    m_d = hyperfine_manifold(ca43, "D_5/2"; B)
+    structure = Eigenstructure(ca43, "S_1/2", "D_5/2"; B)
+    m_s = Levels.manifold_solution(structure, "S_1/2")
+    m_d = Levels.manifold_solution(structure, "D_5/2")
     s_states = collect(m_s.basis)
     d_states = collect(m_d.basis)
 
@@ -397,7 +422,7 @@ end
             amplitudes = m_d.states' * u_hi' * m * u_lo * m_s.states
             for (ci, ls) in enumerate(s_states), (ck, us) in enumerate(d_states)
                 expected = if us.m == ls.m + q
-                    transition_amplitude(m_s, m_d, ls => us)
+                    transition_amplitude(structure, ls => us)
                 else
                     0.0
                 end
@@ -408,56 +433,220 @@ end
     end
     @test maxdev < 1e-12
 
-    # The one-shot species form matches the manifold-pair form, B = 0 falls
-    # back to the zero-field amplitudes, and Δm beyond the rank still carries
-    # no amplitude.
+    # Identity 6: the scalar amplitude is the labelled element of the rotated
+    # complete-manifold zero-field tensor component.
     s = StateSpec("S_1/2 F=4", 4)
     d = StateSpec("D_5/2 F=4", 3)
-    @test transition_amplitude(ca43, s => d; B) ≈ transition_amplitude(m_s, m_d, s => d) rtol =
-        1e-12
-    @test transition_amplitude(ca43, s => d; B=0.0u"mT") ==
-          transition_amplitude(ca43, s => d)
+    cb = coupled_basis(structure)
+    q = Int(d.m - s.m)
+    C_q = [
+        (
+            hi.m - lo.m == q &&
+            Levels.fine_structure(lo.level) == m_s.level &&
+            Levels.fine_structure(hi.level) == m_d.level
+        ) ? transition_amplitude(ca43, lo => hi) : 0.0 for hi in cb, lo in cb
+    ]
+    rotated = to_eigenbasis(structure, C_q)
+    @test transition_amplitude(structure, s => d) ≈
+          rotated[stateindex(cb, d), stateindex(cb, s)] atol = 1e-12
+    @test Levels.relative_amplitudes(ca43, m_s, m_d, 2)[
+        stateindex(m_d.basis, d),
+        stateindex(m_s.basis, s),
+    ] ≈ transition_amplitude(structure, s => d)
+
+    # Zero field reproduces the zero-field amplitudes, and Δm beyond the rank
+    # still carries no amplitude.
+    @test transition_amplitude(
+        Eigenstructure(ca43, "S_1/2", "D_5/2"; B=0.0u"mT"),
+        s => d,
+    ) == transition_amplitude(ca43, s => d)
     @test iszero(
         transition_amplitude(
-            ca43,
-            StateSpec("S_1/2 F=4", -4) => StateSpec("D_5/2 F=4", -1);
-            B,
+            structure,
+            StateSpec("S_1/2 F=4", -4) => StateSpec("D_5/2 F=4", -1),
         ),
     )
 
     # Low-field continuity (including sign) with the zero-field amplitudes.
+    low = Eigenstructure(ca43, "S_1/2", "D_5/2"; B=1e-4u"mT")
     for (lower, upper) in state_pairs("S_1/2 F=4" => "D_5/2 F=5"; Δm=-2:2)
-        @test transition_amplitude(ca43, lower => upper; B=1e-4u"mT") ≈
+        @test transition_amplitude(low, lower => upper) ≈
               transition_amplitude(ca43, lower => upper) atol = 1e-3
     end
 
     # At 0.5 mT the F mixing moves the ⁴³Ca⁺ clock-component amplitude at the
     # percent level — the rotation is not a silent no-op.
-    ratio = transition_amplitude(ca43, s => d; B) / transition_amplitude(ca43, s => d)
+    ratio = transition_amplitude(structure, s => d) / transition_amplitude(ca43, s => d)
     @test 1e-3 < abs(ratio - 1) < 0.2
 
     # For a fine-structure species a static field along ẑ changes nothing, so
-    # the B form is the identical (already exact) amplitude.
+    # the structure form is the identical (already exact) amplitude.
     @test transition_amplitude(
-        sr88,
-        StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2);
-        B,
+        Eigenstructure(sr88, "S_1/2", "D_5/2"; B),
+        StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2),
     ) == transition_amplitude(
         sr88,
         StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2),
     )
 
-    # Within one manifold (rank = 1, M1): the same manifold twice; at a small
-    # field this recovers the zero-field F-basis amplitude.
+    # Within one manifold (rank = 1, M1), at a small field this recovers the
+    # zero-field F-basis amplitude.
     lo = StateSpec("S_1/2 F=4", 0)
     hi = StateSpec("S_1/2 F=3", 1)
-    m_s_small = hyperfine_manifold(ca43, "S_1/2"; B=1e-4u"mT")
-    @test transition_amplitude(m_s_small, m_s_small, lo => hi; rank=1) ≈
-          transition_amplitude(ca43, lo => hi; rank=1) atol = 1e-4
+    @test transition_amplitude(
+        Eigenstructure(ca43, "S_1/2"; B=1e-4u"mT"),
+        lo => hi;
+        rank=1,
+    ) ≈ transition_amplitude(ca43, lo => hi; rank=1) atol = 1e-4
 
-    # Manifold solutions from different fields are rejected.
-    m_d2 = hyperfine_manifold(ca43, "D_5/2"; B=2 * B)
-    @test_throws ArgumentError transition_amplitude(m_s, m_d2, s => d)
+    # Rotate, then select: the F-restricted structure-form matrix equals the
+    # labelled block of the whole-pair matrix, whereas rotating a zero-field
+    # F-restricted operator is a different operation (0.5 mT F=4 → F=4 E2).
+    n, ε = beam_vectors(π / 2, π / 4)
+    basis = Levels.basis(structure)
+    whole = relative_couplings(structure, "S_1/2" => "D_5/2", ε, n)
+    r4s, r4d = staterange(basis, "S_1/2 F=4"), staterange(basis, "D_5/2 F=4")
+    restricted = relative_couplings(structure, "S_1/2 F=4" => "D_5/2 F=4", ε, n)
+    @test restricted[r4d, r4s] == whole[r4d, r4s]
+    wrong = to_eigenbasis(
+        structure,
+        relative_couplings(ca43, cb, "S_1/2 F=4" => "D_5/2 F=4", ε, n),
+    )
+    @test !isapprox(wrong[r4d, r4s], whole[r4d, r4s]; rtol=1e-3)
+    for lower in collect(basis)[r4s], upper in collect(basis)[r4d]
+        qq = upper.m - lower.m
+        abs(qq) <= 2 || continue
+        @test whole[stateindex(basis, upper), stateindex(basis, lower)] ≈
+              transition_amplitude(structure, lower => upper) *
+              quadrupole_geometry(ε, n)[Int(qq)+3]
+    end
+end
+
+@testitem "Physical dipole components" tags=[:unit, :fast] begin
+    using LinearAlgebra
+    using Unitful
+    using WignerSymbols: clebschgordan
+
+    # Compare in atomic units: physical dipoles are of order 10^-29 C m,
+    # so an absolute tolerance stated directly in C m must not dwarf them.
+    dipole_au(x) = ustrip(NoUnits, x / Levels.DIPOLE_AU)
+
+    B = 0.5u"mT"
+    _, ε = beam_vectors(0.4, 0.6, 0.8)
+    for (species, lo, hi) in
+        ((sr88, "S_1/2", "P_3/2"), (ca43, "S_1/2", "P_1/2"), (ca43, "D_5/2", "P_3/2"))
+        s = Eigenstructure(species, lo, hi; B)
+        basis = Levels.basis(s)
+        D = dipole_components(s, lo => hi)
+        @test length(D) == 3
+        @test all(unit(eltype(M)) == u"C*m" for M in D)
+        # Entries only in the upper⟨row|lower⟩⟨col| block, each component on
+        # its own Δm, and equal to the reduced scale times the amplitude.
+        a = einstein_a(species, lo => hi)
+        ω = Levels.transition_frequency(species, lo => hi)
+        scale = sqrt(3π * u"ε0" * u"ħ" * u"c"^3 * a / ω^3)
+        for (i, l) in enumerate(basis), (k, u) in enumerate(basis), q in -1:1
+            inside =
+                Levels.fine_structure(l.level) == convert(NoHyperfineNumberSpec, lo) &&
+                Levels.fine_structure(u.level) == convert(NoHyperfineNumberSpec, hi)
+            expected =
+                inside && u.m - l.m == q ? scale * transition_amplitude(s, l => u) :
+                0.0u"C*m"
+            @test dipole_au(D[q+2][k, i]) ≈ dipole_au(expected) atol = 1e-12
+        end
+        # Einstein A sum rule: Σ_{q,l} |⟨u|d_q|l⟩|² = 3π ε₀ ħ c³ A / ω³ for every
+        # upper state, i.e. every sublevel decays at the full fine-structure rate.
+        for (k, u) in enumerate(basis)
+            Levels.fine_structure(u.level) == convert(NoHyperfineNumberSpec, hi) ||
+                continue
+            total = sum(sum(abs2, D[q+2][k, :]) for q in -1:1)
+            @test uconvert(u"µs^-1", total * ω^3 / (3π * u"ε0" * u"ħ" * u"c"^3)) ≈ a rtol =
+                1e-10
+        end
+        # Contraction with the polarisation reproduces the complex Rabi
+        # frequency: Ω = (E₀/ħ) Σ_q d_q(ε) ⟨u|d_q|l⟩ with E₀ = √(2I/(ε₀c)).
+        intensity = 20.0u"W/m^2"
+        E0 = sqrt(2 * intensity / (u"ε0" * u"c"))
+        geometry = dipole_geometry(ε ./ sqrt(sum(abs2, ε)))
+        for (i, l) in enumerate(basis), (k, u) in enumerate(basis)
+            Levels.fine_structure(l.level) == convert(NoHyperfineNumberSpec, lo) ||
+                continue
+            Levels.fine_structure(u.level) == convert(NoHyperfineNumberSpec, hi) ||
+                continue
+            Ω = uconvert(
+                u"rad/µs",
+                E0 / u"ħ" * sum(geometry[q+2] * D[q+2][k, i] for q in -1:1),
+            )
+            @test Ω ≈ rabi_frequency(s, l => u, intensity, ε, [0.0, 0.0, 1.0]) atol =
+                1e-12u"rad/µs"
+        end
+        # Species form: the zero-field operator; the structure form is its
+        # rotation (for a fine-structure species the two coincide).
+        D0 = dipole_components(species, coupled_basis(s), lo => hi)
+        for q in -1:1
+            @test dipole_au.(D[q+2]) ≈ dipole_au.(to_eigenbasis(s, D0[q+2])) atol =
+                1e-12
+        end
+    end
+    # Product-basis cross-check for the hyperfine species: electronic CG ⊗
+    # nuclear identity, rotated with U and W.
+    s = Eigenstructure(ca43, "S_1/2", "P_1/2"; B)
+    i_nuc = ca43.nuclear_spin
+    n_i = Int(2i_nuc + 1)
+    U_s, U_p = Levels.coupling_transform(ca43, "S_1/2"),
+    Levels.coupling_transform(ca43, "P_1/2")
+    W = eigenvectors(s)
+    r_s, r_p =
+        staterange(Levels.basis(s), "S_1/2"), staterange(Levels.basis(s), "P_1/2")
+    D = dipole_components(s, "S_1/2" => "P_1/2")
+    scale = sqrt(
+        3π * u"ε0" * u"ħ" * u"c"^3 * einstein_a(ca43, "S_1/2" => "P_1/2") /
+        Levels.transition_frequency(ca43, "S_1/2" => "P_1/2")^3,
+    )
+    for q in -1:1
+        electronic = [
+            m_u == m_l + q ? Float64(clebschgordan(1//2, m_l, 1, q, 1//2, m_u)) : 0.0 for m_u in (-1//2):(1//2), m_l in (-1//2):(1//2)
+        ]
+        coupled = U_p' * kron(electronic, I(n_i)) * U_s
+        expected = scale .* (W[r_p, r_p]' * coupled * W[r_s, r_s])
+        @test dipole_au.(D[q+2][r_p, r_s]) ≈ dipole_au.(expected) atol = 1e-12
+    end
+    # Only E1 pairs have dipole components.
+    @test_throws ArgumentError dipole_components(
+        Eigenstructure(sr88, "S_1/2", "D_5/2"; B),
+        "S_1/2" => "D_5/2",
+    )
+
+    # A custom intermediate-state sum from the physical components reproduces
+    # the polarisability of a state (explicit channels plus the lumped static
+    # remainder of the data), with the at-field energies of the structure.
+    s = Eigenstructure(sr88, "S_1/2", "P_1/2", "P_3/2"; B)
+    basis = Levels.basis(s)
+    state = StateSpec("S_1/2", 1//2)
+    λ = 674.025u"nm"
+    ħω = Levels.photon_energy(λ)
+    w = Levels.polarisation_weights(ε)
+    i_s = stateindex(basis, state)
+    data = level_polarisability(sr88, "S_1/2")
+    function custom_sum()
+        α = data.static_scalar
+        for upper in ("P_1/2", "P_3/2")
+            D = dipole_components(s, "S_1/2" => upper)
+            for (k, t) in enumerate(basis)
+                t.level == convert(NoHyperfineNumberSpec, upper) || continue
+                Δ = state_energy(s, t) - state_energy(s, state)
+                for q in -1:1
+                    d = D[q+2][k, i_s]
+                    α += uconvert(
+                        u"C*m^2/V",
+                        abs2(d) * (w[q+2] / (Δ - ħω) + w[2-q] / (Δ + ħω)),
+                    )
+                end
+            end
+        end
+        α
+    end
+    @test custom_sum() ≈ polarisability(s, state, λ, ε) rtol = 1e-9
 end
 
 @testitem "Rabi frequencies vs Campbell (2026) closed form" tags=[:unit, :fast] setup=[

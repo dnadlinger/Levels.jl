@@ -405,11 +405,8 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
     """
     The mass of the ion.
 
-    That of the actual charged species, i.e. the neutral-atom mass less one electron,
-    plus the (tiny) mass equivalent of the ionisation energy. In practice, this is only
-    a stylistic distinction; experimental or theoretical uncertainties in the derived
-    quantities relevant to ion-trap AMO physics will dwarf the small difference in mass
-    definitions.
+    The neutral-atom mass minus one electron mass, plus the ionisation energy
+    divided by ``c^2``.
     """
     mass::M
 
@@ -423,8 +420,8 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
     """
     Einstein A coefficients for (lower, upper) pair of levels.
 
-    The sum of all A coefficients for a given upper level is the reciprocal
-    level lifetime, so this is the linewidth contribution in angular units.
+    Rates in inverse time, without a factor of 2π. Their sum for an upper
+    level is its inverse lifetime and its natural angular linewidth.
     """
     einstein_as::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
@@ -437,7 +434,8 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
     """
     Light-shift data for the levels it is known for, if any.
 
-    Levels missing from this dictionary have no [`light_shift`](@ref) defined.
+    A background light shift requires these data; near-resonant channels
+    remain available without them (cf. [`light_shift`](@ref)).
     """
     polarisabilities::Dict{NoHyperfineNumberSpec,LevelPolarisability}
 end
@@ -564,8 +562,8 @@ struct HyperfineOneElectronSpecies{
     """
     Einstein A coefficients for (lower, upper) pairs of fine-structure levels.
 
-    The sum of all A coefficients for a given upper level is the reciprocal
-    level lifetime, so this is the linewidth contribution in angular units.
+    Rates in inverse time, without a factor of 2π. Their sum for an upper
+    level is its inverse lifetime and its natural angular linewidth.
     """
     einstein_as::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
@@ -578,7 +576,8 @@ struct HyperfineOneElectronSpecies{
     """
     Light-shift data for the levels it is known for, if any.
 
-    Levels missing from this dictionary have no [`light_shift`](@ref) defined.
+    A background light shift requires these data; near-resonant channels
+    remain available without them (cf. [`light_shift`](@ref)).
     """
     polarisabilities::Dict{NoHyperfineNumberSpec,LevelPolarisability}
 end
@@ -652,6 +651,54 @@ function validate_hyperfine(
 end
 
 """
+The level kind of a species: [`NoHyperfineNumberSpec`](@ref) for a
+fine-structure species, [`HyperfineNumberSpec`](@ref) for a hyperfine one.
+"""
+level_kind(::NoHyperfineOneElectronSpecies) = NoHyperfineNumberSpec
+level_kind(::HyperfineOneElectronSpecies) = HyperfineNumberSpec
+
+"""
+Parses a level and checks it is of the species' kind — an ``F`` level for a
+hyperfine species, a ``J`` level for a fine-structure one — so that `m` keeps
+its meaning; returns the canonical spec.
+"""
+function validate_level_kind(species::OneElectronSpecies, level)
+    spec = parse_level(level)
+    spec isa level_kind(species) && return spec
+    if species isa HyperfineOneElectronSpecies
+        throw(
+            ArgumentError(
+                "Levels of a hyperfine species must specify hyperfine (F) " *
+                "levels, e.g. 'S_1/2 F=4', not '$spec'",
+            ),
+        )
+    end
+    throw(
+        ArgumentError(
+            "Level '$spec' carries hyperfine structure, but the species has none",
+        ),
+    )
+end
+
+"""
+Checks that a state's level is of the species' kind (cf.
+[`Levels.validate_level_kind`](@ref)), returning the canonical state.
+"""
+validate_state_kind(species::OneElectronSpecies, state::StateSpec) =
+    StateSpec(validate_level_kind(species, state.level), state.m)
+
+"""
+Checks that the levels of a basis are of the species' kind (cf.
+[`Levels.validate_level_kind`](@ref)).
+"""
+function validate_basis_kind(species::OneElectronSpecies, basis::StateBasis)
+    for level in basis.levels
+        validate_level_kind(species, level)
+    end
+    basis
+end
+
+"""
 Returns the energy of the given level relative to the species' reference point:
 the stored (centroid) energy for a fine-structure level, plus the zero-field
 hyperfine shift for a hyperfine level.
@@ -677,31 +724,35 @@ end
 """
     transition_frequency(species::OneElectronSpecies, lower => upper)
 
-Returns the frequency of a given transition (in angular units).
+Returns the zero-field angular frequency of the given transition.
 
 For hyperfine levels (of a [`HyperfineOneElectronSpecies`](@ref)), the
 zero-field hyperfine shifts of any ``F``-resolved levels are included on top of
-the centroid splitting.
+the centroid splitting. A pair of states gives the zero-field interval of
+their levels (their Zeeman components are degenerate there); the interval at
+a static field is [`transition_frequency(s::Eigenstructure, lower => upper)`](@ref).
 
-An error is raised if the two levels are not connected by a known transition or
-if the levels are incorrectly ordered.
+Both levels must have tabulated energies; a decay channel between them is not
+required. A pair of levels must be in increasing energy order. A pair of
+states returns the signed upper-minus-lower interval, including within one
+fine-structure manifold.
 """
-function transition_frequency(species::OneElectronSpecies, transition::Pair; B=nothing)
+function transition_frequency(species::OneElectronSpecies, transition::Pair)
     lower, upper = transition
     if lower isa StateSpec && upper isa StateSpec
-        field = isnothing(B) ? 0.0u"mT" : B
+        lo = validate_state_kind(species, lower)
+        hi = validate_state_kind(species, upper)
         centroid =
             (
-                level_energy(species, fine_structure(upper.level)) -
-                level_energy(species, fine_structure(lower.level))
+                level_energy(species, fine_structure(hi.level)) -
+                level_energy(species, fine_structure(lo.level))
             ) / u"ħ"
-        offset(state) =
-            hyperfine_shift(species, state.level) +
-            zeeman_shift(species, state; B=field)
-        return uconvert(u"rad/µs", centroid + offset(upper) - offset(lower))
+        return uconvert(
+            u"rad/µs",
+            centroid + hyperfine_shift(species, hi.level) -
+            hyperfine_shift(species, lo.level),
+        )
     end
-    isnothing(B) ||
-        throw(ArgumentError("A field-resolved frequency requires a pair of states"))
     e1 = level_energy(species, lower)
     e2 = level_energy(species, upper)
     e1 <= e2 || throw(ArgumentError("'$lower' is of higher energy than '$upper'"))
@@ -713,8 +764,9 @@ end
 
 Returns the Einstein A coefficient for the given two levels.
 
-The sum of all A coefficients for a given upper level is the reciprocal
-level lifetime, so this is the linewidth contribution in angular units.
+The coefficient is a decay rate in inverse time, without a factor of 2π.
+Summing over all lower levels gives the inverse upper-level lifetime, equal
+in value to its natural angular linewidth.
 Hyperfine levels are resolved to their fine-structure part, as A coefficients
 are fine-structure quantities (the ``F``-resolved rates are branching fractions
 of them; cf. [`Levels.hyperfine_reduction`](@ref)).
@@ -759,36 +811,31 @@ end
 """
     saturation_intensity(species::OneElectronSpecies, lower => upper)
 
-Returns the saturation intensity ``I_0`` of the transition between the two levels, in
-the Oxford ion-trap group's convention (follwoing A. Steane's `[SATSUM]` note).
+Returns the saturation intensity in the Oxford ion-trap group's convention
+(`[SATSUM]`):
 
-``I_0`` is the intensity at which the resonant lowest-order excitation rate on an
-electric-dipole Zeeman component equals ``C^2 A``, with ``C`` the Clebsch–Gordan factor
-and ``A`` the Einstein coefficient of the transition:
 ```math
-I_0 = \\frac{ħ ω^3}{6 π c^2 τ} = \\frac{4 π^2 ħ c}{3 λ^3 τ},
+I_0 = \\frac{ħ ω^3}{6π c^2 τ} = \\frac{4π^2 ħ c}{3λ^3 τ},
 ```
-where ``ω`` is the transition frequency and ``τ`` the **total** [`lifetime`](@ref) of
-the upper level (all decay channels summed).
 
-Equivalently, the [`rabi_frequency`](@ref) of a component driven at unit geometric
-amplitude obeys ``Ω^2 = C^2 (I/I_0) A/τ``. For a closed transition (``A = 1/τ``) this
-makes ``I_0`` **twice** the two-level saturation intensity
-``I_\\mathrm{sat} = π h c Γ/(3 λ^3)`` of e.g. `[Foot2005]` §7.6.1: in
-the saturation parameter ``s = I/I_\\mathrm{sat} = 2 Ω^2/Γ^2`` convention,
-``I = I_0`` corresponds to ``s = 2``, i.e. ``Ω = Γ`` on the stretch component.
+where ``ω`` is the pair's zero-field angular frequency and ``τ`` the total
+upper-level [`lifetime`](@ref). A tabulated Einstein A coefficient for the
+pair is not required; unknown levels, reversed energy order or missing
+upper-level decay data raise an error.
 
-An error is raised if a level is unknown to the species, the levels are given in the
-wrong energy order, or the upper level has no known decay channels; a tabulated A
-coefficient for the pair itself is not required, as it does not enter the definition.
+For a fine-structure E1 pair at unit geometric amplitude,
+``|Ω|^2 = C^2 (I/I_0) A/τ``, with ``C`` the Clebsch–Gordan coefficient.
+On a closed stretched transition, ``I = I_0`` gives ``|Ω| = Γ = 1/τ``.
+Thus ``I_0 = 2 I_\\mathrm{sat}`` for the two-level convention
+``s = I/I_\\mathrm{sat} = 2|Ω|^2/Γ^2`` of `[Foot2005]`.
 
 # References
 
 - `[SATSUM]`: A. M. Steane, "A summary of saturation intensities, or: How to find
   scattering rates and Rabi frequencies quickly", internal Oxford ion-trap group note
   (2001-12-03).
-- `[Foot2005]`: C. J. Foot, "Atomic Physics", Oxford University Press (2005);
-  same convention in Metcalf & van der Straten, "Laser Cooling and Trapping"
+- `[Foot2005]`: C. J. Foot, "Atomic Physics", Oxford University Press (2005),
+  §7.6.1; also Metcalf & van der Straten, "Laser Cooling and Trapping"
   (1999), §2.4.
 """
 function saturation_intensity(species::OneElectronSpecies, transition::Pair)

@@ -34,8 +34,8 @@ using Levels, Unitful
 s = StateSpec("S_1/2 F=4", 4)
 d = StateSpec("D_5/2 F=4", 3)
 B0 = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"))
-Δα = polarisability(ca43, d, 0u"rad/s"; B=B0) -
-     polarisability(ca43, s, 0u"rad/s"; B=B0)
+atom = Eigenstructure(ca43, "S_1/2", "D_5/2"; B=B0)
+Δα = polarisability(atom, d, 0u"rad/s") - polarisability(atom, s, 0u"rad/s")
 Δα_parallel = Δα[2]
 Δα_perpendicular = (Δα[1] + Δα[3]) / 2
 θ = π / 4
@@ -48,12 +48,15 @@ For a sinusoidal electric field with unit polarisation and peak amplitude
 it is ``-α E^2/2``. For a light beam of intensity ``I``, the angular-frequency
 shift is ``-I α/(2c ε_0 ħ)``.
 
-Without `B`, states are zero-field ``|J,m_J⟩`` or ``|F,m_F⟩`` states. With
-`B`, hyperfine states denote the adiabatically labelled field eigenstates,
-including ``F`` mixing. Fine-structure eigenvectors remain unchanged, but
-their Zeeman energies enter the denominators. The scalar/vector/tensor level
-accessors describe zero-field levels; their single-``F`` angular factors do
-not apply to mixed field eigenstates.
+The species form evaluates zero-field ``|J,m_J⟩`` or ``|F,m_F⟩`` states. The
+structure form evaluates the adiabatically labelled eigenstates at the field
+of the [`Eigenstructure`](@ref), including ``F`` mixing; fine-structure
+eigenvectors remain unchanged, but their Zeeman energies enter the
+denominators. The scalar/vector/tensor level accessors describe zero-field
+levels; their single-``F`` angular factors do not apply to mixed field
+eigenstates. The result is the diagonal second-order response of a labelled
+eigenstate: within a degenerate subspace the effective light-shift operator
+may mix the states, and its eigenvalues are then the observed shifts.
 
 ## Parked and driven beams
 
@@ -68,7 +71,7 @@ Zeeman/hyperfine splittings. See [Laser frequencies](@ref reference-laser).
 
 ```@example polarisability
 laser = RelativeFrequency(s.level => d.level, angular(20u"MHz"))
-c = LightShiftCoefficients(ca43, [s, d], laser; B=B0)
+c = LightShiftCoefficients(atom, laser)
 intensity = 1u"W/m^2"
 n, ε = beam_vectors(π / 2, π / 4, 0.3)
 Δω_parked = light_shift(c, d, intensity, ε; direction=n) -
@@ -85,23 +88,26 @@ drive. A positive result raises the resonance frequency.
 ```
 
 Both APIs accept `parts = :total | :background | :resonant` (default
-`:total`). The resonant part needs `B` and the Einstein A coefficient, but
-no polarisability data. E2 channels are built for pairs within the basis;
+`:total`). The resonant part uses Einstein A coefficients and field-resolved
+couplings. E2 channels are built for pairs among the structure's manifolds;
 E1 channels require that pair to be the `RelativeFrequency` reference.
+Channels coupled at exactly zero detuning raise an error; a closed cycle
+without spectators can be evaluated at zero field.
 
 Coefficients cache the atomic structure for repeated intensity, polarisation
 and detuning evaluations. A parked evaluation's `δ` keyword changes only the
 near-resonant detunings; the smooth background stays at the construction
-frequency. Coefficients used in driven mode must have a construction
-frequency within relative tolerance ``10^{-3}`` of the probed line.
+frequency. A driven evaluation that includes the background requires a
+construction frequency within relative tolerance ``10^{-3}`` of the probed line.
 
 ## Background and channel split
 
 For an E1 reference pair, the near-resonant term moves from the background
 into the channel sum. The counter-rotating term stays in the background,
 so the split counts every term once at the construction frequency. The
-reference channel must be explicit in the [`LevelPolarisability`](@ref)
-data; a lumped remainder cannot be split.
+reference channel must be explicit in each available [`LevelPolarisability`](@ref)
+background; a lumped remainder cannot be split. If a level has no background
+data, its channels remain usable with `parts = :resonant`.
 
 Bare frequencies within ~100 GHz of an explicit E1 line are refused: precise
 component detunings require a reference that cancels the uncertain line
@@ -111,7 +117,7 @@ unguarded curves.
 
 For hyperfine states, explicit E1 channels resolve the known hyperfine
 splittings of both levels. This can produce a tensor response even for an
-``F`` level of a ``J = 1/2`` parent. With `B`, amplitudes rotate into both
+``F`` level of a ``J = 1/2`` parent. At a field, amplitudes rotate into both
 field eigenbases before squaring, and denominators use their eigen-energies.
 The static remainder is an electronic operator evaluated in the source
 eigenstate, retaining coherences between its ``F`` components.
