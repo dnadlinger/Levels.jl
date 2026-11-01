@@ -21,7 +21,7 @@ to the basis index range `r`, so that the drive term reads
 and of the perturbative [`quasienergy_shift`](@ref)).
 """
 function harmonic_block(drives, r)
-    H1 = zeros(ComplexF64, length(r), length(r)) .* u"µs^-1"
+    H1 = zeros(ComplexF64, length(r), length(r)) .* u"rad/µs"
     for drive in drives
         H1 .+= (0.5 * cis(drive.phase)) .* drive.amplitude[r, r]
     end
@@ -87,7 +87,7 @@ the (unitful) time to the phase; `Ω` is the fundamental drive frequency of the
 [`DrivenTransition`](@ref) in angular units.
 """
 function phase_function(modulation::HarmonicPhaseModulation, Ω)
-    Ω_si = ustrip(u"s^-1", Ω)
+    Ω_si = ustrip(u"rad/s", Ω)
     t -> modulation.β_cos * cos(Ω_si * t) + modulation.β_sin * sin(Ω_si * t)
 end
 
@@ -183,9 +183,9 @@ end
 # Normalises all matrices of a DrivenTransition to one common unit; the concrete
 # element type also keeps the drive vector typed when it is empty.
 function normalise_driven_matrices(coupling, drives)
-    coupling = uconvert.(u"µs^-1", complex.(coupling))
+    coupling = uconvert.(u"rad/µs", complex.(coupling))
     drives = HarmonicDrive{typeof(coupling)}[
-        HarmonicDrive(uconvert.(u"µs^-1", complex.(d.amplitude)), d.phase) for
+        HarmonicDrive(uconvert.(u"rad/µs", complex.(d.amplitude)), d.phase) for
         d in drives
     ]
     coupling, drives
@@ -254,7 +254,7 @@ function DrivenTransition(
     frame = map(collect(basis)) do state
         reference = state.level == lower_state.level ? lower_state : upper_state
         uconvert(
-            u"µs^-1",
+            u"rad/µs",
             zeeman_shift(species, state; B) - zeeman_shift(species, reference; B),
         )
     end

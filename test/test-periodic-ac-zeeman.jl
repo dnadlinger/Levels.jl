@@ -10,7 +10,7 @@
     using Levels.PeriodicDynamics
 
     const B0 = 0.49582u"mT"
-    const Ω_RF = 2π * 30.0u"MHz"
+    const Ω_RF = angular(30.0u"MHz")
     const S_PROBE = StateSpec("S_1/2 F=4", 4)
     const D_PROBE = StateSpec("D_5/2 F=4", 3)
     # B_⊥ x̂ + B_∥ ẑ, 50 µT each (the reference README scenario).
@@ -23,7 +23,7 @@ end
 @testitem "PT ac Zeeman shift vs reference implementation" tags=[:unit, :fast] setup=[
     Ca43ClockSetup,
 ] begin
-    hz(x) = ustrip(u"Hz", x / 2π)
+    hz(x) = ustrip(u"Hz", cyclic(x))
 
     # The stretched S(4,+4) state is an exact product state, so a pure π
     # (B_∥) drive shifts it by exactly zero…
@@ -94,21 +94,21 @@ end
     # full treatment.
     f(b) = ustrip(
         u"Hz",
-        (
+        cyclic(
             state_offset(d_manifold(b * u"mT"), D_PROBE) -
-            state_offset(s_manifold(b * u"mT"), S_PROBE)
-        ) / 2π,
+            state_offset(s_manifold(b * u"mT"), S_PROBE),
+        ),
     )
     curvature = central_fdm(7, 2)(f, ustrip(u"mT", B0)) # Hz/mT²
     b_par = 0.05 # mT
     slow = ac_zeeman_shift(
         ca43,
         S_PROBE => D_PROBE,
-        2π * 100.0u"Hz",
+        angular(100.0u"Hz"),
         [0.0u"mT", 0.0u"mT", b_par * u"mT"];
         B=B0,
     )
-    @test ustrip(u"Hz", slow.shift / 2π) ≈ curvature * b_par^2 / 4 rtol = 1e-3
+    @test ustrip(u"Hz", cyclic(slow.shift)) ≈ curvature * b_par^2 / 4 rtol = 1e-3
 end
 
 @testitem "PT vs Floquet dressing" tags=[:unit] setup=[Ca43ClockSetup] begin
@@ -122,7 +122,7 @@ end
         (d_manifold(), D_PROBE, (30.0, 60.0)),
     )
         for f_mhz in frequencies
-            ω = 2π * f_mhz * u"MHz"
+            ω = angular(f_mhz * u"MHz")
             pt = ac_zeeman_shift(manifold, state, ω, B_DRIVE)
             fl = ac_zeeman_shift(manifold, state, ω, B_DRIVE, Floquet())
             @test pt ≈ fl rtol = 2e-2
@@ -131,7 +131,7 @@ end
 
     # Harmonic-truncation convergence of the Floquet reference.
     m_d = d_manifold()
-    ω = 2π * 30.0u"MHz"
+    ω = angular(30.0u"MHz")
     @test ac_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=4)) ≈
           ac_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE, Floquet(; harmonic_cutoff=6)) rtol =
         1e-4
@@ -142,7 +142,7 @@ end
     # result is unreliable there.
     m_d = d_manifold()
     Δ = abs(state_offset(m_d, StateSpec("D_5/2 F=5", 3)) - state_offset(m_d, D_PROBE))
-    ω = Δ + 2π * 50.0u"kHz"
+    ω = Δ + angular(50.0u"kHz")
     @test_logs (:warn, r"Near-resonant term") match_mode = :any ac_zeeman_shift(
         m_d,
         D_PROBE,
@@ -170,7 +170,7 @@ end
         quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n),
         basis,
         S_PROBE => D_PROBE,
-        2π * 10.0u"kHz",
+        angular(10.0u"kHz"),
     )
     drives = zeeman_drives(ca43, basis, B_DRIVE)
     dt = DrivenTransition(
@@ -190,7 +190,7 @@ end
     m_s = s_manifold()
     for i in dt.lower_range
         @test dt.frame[i] ≈ state_offset(m_s, basis[i]) - state_offset(m_s, S_PROBE) atol =
-            1e-9u"µs^-1"
+            1e-9u"rad/µs"
     end
 
     # The model Hamiltonian is Hermitian, and the drive term seen by the model
@@ -209,7 +209,7 @@ end
     # up to the PT truncation error and the laser-induced ac Stark shift
     # (∝ Ω0², ~Hz here).
     sb = sideband_rabi(dt, DressedStates(; num_time_samples=32); sideband=0)
-    @test abs(sb.δ_res - wrapper.shift) < 2π * 10.0u"Hz"
+    @test abs(sb.δ_res - wrapper.shift) < angular(10.0u"Hz")
 
     # Constructor validation.
     @test_throws ArgumentError DrivenTransition(
@@ -237,7 +237,7 @@ end
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
         B=B0,
-        coupling=zeros(ComplexF64, 57, 57) .* u"µs^-1",
+        coupling=zeros(ComplexF64, 57, 57) .* u"rad/µs",
         drives=HarmonicDrive[],
     )
     bad_drive = HarmonicDrive(coupling .+ coupling', 0.0)
@@ -290,7 +290,7 @@ end
         quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n),
         basis,
         S_PROBE => D_PROBE,
-        2π * 2.0u"kHz",
+        angular(2.0u"kHz"),
     )
     dt = DrivenTransition(
         ca43,
@@ -310,5 +310,5 @@ end
     @test ex.Ω ≈ fl.Ω rtol = 1e-3
     # δ_res agrees between the engines up to the laser-induced ac Stark shift
     # (∝ Ω0², sub-Hz here).
-    @test abs(ex.δ_res - fl.δ_res) < 2π * 5.0u"Hz"
+    @test abs(ex.δ_res - fl.δ_res) < angular(5.0u"Hz")
 end

@@ -49,14 +49,14 @@ end
     # The measured ⁴³Ca⁺ ground-state splitting [Arbes1994] is recovered from
     # the Casimir shifts (A(I + 1/2), F = 3 above F = 4 as A < 0).
     splitting = hyperfine_shift(ca43, "S_1/2 F=3") - hyperfine_shift(ca43, "S_1/2 F=4")
-    @test splitting ≈ 2π * 3225.60828640u"MHz" rtol = 1e-12
+    @test splitting ≈ angular(3225.60828640u"MHz") rtol = 1e-12
 
     # The (2F+1)-weighted mean of the Casimir shifts vanishes: both the A and
     # the B term are traceless over the manifold, so the centroid is preserved.
     for level in ("S_1/2", "D_5/2", "D_3/2", "P_3/2")
         levels = hyperfine_levels(ca43, level)
         mean = sum(Int(2l.f + 1) * hyperfine_shift(ca43, l) for l in levels)
-        @test abs(mean) < 2π * 1e-3u"Hz"
+        @test abs(mean) < angular(1e-3u"Hz")
     end
 
     # The zero-field manifold Hamiltonian is diagonal with the Casimir shifts —
@@ -64,7 +64,7 @@ end
     basis = StateBasis(ca43, "D_5/2")
     h = manifold_hamiltonian(ca43, "D_5/2"; B=0.0u"mT")
     expected = Diagonal([hyperfine_shift(ca43, s.level) for s in basis])
-    @test all(abs.(h .- expected) .< 2π * 1e-6u"Hz")
+    @test all(abs.(h .- expected) .< angular(1e-6u"Hz"))
 
     # Casimir shift needs known constants and a genuine F level.
     @test_throws ArgumentError hyperfine_shift(ca43, "F_5/2 F=3")
@@ -103,7 +103,7 @@ end
     for b_mt in (0.01, 0.1, 0.4965, 1.0)
         m = hyperfine_manifold(ca43, "S_1/2"; B=b_mt * u"mT")
         for state in m.basis
-            e_pkg = ustrip(u"s^-1", state_offset(m, state)) / 2π
+            e_pkg = ustrip(u"Hz", cyclic(state_offset(m, state)))
             e_ref = breit_rabi(b_mt * 1e-3, Float64(state.level.f), Float64(state.m))
             @test e_pkg ≈ e_ref rtol = 1e-12 atol = 1e-3
         end
@@ -128,8 +128,8 @@ end
     # Eigenvectors are orthonormal, and diagonalise the manifold Hamiltonian
     # with the stored (label-aligned) energies.
     @test m.states' * m.states ≈ I atol = 1e-12
-    h = ustrip.(u"µs^-1", manifold_hamiltonian(ca43, "D_5/2"; B=0.496u"mT"))
-    @test m.states' * h * m.states ≈ diagm(ustrip.(u"µs^-1", m.energies)) atol = 1e-10
+    h = ustrip.(u"rad/µs", manifold_hamiltonian(ca43, "D_5/2"; B=0.496u"mT"))
+    @test m.states' * h * m.states ≈ diagm(ustrip.(u"rad/µs", m.energies)) atol = 1e-10
 
     # Labels are undefined at zero field.
     @test_throws ArgumentError hyperfine_manifold(ca43, "D_5/2"; B=0.0u"mT")
@@ -145,7 +145,7 @@ end
         (StateSpec("D_5/2 F=2", 1), 3e-7u"mT"),
     )
         expected = uconvert(
-            u"µs^-1",
+            u"rad/µs",
             lande_g(ca43, state.level) * state.m * Levels.BOHR_MAGNETON * b / u"ħ",
         )
         @test zeeman_shift(ca43, state; B=b) ≈ expected rtol = 1e-5
@@ -227,16 +227,16 @@ end
             )
         )
     u = coupling_transform(ca43, "S_1/2")
-    @test maximum(abs.(h .- u' * product * u)) < 2π * 1e-8u"Hz"
+    @test maximum(abs.(h .- u' * product * u)) < angular(1e-8u"Hz")
 
     # A transverse field mixes neighbouring F levels within the manifold…
     @test abs(h[stateindex(basis, "S_1/2 F=3", 2), stateindex(basis, "S_1/2 F=4", 3)]) >
-          2π * 1u"Hz"
+          angular(1u"Hz")
     # …while a longitudinal field is diagonal in m_F.
     hz = zeeman_hamiltonian(ca43, basis; B=[0.0, 0.0, 0.5]u"mT")
     for i in 1:length(basis), k in 1:length(basis)
         if basis[i].m != basis[k].m
-            @test abs(hz[i, k]) < 2π * 1e-9u"Hz"
+            @test abs(hz[i, k]) < angular(1e-9u"Hz")
         end
     end
 
@@ -273,7 +273,7 @@ end
     # on the remaining GHz-scale energies.)
     energy_hz(manifold, state, b) = ustrip(
         u"Hz",
-        state_offset(hyperfine_manifold(ca43, manifold; B=b * u"mT"), state) / 2π,
+        cyclic(state_offset(hyperfine_manifold(ca43, manifold; B=b * u"mT"), state)),
     )
     for b_mt in (0.3, 0.496)
         χ_hf = ustrip(u"Hz/mT", zeeman_sensitivity(ca43, s => d; B=b_mt * u"mT") / 2π)
@@ -295,7 +295,7 @@ end
         ca43,
         StateSpec("S_1/2 F=4", 0) => StateSpec("S_1/2 F=3", 0);
         B=1e-9u"mT",
-    ) ≈ 2π * 3225.60828640u"MHz" rtol = 1e-9
+    ) ≈ angular(3225.60828640u"MHz") rtol = 1e-9
 end
 
 @testitem "Field-insensitive points" tags=[:unit, :fast] begin
@@ -314,8 +314,8 @@ end
 
     # By default the root is converged to the floating-point limit, so the residual
     # sensitivity should just be numerical noise.
-    @test abs(zeeman_sensitivity(ca43, s => d; B=upper)) < 1e-12u"µs^-1/mT"
-    @test abs(zeeman_sensitivity(ca43, s => d; B=lower)) < 1e-12u"µs^-1/mT"
+    @test abs(zeeman_sensitivity(ca43, s => d; B=upper)) < 1e-12u"rad/µs/mT"
+    @test abs(zeeman_sensitivity(ca43, s => d; B=lower)) < 1e-12u"rad/µs/mT"
     # The finite-tolerance result should lie within the expected interval.
     coarse = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"); abstol=1e-4u"mT")
     @test abs(coarse - upper) < 1e-4u"mT"

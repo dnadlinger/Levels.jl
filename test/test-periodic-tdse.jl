@@ -18,7 +18,7 @@
         ex = sideband_rabi(dt, Monodromy(); sideband=sb, modulation)
         @test fl.Ω ≈ ex.Ω rtol = 1e-3
         # δ_res agrees up to the laser-induced ac Stark shift (∝ Ω0², ~200 Hz here).
-        @test abs(fl.δ_res - ex.δ_res) < 2π * 500.0u"Hz"
+        @test abs(fl.δ_res - ex.δ_res) < angular(500.0u"Hz")
     end
 end
 
@@ -33,7 +33,7 @@ end
     modulation = HarmonicPhaseModulation(0.01, 0.01)
 
     ex = sideband_rabi(dt, Monodromy(); sideband=+1, modulation)
-    period = 2π / Ω_RF
+    period = 2π * u"rad" / Ω_RF
     n_π = round(Int, uconvert(NoUnits, π / ex.Ω / period))   # periods per π-pulse
     populations =
         stroboscopic_populations(dt, round(Int, 1.2 * n_π); δ=ex.δ_res, modulation)

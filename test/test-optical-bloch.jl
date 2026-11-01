@@ -31,7 +31,7 @@
         Δ866;
         P397=10u"µW",
         P866=50u"µW",
-        linewidth=0.0u"µs^-1",
+        linewidth=0.0u"rad/µs",
         kwargs...,
     )
         n397, ε397 = beam_vectors(deg2rad(-140.0), 0.0)
@@ -79,7 +79,7 @@
         einstein_as=sr88.einstein_as,
     )
 
-    strip_h(M) = ustrip.(u"µs^-1", M)
+    strip_h(M) = ustrip.(u"rad/µs", M)
 
     # The effective two-level system of sideband-cooling theory, built as a toy
     # species: a closed σ⁻ cycle |S₁/₂, −½⟩ ↔ |P₃/₂, −3/2⟩ at 411 nm whose
@@ -128,13 +128,18 @@ end
     using StaticArrays: SVector
 
     n, ε = beam_vectors(0.4, 0.3)
-    beam = LaserBeam("S_1/2" => "P_1/2", 2π * 10.0u"MHz", 3.0u"W/m^2", 2ε, 5n)
+    beam = LaserBeam("S_1/2" => "P_1/2", angular(10.0u"MHz"), 3.0u"W/m^2", 2ε, 5n)
     @test beam.ε isa SVector{3,ComplexF64} && beam.direction isa SVector{3,Float64}
     @test beam.ε ≈ ε && beam.direction ≈ n   # normalised
     @test iszero(beam.linewidth)
-    @test beam.frequency == RelativeFrequency("S_1/2" => "P_1/2", 2π * 10.0u"MHz")
-    @test LaserBeam(beam.frequency, 3.0u"mW/cm^2", ε, n; linewidth=2π * 0.1u"MHz").linewidth ==
-          2π * 0.1u"MHz"
+    @test beam.frequency == RelativeFrequency("S_1/2" => "P_1/2", angular(10.0u"MHz"))
+    @test LaserBeam(
+        beam.frequency,
+        3.0u"mW/cm^2",
+        ε,
+        n;
+        linewidth=angular(0.1u"MHz"),
+    ).linewidth == angular(0.1u"MHz")
 
     @test_throws ArgumentError LaserBeam(beam.frequency, 3.0u"W", ε, n)        # not an intensity
     @test_throws ArgumentError LaserBeam(beam.frequency, 3.0u"W/m^2", ε, ε)      # ε ∥ n
@@ -144,7 +149,7 @@ end
         3.0u"W/m^2",
         ε,
         n;
-        linewidth=-1.0u"µs^-1",
+        linewidth=-1.0u"rad/µs",
     )
     @test_throws ArgumentError LaserBeam(
         beam.frequency,
@@ -169,10 +174,10 @@ end
         B=0.5u"mT",
         frame_reference="D_3/2",
     )
-    other = LaserBeam("D_3/2" => "P_1/2", 0.0u"µs^-1", 3.0u"W/m^2", ε, n)
+    other = LaserBeam("D_3/2" => "P_1/2", 0.0u"rad/µs", 3.0u"W/m^2", ε, n)
     @test_throws ArgumentError LaserScheme(basis, [beam, other]; B=0.5u"mT")
     # Hyperfine reference levels on a fine-structure basis (and vice versa).
-    hf_beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=4", 0.0u"µs^-1", 3.0u"W/m^2", ε, n)
+    hf_beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=4", 0.0u"rad/µs", 3.0u"W/m^2", ε, n)
     @test_throws ArgumentError LaserScheme(basis, [hf_beam]; B=0.5u"mT")
     @test_throws ArgumentError LaserScheme(
         StateBasis(ca43, "S_1/2", "P_1/2"),
@@ -180,11 +185,11 @@ end
         B=0.5u"mT",
     )
 
-    mode = MotionalMode(2π * 1.2u"MHz", [1.0, 0.0, 1.0])
+    mode = MotionalMode(angular(1.2u"MHz"), [1.0, 0.0, 1.0])
     @test mode.direction ≈ [1, 0, 1] / sqrt(2)
     @test_throws ArgumentError MotionalMode(1.2u"MHz" * 0, [0.0, 0.0, 1.0])
     @test_throws ArgumentError MotionalMode(1.2u"m", [0.0, 0.0, 1.0])
-    @test_throws ArgumentError MotionalMode(2π * 1.2u"MHz", [0.0, 0.0, 0.0])
+    @test_throws ArgumentError MotionalMode(angular(1.2u"MHz"), [0.0, 0.0, 0.0])
 end
 
 @testitem "Rotating frame over the beam graph" tags=[:unit, :fast] setup=[
@@ -192,8 +197,8 @@ end
 ] begin
     basis = StateBasis(["S_1/2", "P_1/2", "D_3/2"])
     n, ε = beam_vectors(π / 2, π / 4)
-    Δ1 = 2π * 20.0u"MHz"
-    Δ2 = 2π * -35.0u"MHz"
+    Δ1 = angular(20.0u"MHz")
+    Δ2 = angular(-35.0u"MHz")
     I0 = 1.0u"W/m^2"
     b422 = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε, n)
     b1092 = LaserBeam("D_3/2" => "P_1/2", Δ2, I0, ε, n)
@@ -205,7 +210,7 @@ end
     frame = rotating_frame(sr88, LaserScheme(basis, [b422, b1092]; B=0.5u"mT"))
     @test frame.kind == :levels
     @test frame.reference == P
-    @test offset(frame, P) == 0.0u"µs^-1"
+    @test offset(frame, P) == 0.0u"rad/µs"
     @test offset(frame, S) ≈ -Δ1
     @test offset(frame, D) ≈ -Δ2
     @test frame.tree_beams == [1, 2]
@@ -224,7 +229,7 @@ end
         sr88,
         LaserScheme(basis, [b422, b1092]; B=0.5u"mT", frame_reference="S_1/2"),
     )
-    @test offset(frame_s, S) == 0.0u"µs^-1"
+    @test offset(frame_s, S) == 0.0u"rad/µs"
     @test offset(frame_s, P) ≈ Δ1
     @test offset(frame_s, D) ≈ Δ1 - Δ2
     @test traversal(frame_s, D) == [1, -1]
@@ -235,7 +240,7 @@ end
     # A second beam on an already connected pair beats at the detuning
     # difference (one beat entry per coupling component); an identical-frequency
     # one does not (and adds coherently).
-    Δ3 = 2π * 26.0u"MHz"
+    Δ3 = angular(26.0u"MHz")
     b422b = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε, n)
     frame_b = rotating_frame(sr88, LaserScheme(basis, [b422, b1092, b422b]; B=0.5u"mT"))
     @test frame_b.tree_beams == [1, 2]
@@ -260,7 +265,7 @@ end
     # A loop of beams: the fourth beam closes S–P₁/₂–D₃/₂–P₃/₂–S and beats at the
     # frequency mismatch around the loop.
     basis4 = StateBasis(["S_1/2", "P_1/2", "D_3/2", "P_3/2"])
-    Δ4, Δ5 = 2π * 12.0u"MHz", 2π * -7.0u"MHz"
+    Δ4, Δ5 = angular(12.0u"MHz"), angular(-7.0u"MHz")
     b408 = LaserBeam("S_1/2" => "P_3/2", Δ4, I0, ε, n)
     b1004 = LaserBeam("D_3/2" => "P_3/2", Δ5, I0, ε, n)
     frame_4 = rotating_frame(
@@ -274,7 +279,7 @@ end
     # A level no beam reaches keeps its centroid as frame frequency.
     basis5 = StateBasis(["S_1/2", "P_1/2", "D_3/2", "D_5/2"])
     frame_5 = rotating_frame(sr88, LaserScheme(basis5, [b422, b1092]; B=0.5u"mT"))
-    @test frame_offset(frame_5, basis5, "D_5/2") == 0.0u"µs^-1"
+    @test frame_offset(frame_5, basis5, "D_5/2") == 0.0u"rad/µs"
 
     # Hyperfine reference levels: the frame offset across a beam includes the
     # zero-field hyperfine shifts of its reference F levels.
@@ -313,7 +318,7 @@ end
     # The tree is rooted at the first state of the reference level, S₋.
     s_p, s_m = stateindex(sp, "S_1/2", 1 // 2), stateindex(sp, "S_1/2", -1 // 2)
     p_p, p_m = stateindex(sp, "P_1/2", 1 // 2), stateindex(sp, "P_1/2", -1 // 2)
-    @test states_frame.offsets[s_m] == 0.0u"µs^-1"
+    @test states_frame.offsets[s_m] == 0.0u"rad/µs"
     @test states_frame.offsets[p_p] ≈ Δ1           # S₋ → P₊ via the pump
     @test states_frame.offsets[s_p] ≈ Δ1 - Δ3      # P₊ ← S₊ via the probe
     @test states_frame.offsets[p_m] ≈ Δ3           # S₋ → P₋ via the probe
@@ -337,18 +342,18 @@ end
 end
 
 @testitem "Lindblad model of the Λ system" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
-    Δ397, Δ866 = 2π * 300.0u"MHz", 2π * 290.0u"MHz"
+    Δ397, Δ866 = angular(300.0u"MHz"), angular(290.0u"MHz")
     scheme = lambda_scheme(Δ397, Δ866)
     model = lindblad_model(CA40_NONREL_G, scheme)
     basis = LAMBDA_BASIS
-    u = uconvert(u"µs^-1", Levels.BOHR_MAGNETON * B_LAMBDA / u"ħ")
+    u = uconvert(u"rad/µs", Levels.BOHR_MAGNETON * B_LAMBDA / u"ħ")
     H = model.hamiltonian
     @test ishermitian(strip_h(H))
 
     # Frame diagonal with the P level as reference: Zeeman shifts g m u, plus the
     # detuning of the beam connecting to the reference for the lower levels.
     g = Dict("S_1/2" => 2.0, "D_3/2" => 4 / 5, "P_1/2" => 2 / 3)
-    detuning = Dict("S_1/2" => Δ397, "D_3/2" => Δ866, "P_1/2" => 0.0u"µs^-1")
+    detuning = Dict("S_1/2" => Δ397, "D_3/2" => Δ866, "P_1/2" => 0.0u"rad/µs")
     for (i, state) in enumerate(basis)
         key =
             only(k for k in keys(g) if convert(NoHyperfineNumberSpec, k) == state.level)
@@ -389,7 +394,7 @@ end
     A_pd = einstein_a(CA40_NONREL_G, "D_3/2" => "P_1/2")
     A_ds = einstein_a(CA40_NONREL_G, "S_1/2" => "D_3/2")
     total = sum(L' * L for L in ops)
-    expected = zeros(ComplexF64, 8, 8) .* u"µs^-1"
+    expected = zeros(ComplexF64, 8, 8) .* u"rad/µs"
     for i in p
         expected[i, i] = A_ps + A_pd
     end
@@ -460,7 +465,7 @@ end
         sr88,
         LaserScheme(
             partial,
-            [LaserBeam("S_1/2" => "P_1/2", 0.0u"µs^-1", 1.0u"W/m^2", ε_σ, n_z)];
+            [LaserBeam("S_1/2" => "P_1/2", 0.0u"rad/µs", 1.0u"W/m^2", ε_σ, n_z)];
             B=0.0u"mT",
         );
         open_channels=:drop,
@@ -483,8 +488,8 @@ end
 end
 
 @testitem "Laser dephasing operators" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
-    γ = 2π * 0.1u"MHz"
-    Δ397, Δ866 = 2π * 300.0u"MHz", 2π * 290.0u"MHz"
+    γ = angular(0.1u"MHz")
+    Δ397, Δ866 = angular(300.0u"MHz"), angular(290.0u"MHz")
     model_p = lindblad_model(CA40_NONREL_G, lambda_scheme(Δ397, Δ866; linewidth=γ))
     model_s = lindblad_model(
         CA40_NONREL_G,
@@ -516,8 +521,14 @@ end
 
     # A beat-note beam cannot carry a linewidth.
     n, ε = beam_vectors(deg2rad(-140.0), 0.0)
-    extra =
-        LaserBeam("S_1/2" => "P_1/2", 2π * 310.0u"MHz", 1.0u"W/m^2", ε, n; linewidth=γ)
+    extra = LaserBeam(
+        "S_1/2" => "P_1/2",
+        angular(310.0u"MHz"),
+        1.0u"W/m^2",
+        ε,
+        n;
+        linewidth=γ,
+    )
     scheme = lambda_scheme(Δ397, Δ866)
     @test_throws ArgumentError lindblad_model(
         CA40_NONREL_G,
@@ -529,7 +540,7 @@ end
     B = 0.5u"mT"
     n, ε = beam_vectors(π / 2, π / 4)
     I0 = 2.0u"W/m^2"
-    Δ = 2π * 5.0u"MHz"
+    Δ = angular(5.0u"MHz")
 
     # Zero hyperfine constants: the hyperfine model is the fine-structure one
     # tensored with the nuclear spin — the Hamiltonian spectrum doubles, each
@@ -559,7 +570,7 @@ end
     @test ishermitian(strip_h(hf.hamiltonian))
     e_hf = sort(eigvals(Hermitian(strip_h(hf.hamiltonian))))
     e_fs = eigvals(Hermitian(strip_h(fs.hamiltonian)))
-    u_I = -SR88_TOY_HF.nuclear_g * ustrip(u"µs^-1", Levels.NUCLEAR_MAGNETON * B / u"ħ")
+    u_I = -SR88_TOY_HF.nuclear_g * ustrip(u"rad/µs", Levels.NUCLEAR_MAGNETON * B / u"ħ")
     @test e_hf ≈ sort([e + m_I * u_I for e in e_fs for m_I in (-1 / 2, 1 / 2)]) atol = 1e-8
     total_hf = sum(L' * L for L in hf.jump_operators)
     for (i, state) in enumerate(hf_basis)
@@ -600,10 +611,10 @@ end
 end
 
 @testitem "Motional coupling" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
-    Δ397, Δ866 = 2π * 300.0u"MHz", 2π * 290.0u"MHz"
+    Δ397, Δ866 = angular(300.0u"MHz"), angular(290.0u"MHz")
     scheme = lambda_scheme(Δ397, Δ866)
     model = lindblad_model(CA40_NONREL_G, scheme)
-    ω_m = 2π * 1.1u"MHz"
+    ω_m = angular(1.1u"MHz")
     mode_z = MotionalMode(ω_m, [0, 0, 1.0])
     mc = motional_coupling(CA40_NONREL_G, scheme, model, mode_z)
 
@@ -713,7 +724,7 @@ end
     @test all(strip_h(model.couplings[b]) ≈ strip_h(C[b]) for b in 1:2)
 
     # Several modes at once.
-    modes = [mode_z, MotionalMode(2π * 2.0u"MHz", [1.0, 0, 1.0])]
+    modes = [mode_z, MotionalMode(angular(2.0u"MHz"), [1.0, 0, 1.0])]
     mcs = motional_coupling(CA40_NONREL_G, scheme, model, modes)
     @test length(mcs) == 2
     @test mcs[1].sideband_hamiltonian == mc.sideband_hamiltonian
@@ -918,7 +929,7 @@ end
 ] setup=[OpticalBlochSetup] begin
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     lower, upper = StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)
-    Ω = 2π * 10.0u"MHz"
+    Ω = angular(10.0u"MHz")
     I0 = intensity_for_rabi(sr88, lower => upper, Ω, ε_σ, n_z)
     @test dimension(I0) == dimension(1.0u"W/m^2")
     @test abs(rabi_frequency(sr88, lower => upper, I0, ε_σ, n_z)) ≈ Ω
@@ -942,7 +953,7 @@ end
 
     # Detuning from a Zeeman component at field: the offset carries the Zeeman
     # shifts of the two states relative to the zero-field line centre.
-    δ = 2π * 1.5u"MHz"
+    δ = angular(1.5u"MHz")
     rf = RelativeFrequency(sr88, lower => upper, δ; B)
     @test rf.lower == convert(NoHyperfineNumberSpec, "S_1/2")
     @test rf.upper == convert(NoHyperfineNumberSpec, "P_1/2")

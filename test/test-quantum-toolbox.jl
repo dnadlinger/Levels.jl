@@ -56,17 +56,17 @@ end
         TRANSITIONS[3];
         drives=zeeman_drives(sr88, BASIS, [12.0 + 5.0im, 5.0 - 3.0im, 8.0im] .* u"µT"),
     )
-    δ = 2π * 1.23u"kHz"
+    δ = angular(1.23u"kHz")
     fh = fourier_hamiltonians(dt; δ)
 
-    @test fh.ωd ≈ ustrip(u"µs^-1", Ω_RF)
+    @test fh.ωd ≈ ustrip(u"rad/µs", Ω_RF)
     @test fh.H_m.data == adjoint(fh.H_p.data)
     @test ishermitian(fh.H_0.data)
 
     # The three components reassemble the full Hamiltonian at any time.
     for θ in 0.0:0.4:6.0
         t = θ / dt.drive_frequency
-        H_t = ustrip.(u"µs^-1", Levels.PeriodicDynamics.full_hamiltonian(dt, t; δ))
+        H_t = ustrip.(u"rad/µs", Levels.PeriodicDynamics.full_hamiltonian(dt, t; δ))
         @test fh.H_0.data .+ cis(θ) .* fh.H_p.data .+ cis(-θ) .* fh.H_m.data ≈ H_t
     end
 
@@ -103,7 +103,7 @@ end
     # S manifold is bright → excited.
     ε = [1.0, -1.0im, 0.0] ./ sqrt(2)
     beam = [0.0, 0.0, 1.0]
-    coupling = zeros(ComplexF64, 4, 4) .* u"µs^-1"
+    coupling = zeros(ComplexF64, 4, 4) .* u"rad/µs"
     for ml in (-1 // 2, 1 // 2), mu in (-1 // 2, 1 // 2)
         lo, up = StateSpec("S_1/2", ml), StateSpec("P_1/2", mu)
         coupling[stateindex(sb, up), stateindex(sb, lo)] = rabi_frequency(
@@ -133,7 +133,7 @@ end
         sr88,
         sb,
         bright => excited;
-        drive_frequency=2π * 50.48559u"MHz",
+        drive_frequency=angular(50.48559u"MHz"),
         B=0.4955125u"mT",
         coupling,
         drives=zeeman_drives(sr88, sb, b),

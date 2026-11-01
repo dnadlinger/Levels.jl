@@ -40,7 +40,7 @@ end
     # interval [Solaro2018], 397 nm [Gebert2015], 393 nm [Shi2017]) against the
     # directly measured 3d → 4p intervals of [Muller2020], Table III.
     interval(lo, hi) =
-        uconvert(u"MHz", Levels.transition_frequency(ca40, lo => hi) / 2π)
+        uconvert(u"MHz", cyclic(Levels.transition_frequency(ca40, lo => hi)))
     @test interval("D_3/2", "P_1/2") ≈ 346_000_235.13u"MHz" atol = 0.2u"MHz"
     @test interval("D_3/2", "P_3/2") ≈ 352_682_481.93u"MHz" atol = 0.2u"MHz"
     @test interval("D_5/2", "P_3/2") ≈ 350_862_882.63u"MHz" atol = 0.3u"MHz"

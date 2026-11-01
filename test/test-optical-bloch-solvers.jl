@@ -35,14 +35,16 @@
         @test size(liouvillian(model).data) == (4, 4)
     end
     # A density matrix of the wrong size is rejected.
-    beam = LaserBeam("S_1/2" => "P_1/2", 0.0u"µs^-1", I_sat, ε_σ, n_z)
+    beam = LaserBeam("S_1/2" => "P_1/2", 0.0u"rad/µs", I_sat, ε_σ, n_z)
     two = lindblad_model(
         sr88,
         LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2");
         open_channels=:drop,
     )
-    eight =
-        lindblad_model(CA40_NONREL_G, lambda_scheme(2π * 300.0u"MHz", 2π * 290.0u"MHz"))
+    eight = lindblad_model(
+        CA40_NONREL_G,
+        lambda_scheme(angular(300.0u"MHz"), angular(290.0u"MHz")),
+    )
     @test_throws ArgumentError populations(steadystate(two), eight)
 end
 
@@ -74,22 +76,22 @@ end
     # |S, m_s⟩–|P, m_p⟩–|D, m_d⟩ at Δ866 = Δ397 + Δω_s − Δω_d up to the light
     # shift of the excited state by the 397 nm beam. The lowest-lying dip is the
     # |S, −½⟩–|P, +½⟩–|D, +3/2⟩ system.
-    Δ397 = 2π * 300.0u"MHz"
-    u = uconvert(u"µs^-1", Levels.BOHR_MAGNETON * B_LAMBDA / u"ħ")
+    Δ397 = angular(300.0u"MHz")
+    u = uconvert(u"rad/µs", Levels.BOHR_MAGNETON * B_LAMBDA / u"ħ")
     function p_population(Δ866)
         model = lindblad_model(CA40_NONREL_G, lambda_scheme(Δ397, Δ866))
         populations(steadystate(model), model, "P_1/2")
     end
     analytic = Δ397 + 2 * (-1 / 2) * u - 4 / 5 * (3 / 2) * u   # Zeeman shifts g m u
-    @test analytic / 2π ≈ 287.923u"MHz" atol = 0.002u"MHz"
-    dip = golden_min(x -> p_population(2π * x * u"MHz"), 287.5, 288.4)
+    @test cyclic(analytic) ≈ 287.923u"MHz" atol = 0.002u"MHz"
+    dip = golden_min(x -> p_population(angular(x * u"MHz")), 287.5, 288.4)
     # The 397 nm light shift of the excited state moves the resonance up by
     # ~0.1 MHz from the bare two-photon condition.
     @test 287.92 < dip < 288.1
-    @test dip > ustrip(u"MHz", analytic / 2π)
+    @test dip > ustrip(u"MHz", cyclic(analytic))
     # Contrast: the dip is deep against the off-resonant background.
-    background = p_population(2π * 285.0u"MHz")
-    @test p_population(2π * dip * u"MHz") < 0.7 * background
+    background = p_population(angular(285.0u"MHz"))
+    @test p_population(angular(dip * u"MHz")) < 0.7 * background
     @test background ≈ 5.0e-4 rtol = 0.15
 end
 
@@ -104,7 +106,7 @@ end
     B = 0.5u"mT"
     n, ε = beam_vectors(deg2rad(60.0), 0.4, 0.2)
     I0 = 3.0u"W/m^2"
-    Δ = 2π * 5.0u"MHz"
+    Δ = angular(5.0u"MHz")
     hf_basis = StateBasis(SR88_TOY_HF, "S_1/2", "P_1/2", "D_3/2")
     fs_basis = StateBasis(["S_1/2", "P_1/2", "D_3/2"])
     hf = lindblad_model(
@@ -150,7 +152,7 @@ end
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     Γ = 2 / 3 * einstein_a(sr88, "S_1/2" => "P_1/2")
     I_sat = saturation_intensity(sr88, "S_1/2" => "P_1/2")
-    ω_m = 2π * 20.0u"MHz"
+    ω_m = angular(20.0u"MHz")
     mode = MotionalMode(ω_m, [0, 0, 1.0])
     for (s, δ_over_ω) in ((0.01, -1.0), (0.01, -0.7), (0.05, -1.0), (0.01, 1.0))
         δ = δ_over_ω * ω_m
@@ -205,7 +207,7 @@ end
     beam = LaserBeam("S_1/2" => "P_1/2", -ω_m, 0.01I_sat, ε_σ, n_z)
     scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
     model = lindblad_model(sr88, scheme; open_channels=:drop)
-    modes = [mode, MotionalMode(2π * 5.0u"MHz", [1.0, 0, 1.0])]
+    modes = [mode, MotionalMode(angular(5.0u"MHz"), [1.0, 0, 1.0])]
     mcs = motional_coupling(sr88, scheme, model, modes)
     many = cooling_rates(model, mcs)
     @test length(many) == 2
@@ -230,10 +232,14 @@ end
     # populations agree to ~10 %. (The relaxation time is not compared: at
     # n̄ ≈ 3 the slowest mode of a Fock space truncated at 8 is set by the
     # truncation; the two-level item above pins cooling_time.)
-    ω_m = 2π * 1.1u"MHz"
+    ω_m = angular(1.1u"MHz")
     mode = MotionalMode(ω_m, [0, 0, 1.0])
-    scheme =
-        lambda_scheme(2π * 300.0u"MHz", 2π * 289.0u"MHz"; P397=1.0u"µW", P866=5.0u"µW")
+    scheme = lambda_scheme(
+        angular(300.0u"MHz"),
+        angular(289.0u"MHz");
+        P397=1.0u"µW",
+        P866=5.0u"µW",
+    )
     model = lindblad_model(CA40_NONREL_G, scheme)
     mc = motional_coupling(CA40_NONREL_G, scheme, model, mode)
     ρ = steadystate(model)
@@ -254,7 +260,7 @@ end
     # Two modes in one full model: each recovers its own occupation (the
     # second, off-resonant mode is heated, i.e. its occupation is set by the
     # truncation and the rate model reports NaN).
-    modes = [mode, MotionalMode(2π * 2.3u"MHz", [0, 0, 1.0])]
+    modes = [mode, MotionalMode(angular(2.3u"MHz"), [0, 0, 1.0])]
     mcs = motional_coupling(CA40_NONREL_G, scheme, model, modes)
     two = motional_model(model, mcs; num_fock=[6, 3])
     ρ_two = steadystate(two)
@@ -280,9 +286,9 @@ end
     using QuantumToolbox: liouvillian, steadystate, destroy, expect
     using SparseArrays
 
-    ω = 2π * 0.6u"MHz"
+    ω = angular(0.6u"MHz")
     γ = 2π * 50.0u"kHz"
-    Ω = 2π * 200.0u"kHz"
+    Ω = angular(200.0u"kHz")
     t = sideband_toy(; γ, ω, η=0.1, Ω, δ=(-ω))
     @test abs(2 * t.model.hamiltonian[2, 1]) ≈ Ω
     @test t.mc.emission == :isotropic && t.mc.recoil_moments == [1 / 3]
@@ -318,7 +324,7 @@ end
     H_sb = strip_h(t.mc.sideband_hamiltonian)
     expected =
         kron(H_int, I(num_fock)) +
-        ustrip(u"µs^-1", ω) * kron(I(2), a' * a) +
+        ustrip(u"rad/µs", ω) * kron(I(2), a' * a) +
         kron(H_sb, x)
     @test Matrix(first_order.H.data) ≈ expected atol = 1e-12
     R = ustrip.(u"µs^(-1/2)", t.mc.recoil_operators[1])
@@ -331,7 +337,7 @@ end
     T = kron(C, D) / 2
     @test Matrix(exact.H.data) ≈
           kron(Diagonal(diag(H_int)), I(num_fock)) +
-          ustrip(u"µs^-1", ω) * kron(I(2), a' * a) +
+          ustrip(u"rad/µs", ω) * kron(I(2), a' * a) +
           T +
           T' atol = 1e-12
     h, w = emission_rule(0, 0, Z_AXIS)
@@ -376,7 +382,7 @@ end
         ex = motional_model(s.model, s.mc; num_fock, lamb_dicke_order=Inf)
         ld = motional_model(s.model, s.mc; num_fock)
         sq = motional_model(s.model, s.mc; num_fock, lamb_dicke_order=2)
-        scale = ustrip(u"µs^-1", Ω) * num_fock
+        scale = ustrip(u"rad/µs", Ω) * num_fock
         @test maximum(abs, ex.H.data - ld.H.data) < 2 * η^2 * scale
         @test maximum(abs, ex.H.data - sq.H.data) < 2 * η^3 * scale
         Lex = liouvillian(ex).data
@@ -480,9 +486,9 @@ end
 
     # Weak drive, small η: the full model relaxes like the adiabatic-elimination
     # rate equation, whatever the Lamb–Dicke order.
-    ω = 2π * 0.6u"MHz"
+    ω = angular(0.6u"MHz")
     γ = 2π * 50.0u"kHz"
-    s = sideband_toy(; γ, ω, η=0.02, Ω=2π * 20.0u"kHz", δ=(-ω))
+    s = sideband_toy(; γ, ω, η=0.02, Ω=angular(20.0u"kHz"), δ=(-ω))
     ae = cooling_metrics(s.model, s.mc, AdiabaticElimination())
     @test ae isa CoolingMetrics
     @test ae.method == AdiabaticElimination() &&
@@ -550,7 +556,7 @@ end
     # Several modes: one joint model, per-mode metrics (the second, far
     # off-resonant mode barely couples, so its full-model occupation is set by
     # its tiny rates and compares loosely).
-    modes = [s.mode, MotionalMode(2π * 2.5u"MHz", Z_AXIS)]
+    modes = [s.mode, MotionalMode(angular(2.5u"MHz"), Z_AXIS)]
     mcs =
         motional_coupling(s.species, s.scheme, s.model, modes; recoil_moment=:isotropic)
     many_ae = cooling_metrics(s.model, mcs, AdiabaticElimination())
@@ -574,7 +580,7 @@ end
     # The internal problem alone: the integrated transient of a level population
     # — the quench-rate construction — on a LindbladModel.
     decaying =
-        sideband_toy(; γ=2π * 1.0u"MHz", ω, η=0.05, Ω=1e-9u"µs^-1", δ=0.0u"µs^-1")
+        sideband_toy(; γ=2π * 1.0u"MHz", ω, η=0.05, Ω=1e-9u"rad/µs", δ=0.0u"rad/µs")
     solver = IntegratedTransientSolver(
         decaying.model,
         level_projector(decaying.model, "P_3/2"),
@@ -594,9 +600,9 @@ end
     # silently returned τ ≈ −7e9; strict pivoting gives the converged value
     # (Kulosa et al. 2023, Fig. 1(b) scenario; regression from the
     # quenched-sideband-cooling example).
-    ω = 2π * 0.6u"MHz"
+    ω = angular(0.6u"MHz")
     γ = 2π * 50.0u"kHz"
-    s = sideband_toy(; γ, ω, η=0.1, Ω=2π * 500.0u"kHz", δ=(-ω))
+    s = sideband_toy(; γ, ω, η=0.1, Ω=angular(500.0u"kHz"), δ=(-ω))
     num_fock = fock_truncation(20.0)
     @test num_fock == 189
     m = cooling_metrics(s.model, s.mc, IntegratedTransient(; initial_nbar=20.0))

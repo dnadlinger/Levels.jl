@@ -380,7 +380,7 @@ function rabi_from_amplitude(
         20.0, quadrupole_geometry(ε, direction)[Int(Δm)+3] / (ε_scale * n_scale)
     end
     scale = prefactor * π * u"c"^2 * intensity * a / (u"ħ" * ω^3)
-    uconvert(u"µs^-1", sqrt(scale) * (angular * geometry))
+    uconvert(u"rad/µs", sqrt(scale) * (angular * geometry))
 end
 
 # The levels a level argument stands for in a basis of the species' kind: the
@@ -448,7 +448,7 @@ function coupling_matrix(
     upper_levels = level_list(species, pair.second)
     amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)
     num_states = length(basis)
-    C = zeros(typeof(complex(1.0) * u"µs^-1"), num_states, num_states)
+    C = zeros(typeof(complex(1.0) * u"rad/µs"), num_states, num_states)
     for (i, lo) in enumerate(basis)
         lo.level in lower_levels || continue
         for (k, hi) in enumerate(basis)

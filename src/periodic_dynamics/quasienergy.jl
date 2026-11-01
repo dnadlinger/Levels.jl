@@ -2,9 +2,9 @@
 # diagnostics and near-resonance warnings; the Floquet method wraps the
 # nonperturbative dress_manifold engine as the cross-check.
 
-# The perturbation-sum terms for level α of a manifold with (stripped, µs⁻¹)
+# The perturbation-sum terms for level α of a manifold with (stripped, rad µs⁻¹)
 # energies e driven by h1 e^{iΩt} + h1† e^{−iΩt}: named tuples
-# (k, sideband, coupling, detuning, shift), all in µs⁻¹. Couplings vanishing to
+# (k, sideband, coupling, detuning, shift), all in rad µs⁻¹. Couplings vanishing to
 # rounding (selection rules) are skipped.
 function pt_terms(e, h1, ω, α)
     wmax = maximum(abs, h1)
@@ -56,9 +56,9 @@ function quasienergy_shift(
     method::PerturbationTheory=PerturbationTheory();
     warn_context=(;),
 )
-    e = ustrip.(u"µs^-1", H0.diag)
-    h1 = ustrip.(u"µs^-1", H1)
-    ω = ustrip(u"µs^-1", drive_frequency)
+    e = ustrip.(u"rad/µs", H0.diag)
+    h1 = ustrip.(u"rad/µs", H1)
+    ω = ustrip(u"rad/µs", drive_frequency)
 
     total = 0.0
     for term in pt_terms(e, h1, ω, α)
@@ -67,11 +67,11 @@ function quasienergy_shift(
                   "second-order perturbation theory may be inaccurate " *
                   "(cross-check with quasienergy_shift(..., Floquet()))." context =
                 warn_context k = term.k sideband = term.sideband coupling =
-                term.coupling * u"µs^-1" detuning = term.detuning * u"µs^-1"
+                term.coupling * u"rad/µs" detuning = term.detuning * u"rad/µs"
         end
         total += term.shift
     end
-    total * u"µs^-1"
+    total * u"rad/µs"
 end
 
 """
@@ -87,17 +87,17 @@ function quasienergy_shift_contributions(
     drive_frequency,
     α::Integer,
 )
-    e = ustrip.(u"µs^-1", H0.diag)
-    h1 = ustrip.(u"µs^-1", H1)
-    ω = ustrip(u"µs^-1", drive_frequency)
+    e = ustrip.(u"rad/µs", H0.diag)
+    h1 = ustrip.(u"rad/µs", H1)
+    ω = ustrip(u"rad/µs", drive_frequency)
     terms = sort(pt_terms(e, h1, ω, α); by=t -> abs(t.shift), rev=true)
     [
         (;
             t.k,
             t.sideband,
-            coupling=t.coupling * u"µs^-1",
-            detuning=t.detuning * u"µs^-1",
-            shift=t.shift * u"µs^-1",
+            coupling=t.coupling * u"rad/µs",
+            detuning=t.detuning * u"rad/µs",
+            shift=t.shift * u"rad/µs",
         ) for t in terms
     ]
 end
@@ -208,7 +208,7 @@ function quasienergy_shift(
         1;
         min_overlap=method.min_overlap,
     )
-    uconvert(u"µs^-1", ε[α] - H0.diag[α])
+    uconvert(u"rad/µs", ε[α] - H0.diag[α])
 end
 
 """

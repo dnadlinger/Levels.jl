@@ -39,7 +39,7 @@ function LaserBeam(
     intensity,
     ε,
     direction;
-    linewidth=0.0u"µs^-1",
+    linewidth=0.0u"rad/µs",
 )
     if dimension(intensity) != dimension(1.0u"W/m^2") ||
        !isreal(intensity) ||
@@ -55,7 +55,7 @@ function LaserBeam(
         throw(
             ArgumentError(
                 "The laser linewidth must be a non-negative angular frequency " *
-                "(e.g. 2π * 100u\"kHz\"), got $linewidth",
+                "(e.g. angular(100u\"kHz\")), got $linewidth",
             ),
         )
     end
@@ -82,7 +82,7 @@ function LaserBeam(
     LaserBeam(frequency, intensity, ε_unit, n_unit, linewidth)
 end
 
-LaserBeam(pair::Pair, detuning, intensity, ε, direction; linewidth=0.0u"µs^-1") =
+LaserBeam(pair::Pair, detuning, intensity, ε, direction; linewidth=0.0u"rad/µs") =
     LaserBeam(RelativeFrequency(pair, detuning), intensity, ε, direction; linewidth)
 
 """
@@ -192,7 +192,7 @@ function MotionalMode(frequency, direction)
         throw(
             ArgumentError(
                 "The mode frequency must be a positive angular frequency " *
-                "(e.g. 2π * 1.2u\"MHz\"), got $frequency",
+                "(e.g. angular(1.2u\"MHz\")), got $frequency",
             ),
         )
     end

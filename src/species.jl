@@ -698,14 +698,14 @@ function transition_frequency(species::OneElectronSpecies, transition::Pair; B=n
         offset(state) =
             hyperfine_shift(species, state.level) +
             zeeman_shift(species, state; B=field)
-        return uconvert(u"µs^-1", centroid + offset(upper) - offset(lower))
+        return uconvert(u"rad/µs", centroid + offset(upper) - offset(lower))
     end
     isnothing(B) ||
         throw(ArgumentError("A field-resolved frequency requires a pair of states"))
     e1 = level_energy(species, lower)
     e2 = level_energy(species, upper)
     e1 <= e2 || throw(ArgumentError("'$lower' is of higher energy than '$upper'"))
-    uconvert(u"µs^-1", (e2 - e1) / u"ħ")
+    uconvert(u"rad/µs", (e2 - e1) / u"ħ")
 end
 
 """

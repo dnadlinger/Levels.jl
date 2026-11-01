@@ -34,7 +34,7 @@ evolution, and the [`IntegratedTransientSolver`](@ref) for steady states and
 integral relaxation times.
 
 All quantities are unitful and, as in [`Levels.PeriodicDynamics`](@ref),
-normalised to µs⁻¹ (jump operators to µs⁻¹ᐟ²); only the numerics layer works
+normalised to rad µs⁻¹ (jump operators to µs⁻¹ᐟ²); only the numerics layer works
 on the unit-stripped matrices of the solvers.
 """
 module OpticalBloch
@@ -81,7 +81,7 @@ using ..Levels:
     transition_frequency,
     zeeman_shift
 
-const ANGULAR_UNIT = u"µs^-1"
+const ANGULAR_UNIT = u"rad/µs"
 const JUMP_UNIT = u"µs^(-1/2)"
 
 include("scheme.jl")

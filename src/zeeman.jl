@@ -91,7 +91,7 @@ Returns the first-order Zeeman shift of the given state in a static magnetic fie
 """
 function zeeman_shift(species::NoHyperfineOneElectronSpecies, state::StateSpec; B)
     g = lande_g(species, state.level)
-    uconvert(u"µs^-1", g * state.m * BOHR_MAGNETON * B / u"ħ")
+    uconvert(u"rad/µs", g * state.m * BOHR_MAGNETON * B / u"ħ")
 end
 
 """
@@ -100,7 +100,7 @@ end
 
 Returns the first-order magnetic-field sensitivity ``χ`` of the transition
 frequency between the two given states, in angular frequency units per magnetic
-flux density (e.g. convertible to `µs^-1/mT`).
+flux density (e.g. convertible to `rad/µs/mT`).
 
 The `Pair` form accepts a `lower => upper` pair as produced by
 [`state_pairs`](@ref).
@@ -114,7 +114,7 @@ function zeeman_sensitivity(
     g_lower = lande_g(species, lower.level)
     g_upper = lande_g(species, upper.level)
     uconvert(
-        u"µs^-1/mT",
+        u"rad/µs/mT",
         (g_upper * upper.m - g_lower * lower.m) * BOHR_MAGNETON / u"ħ",
     )
 end
@@ -157,7 +157,7 @@ function zeeman_hamiltonian(
             zero(b_z)
         end
         uconvert(
-            u"µs^-1",
+            u"rad/µs",
             lande_g(species, ket.level) * BOHR_MAGNETON * coupling / u"ħ",
         )
     end

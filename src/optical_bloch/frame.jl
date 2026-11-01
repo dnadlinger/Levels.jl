@@ -101,7 +101,7 @@ function beam_centroid_offset(species, beam::LaserBeam)
     )
 end
 
-# The complex coupling matrix of each beam over the basis (µs⁻¹), exact at the
+# The complex coupling matrix of each beam over the basis (rad µs⁻¹), exact at the
 # static field.
 function beam_couplings(species, scheme::LaserScheme)
     B = scheme.B

@@ -163,7 +163,7 @@ end
     n, ε = beam_vectors(π / 2, π / 4)
     C = quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n)
 
-    Ω0 = 2π * 100.0u"kHz"
+    Ω0 = angular(100.0u"kHz")
     probe = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2)
     L = rabi_normalised(C, basis, probe, Ω0)
     @test abs(L[stateindex(basis, probe.second), stateindex(basis, probe.first)]) ≈ Ω0
@@ -308,7 +308,7 @@ end
     ω = Levels.transition_frequency(ca43, s.level => d.level)
     geometry = quadrupole_geometry(ε, n)[Int(d.m-s.m)+3]
     expected = uconvert(
-        u"µs^-1",
+        u"rad/µs",
         sqrt(20π * u"c"^2 * intensity * a / (u"ħ" * ω^3)) *
         abs(transition_amplitude(ca43, s => d) * geometry),
     )
@@ -495,7 +495,7 @@ end
                 Δm = m_hi - m
                 abs(Δm) <= k || continue
                 expected = uconvert(
-                    u"µs^-1",
+                    u"rad/µs",
                     scale * abs(
                         wigner3j(j_hi, k, j_lo, -m_hi, Δm, m) *
                         bilinear(ε, vsh(k, -Int(Δm), ϑ, φ)),
@@ -508,7 +508,7 @@ end
                     ε,
                     n,
                 )
-                @test abs(Ω) ≈ expected rtol = 1e-9 atol = 1e-10u"µs^-1"
+                @test abs(Ω) ≈ expected rtol = 1e-9 atol = 1e-10u"rad/µs"
             end
         end
     end

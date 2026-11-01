@@ -95,7 +95,7 @@ function hyperfine_shift(species::HyperfineOneElectronSpecies, level)
             consts.b * (3//2 * k * (k + 1) - 2 * i * (i + 1) * j * (j + 1)) /
             (4 * i * (2i - 1) * j * (2j - 1))
     end
-    uconvert(u"µs^-1", e / u"ħ")
+    uconvert(u"rad/µs", e / u"ħ")
 end
 
 # A fine-structure species has no hyperfine structure: the shift of any of its
@@ -103,7 +103,7 @@ end
 # `Levels.OpticalBloch`) treat both species kinds alike.
 function hyperfine_shift(species::NoHyperfineOneElectronSpecies, level)
     convert(NoHyperfineNumberSpec, level)
-    zero(1.0u"µs^-1")
+    zero(1.0u"rad/µs")
 end
 
 """
@@ -133,7 +133,7 @@ function moment_operators(species::HyperfineOneElectronSpecies, fs_level)
     eye_i = Matrix{Float64}(I, Int(2i + 1), Int(2i + 1))
     eye_j = Matrix{Float64}(I, Int(2j + 1), Int(2j + 1))
     component(op) = uconvert.(
-        u"µs^-1/mT",
+        u"rad/µs/mT",
         (g_j * BOHR_MAGNETON / u"ħ") .* kron(op(j), eye_i) .-
         (g_i * NUCLEAR_MAGNETON / u"ħ") .* kron(eye_j, op(i)),
     )
@@ -240,7 +240,7 @@ function zeeman_hamiltonian(
             end
         end for i in 1:num_states, k in 1:num_states
     ]
-    uconvert.(u"µs^-1", H)
+    uconvert.(u"rad/µs", H)
 end
 
 """
@@ -274,7 +274,7 @@ function manifold_hamiltonian(species::HyperfineOneElectronSpecies, fs_level; B)
     basis = StateBasis(species, spec)
     shifts = [hyperfine_shift(species, s.level) for s in basis]
     moments = coupled_moments(species, spec)
-    uconvert.(u"µs^-1", Diagonal(shifts) .+ B .* moments.z)
+    uconvert.(u"rad/µs", Diagonal(shifts) .+ B .* moments.z)
 end
 
 """
@@ -333,7 +333,7 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level; B)
     basis = StateBasis(species, spec)
     num_states = length(basis)
 
-    h = ustrip.(u"µs^-1", manifold_hamiltonian(species, spec; B))
+    h = ustrip.(u"rad/µs", manifold_hamiltonian(species, spec; B))
     vals, vecs = eigen(Symmetric(real(h)))
 
     # Fix the arbitrary eigenvector signs for reproducibility: largest-magnitude
@@ -370,7 +370,7 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level; B)
         end
     end
 
-    HyperfineManifold(species, spec, B, basis, energies .* u"µs^-1", states)
+    HyperfineManifold(species, spec, B, basis, energies .* u"rad/µs", states)
 end
 
 """
@@ -503,9 +503,9 @@ function zeeman_shift(
     state::StateSpec{HyperfineNumberSpec};
     B,
 )
-    iszero(B) && return zero(1.0u"µs^-1")
+    iszero(B) && return zero(1.0u"rad/µs")
     m = hyperfine_manifold(species, fine_structure(state.level); B)
-    uconvert(u"µs^-1", state_offset(m, state) - hyperfine_shift(species, state.level))
+    uconvert(u"rad/µs", state_offset(m, state) - hyperfine_shift(species, state.level))
 end
 
 function zeeman_shift(species::HyperfineOneElectronSpecies, state::StateSpec; B)
@@ -525,7 +525,7 @@ eigenstate (exact per ``m_F`` block, as both operators commute with ``F_z``).
 function state_moment(m::HyperfineManifold, state)
     v = view(m.states, :, stateindex(m.basis, state))
     moments = coupled_moments(m.species, m.level)
-    uconvert(u"µs^-1/mT", dot(v, moments.z, v))
+    uconvert(u"rad/µs/mT", dot(v, moments.z, v))
 end
 
 """
@@ -547,7 +547,7 @@ function zeeman_sensitivity(
     lower, upper = transition
     if iszero(B)
         return uconvert(
-            u"µs^-1/mT",
+            u"rad/µs/mT",
             (
                 lande_g(species, upper.level)*upper.m -
                 lande_g(species, lower.level)*lower.m
@@ -558,7 +558,7 @@ function zeeman_sensitivity(
     fs_upper = fine_structure(upper.level)
     m_lower = hyperfine_manifold(species, fs_lower; B)
     m_upper = fs_upper == fs_lower ? m_lower : hyperfine_manifold(species, fs_upper; B)
-    uconvert(u"µs^-1/mT", state_moment(m_upper, upper) - state_moment(m_lower, lower))
+    uconvert(u"rad/µs/mT", state_moment(m_upper, upper) - state_moment(m_lower, lower))
 end
 
 
@@ -590,7 +590,7 @@ function insensitive_field(
 )
     lower, upper = transition
     f(b, _) =
-        ustrip(u"µs^-1/mT", zeeman_sensitivity(species, lower => upper; B=b * u"mT"))
+        ustrip(u"rad/µs/mT", zeeman_sensitivity(species, lower => upper; B=b * u"mT"))
     prob = IntervalNonlinearProblem{false}(f, ustrip.(u"mT", bracket))
     sol = solve(prob, ITP(); abstol=ustrip(u"mT", abstol))
     if !successful_retcode(sol)

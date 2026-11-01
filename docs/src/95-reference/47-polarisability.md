@@ -25,7 +25,7 @@ The ``π`` entry describes a field along the quantisation axis; the mean of
 the two ``σ`` entries describes a linear field perpendicular to it.
 
 A wavelength or angular frequency selects the dynamic response;
-`0u"s^-1"` selects the static response. For example, the static differential
+`0u"rad/s"` selects the static response. For example, the static differential
 polarisability sets the electric Stark shift from micromotion in a Paul trap:
 
 ```@example polarisability
@@ -34,8 +34,8 @@ using Levels, Unitful
 s = StateSpec("S_1/2 F=4", 4)
 d = StateSpec("D_5/2 F=4", 3)
 B0 = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"))
-Δα = polarisability(ca43, d, 0u"s^-1"; B=B0) -
-     polarisability(ca43, s, 0u"s^-1"; B=B0)
+Δα = polarisability(ca43, d, 0u"rad/s"; B=B0) -
+     polarisability(ca43, s, 0u"rad/s"; B=B0)
 Δα_parallel = Δα[2]
 Δα_perpendicular = (Δα[1] + Δα[3]) / 2
 θ = π / 4
@@ -67,7 +67,7 @@ then cancels from the component detunings, leaving the offset and the
 Zeeman/hyperfine splittings. See [Laser frequencies](@ref reference-laser).
 
 ```@example polarisability
-laser = RelativeFrequency(s.level => d.level, 2π * 20u"MHz")
+laser = RelativeFrequency(s.level => d.level, angular(20u"MHz"))
 c = LightShiftCoefficients(ca43, [s, d], laser; B=B0)
 intensity = 1u"W/m^2"
 n, ε = beam_vectors(π / 2, π / 4, 0.3)

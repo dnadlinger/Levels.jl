@@ -11,7 +11,7 @@
     # energies) and pins the data entry; the physics is pinned by the
     # measured differential below.
     au = Levels.POLARISABILITY_AU
-    dc = 0.0u"s^-1"
+    dc = 0.0u"rad/s"
     @test scalar_polarisability(sr88, "S_1/2", dc) / au ≈ 91.30 rtol = 1e-10
     @test scalar_polarisability(sr88, "D_5/2", dc) / au ≈ 62.0 rtol = 1e-10
     @test tensor_polarisability(sr88, "D_5/2", dc) / au ≈ -47.7 rtol = 1e-10
@@ -44,7 +44,7 @@ end
     # anchors here checks the resolution bookkeeping and pins the data
     # entry; the physics is pinned by the measured differential below.
     au = Levels.POLARISABILITY_AU
-    dc = 0.0u"s^-1"
+    dc = 0.0u"rad/s"
     @test scalar_polarisability(ca43, "S_1/2", dc) / au ≈ 74.62 rtol = 1e-10
     @test scalar_polarisability(ca43, "D_5/2", dc) / au ≈ 30.59 rtol = 1e-10
     @test tensor_polarisability(ca43, "D_5/2", dc) / au ≈ -24.50 rtol = 1e-10
@@ -268,7 +268,7 @@ end
     # values track to better than 1% across 690–1338 nm: the residual is the
     # matrix-element difference (theirs 2.879/4.073 vs the measured-lifetime
     # 2.8927/4.115 here) against the smaller [YuSahoo2025]-anchored remainder.
-    ħω(x) = uconvert(u"s^-1", x * 2 * u"R∞" * u"c" * 2π) # a.u. → angular
+    ħω(x) = uconvert(u"rad/s", x * 2 * u"R∞" * u"c" * 2π) # a.u. → angular
     au = Levels.POLARISABILITY_AU
     for (x, ref) in (
         (0.0340414, 82.1167), # 1338.474 nm
@@ -313,7 +313,7 @@ end
             ε;
             parts=:background,
         )
-        @test shift ≈ 2π * reference * u"mHz" rtol = 2e-2
+        @test shift ≈ angular(reference * u"mHz") rtol = 2e-2
 
         # The Zeeman pairs are quoted as pair averages; with a linear
         # polarisation the shift is the same for both signs of m by symmetry.
@@ -345,7 +345,7 @@ end
 
     # Appendix B of the same paper gives the differential scalar polarisability
     # at the 1092-nm repumper wavelength as 329(5) a.u.
-    λ_repump = uconvert(u"nm", 2π * u"c" / (2π * 274.59u"THz"))
+    λ_repump = uconvert(u"nm", 2π * u"c" / (angular(274.59u"THz")))
     Δα =
         scalar_polarisability(sr88, "D_5/2", λ_repump) -
         scalar_polarisability(sr88, "S_1/2", λ_repump)
@@ -510,7 +510,7 @@ end
         StateSpec("S_1/2", 1//2),
         intensity,
         ε;
-        δ=2π * 1.0u"MHz",
+        δ=angular(1.0u"MHz"),
     )
     @test_throws ArgumentError light_shift(
         coefficients,
@@ -538,13 +538,13 @@ end
     @test_throws ArgumentError LightShiftCoefficients(
         sr88,
         ["S_1/2", "D_5/2"],
-        RelativeFrequency("D_5/2" => "S_1/2", 0.0u"s^-1");
+        RelativeFrequency("D_5/2" => "S_1/2", 0.0u"rad/s");
         B,
     )
 
     # A RelativeFrequency laser requires the static field (the channels are
     # field-resolved), and its levels must match the basis kind.
-    rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 1.0u"MHz")
+    rel = RelativeFrequency("S_1/2" => "D_5/2", angular(1.0u"MHz"))
     @test_throws ArgumentError LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel)
     @test_throws ArgumentError LightShiftCoefficients(
         ca43,
@@ -556,7 +556,7 @@ end
     # A bare laser frequency within ~100 GHz of an explicit electric-dipole
     # channel is refused: the background would silently miss the Zeeman
     # structure that only a RelativeFrequency reference resolves.
-    near_p = Levels.transition_frequency(sr88, "S_1/2" => "P_1/2") + 2π * 10.0u"GHz"
+    near_p = Levels.transition_frequency(sr88, "S_1/2" => "P_1/2") + angular(10.0u"GHz")
     @test_throws ArgumentError LightShiftCoefficients(sr88, ["S_1/2"], near_p)
     @test_throws ArgumentError light_shift(
         sr88,
@@ -566,7 +566,7 @@ end
         [0.0im, 0.0im, 1.0 + 0im],
     )
     # Named as a reference, the same frequency is fine.
-    relp = RelativeFrequency("S_1/2" => "P_1/2", 2π * 10.0u"GHz")
+    relp = RelativeFrequency("S_1/2" => "P_1/2", angular(10.0u"GHz"))
     @test LightShiftCoefficients(sr88, ["S_1/2"], relp; B) isa LightShiftCoefficients
 end
 
@@ -595,10 +595,10 @@ end
         Ω = rabi_frequency(sr88, probed.first => probed.second, intensity, ε, n)
         scaled = rabi_normalised(couplings, basis, probed, Ω)
         scaled[upper, lower] = zero(eltype(scaled))
-        h = ustrip.(u"µs^-1", (scaled .+ scaled') ./ 2)
+        h = ustrip.(u"rad/µs", (scaled .+ scaled') ./ 2)
         for (i, state) in enumerate(basis)
             reference = state.level == probed.first.level ? lower : upper
-            h[i, i] = ustrip(u"µs^-1", zeeman[i] - zeeman[reference])
+            h[i, i] = ustrip(u"rad/µs", zeeman[i] - zeeman[reference])
             state.level == probed.second.level && (h[i, i] -= detuning)
         end
         values, vectors = eigen(Hermitian(h))
@@ -616,7 +616,7 @@ end
         # identification by largest overlap above stops being meaningful.
         offset = 1e-2
         below, above = splitting(probed, -offset), splitting(probed, offset)
-        exact = (-offset + 2offset * below / (below - above)) * u"µs^-1"
+        exact = (-offset + 2offset * below / (below - above)) * u"rad/µs"
 
         # What second-order perturbation theory drops is the next order in the
         # coupling: fourth-order energies, the two-photon couplings between the
@@ -647,7 +647,7 @@ end
     intensity = 500.0u"W/m^2"
     n, ε = beam_vectors(1.1, 0.7, 0.4)
     basis = StateBasis(["S_1/2", "D_5/2"])
-    rel = RelativeFrequency("S_1/2" => "D_5/2", 0.0u"s^-1")
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 0.0u"rad/s")
     coefficients = LightShiftCoefficients(sr88, basis, rel; B)
     zeeman = [zeeman_shift(sr88, state; B) for state in basis]
 
@@ -667,23 +667,23 @@ end
     # minus δ, all couplings kept. The parked shift of a state is the
     # displacement of the dressed quasi-energy adiabatically connected to it.
     function exact_shifts(δ)
-        h = ustrip.(u"µs^-1", (scaled .+ scaled') ./ 2)
+        h = ustrip.(u"rad/µs", (scaled .+ scaled') ./ 2)
         for (i, state) in enumerate(basis)
-            h[i, i] = ustrip(u"µs^-1", zeeman[i])
+            h[i, i] = ustrip(u"rad/µs", zeeman[i])
             state.level == convert(NoHyperfineNumberSpec, "D_5/2") &&
-                (h[i, i] -= ustrip(u"µs^-1", δ))
+                (h[i, i] -= ustrip(u"rad/µs", δ))
         end
         unperturbed = real.(diag(h))
         values, vectors = eigen(Hermitian(h))
         [
-            (values[argmax(abs2.(vectors[k, :]))] - unperturbed[k]) * u"µs^-1" for
+            (values[argmax(abs2.(vectors[k, :]))] - unperturbed[k]) * u"rad/µs" for
             k in 1:length(basis)
         ]
     end
 
     # Off-resonance offsets between and beyond the Zeeman components (which
     # span ±2π × 28 MHz at this field).
-    for δ in (2π * 8.3u"MHz", -2π * 16.7u"MHz", 2π * 40.0u"MHz")
+    for δ in (angular(8.3u"MHz"), -angular(16.7u"MHz"), angular(40.0u"MHz"))
         exact = exact_shifts(δ)
         for (i, state) in enumerate(basis)
             @test light_shift(
@@ -709,10 +709,10 @@ end
     B = 0.32u"mT"
     intensity = 12.0u"W/m^2"
     n, ε = beam_vectors(0.9, 0.6, 0.35)
-    rel = RelativeFrequency("S_1/2" => "D_5/2", 0.0u"s^-1")
+    rel = RelativeFrequency("S_1/2" => "D_5/2", 0.0u"rad/s")
     c = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel; B)
 
-    x = 2π * 0.02u"MHz"
+    x = angular(0.02u"MHz")
     for (lower, upper) in state_pairs("S_1/2" => "D_5/2"; Δm=[-1, 0, 2])
         driven = driven_light_shift(
             c,
@@ -723,7 +723,7 @@ end
             parts=:resonant,
         )
         δ_star = uconvert(
-            u"µs^-1",
+            u"rad/µs",
             zeeman_shift(sr88, upper; B) - zeeman_shift(sr88, lower; B),
         )
         pair(δ) =
@@ -748,7 +748,7 @@ end
     # by +Ω²/(4Δ), so both enter the transition frequency with the same sign.
     # With the laser on resonance the detunings are Zeeman splittings alone.
     function reference(lower, upper)
-        shift = 0.0u"µs^-1"
+        shift = 0.0u"rad/µs"
         for m in (-1//2):(1//2)
             m == lower.m && continue
             other = StateSpec("S_1/2", m)
@@ -836,7 +836,7 @@ end
     n_lin, ε_lin = beam_vectors(deg2rad(71.0), deg2rad(33.0))
     for t in pairs
         shift = resonant(coefficients, t, ε_lin, n_lin)
-        @test !isapprox(shift, zero(shift), atol=1e-12u"µs^-1")
+        @test !isapprox(shift, zero(shift), atol=1e-12u"rad/µs")
         @test resonant(coefficients, mirrored(t), ε_lin, n_lin) ≈ -shift
     end
 
@@ -846,7 +846,7 @@ end
         average =
             resonant(coefficients, t, ε_ell, n_ell) +
             resonant(coefficients, mirrored(t), ε_ell, n_ell)
-        @test !isapprox(average, zero(average), atol=1e-12u"µs^-1")
+        @test !isapprox(average, zero(average), atol=1e-12u"rad/µs")
     end
 
     # A σ⁺ beam along the quantisation axis drives the Δm = +1 channel alone,
@@ -857,7 +857,7 @@ end
         driven = StateSpec("S_1/2", m) => StateSpec("D_5/2", m + 1)
         @test !iszero(rabi_frequency(sr88, driven, intensity, ε_σ, n_σ))
         shift = resonant(coefficients, driven, ε_σ, n_σ)
-        @test isapprox(shift, zero(shift), atol=1e-12u"µs^-1")
+        @test isapprox(shift, zero(shift), atol=1e-12u"rad/µs")
     end
 
     # The shift is linear in the intensity and inverse in the field, which is
@@ -922,7 +922,7 @@ end
     reference = (2.6u"mW/m^2", 1.7u"mW/m^2", 1.9u"mW/m^2")
     intensities = map((1//2, 3//2, 5//2)) do m
         Ω = rabi_frequency(sr88, lower => StateSpec("D_5/2", m), 1.0u"W/m^2", ε, n)
-        1.0u"W/m^2" * (2π * 5.0u"Hz" / abs(Ω))^2
+        1.0u"W/m^2" * (angular(5.0u"Hz") / abs(Ω))^2
     end
     for (intensity, quoted) in zip(intensities, reference)
         @test intensity ≈ quoted rtol = 2e-2
@@ -948,7 +948,7 @@ end
             parts=:resonant,
         )
     end
-    @test 50u"µHz" < maximum(abs, shifts) / 2π < 1u"mHz"
+    @test 50u"µHz" < cyclic(maximum(abs, shifts)) < 1u"mHz"
 end
 
 @testitem "Near-resonant channel API" tags=[:unit, :fast] begin
@@ -1053,7 +1053,7 @@ end
         ε;
         parts=:resonant,
     )
-    relp = RelativeFrequency("S_1/2" => "P_1/2", 0.0u"s^-1")
+    relp = RelativeFrequency("S_1/2" => "P_1/2", 0.0u"rad/s")
     named = LightShiftCoefficients(sr88, ["S_1/2", "P_1/2"], relp; B)
     # For a line this broad the Zeeman spectators sit within the linewidth, so
     # driving it must also raise the pole-approximation warning.
@@ -1064,7 +1064,7 @@ end
         ε;
         parts=:resonant,
     )
-    @test isfinite(ustrip(u"µs^-1", e1)) && !iszero(e1)
+    @test isfinite(ustrip(u"rad/µs", e1)) && !iszero(e1)
     # The n requirement is rank-dependent: unused for E1 (above), required for
     # E2 — but only where the channels actually enter; the background needs
     # neither n nor B.
@@ -1159,7 +1159,7 @@ end
         ε;
         parts=:resonant,
     )
-    rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 1.0u"MHz")
+    rel = RelativeFrequency("S_1/2" => "D_5/2", angular(1.0u"MHz"))
     parked = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel; B)
     @test_throws ArgumentError light_shift(parked, lower, intensity, ε; parts=:resonant)
     @test_throws ArgumentError light_shift(
@@ -1183,7 +1183,7 @@ end
     n, ε = beam_vectors(0.9, 0.6, 0.35)
     # 2π × 0.1 MHz from the S₁/₂(m = 1/2) → D₅/₂(m = 3/2) component, which
     # sits at 2π × 5.6 MHz at this field.
-    rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 5.5u"MHz")
+    rel = RelativeFrequency("S_1/2" => "D_5/2", angular(5.5u"MHz"))
     c = LightShiftCoefficients(sr88, ["S_1/2", "D_5/2"], rel; B)
     state = StateSpec("S_1/2", 1//2)
 
@@ -1205,7 +1205,7 @@ end
 
     # Within a few linewidths of a broad E1 line, the pole approximation
     # itself breaks down (γ(P₁/₂) ≈ 2π × 21.5 MHz).
-    relp = RelativeFrequency("S_1/2" => "P_1/2", 2π * 50.0u"MHz")
+    relp = RelativeFrequency("S_1/2" => "P_1/2", angular(50.0u"MHz"))
     cp = LightShiftCoefficients(sr88, ["S_1/2"], relp; B)
     @test_logs (:warn, r"linewidths") match_mode = :any light_shift(
         cp,
@@ -1231,13 +1231,13 @@ end
     intensity = 10.0u"W/m^2"
     _, ε = beam_vectors(1.1, 0.7, 0.4)
     basis = StateBasis(["S_1/2", "P_1/2"])
-    rel = RelativeFrequency("S_1/2" => "P_1/2", 0.0u"s^-1")
+    rel = RelativeFrequency("S_1/2" => "P_1/2", 0.0u"rad/s")
     coefficients = LightShiftCoefficients(sr88, basis, rel; B)
     zeeman = [zeeman_shift(sr88, state; B) for state in basis]
 
     # Relative dipole couplings over the basis (CG × geometric channel
     # amplitude), scaled to the Rabi frequency of one reference component.
-    couplings = zeros(ComplexF64, length(basis), length(basis)) * u"µs^-1"
+    couplings = zeros(ComplexF64, length(basis), length(basis)) * u"rad/µs"
     for (i, lo) in enumerate(basis), (k, up) in enumerate(basis)
         lo.level == convert(NoHyperfineNumberSpec, "S_1/2") || continue
         up.level == convert(NoHyperfineNumberSpec, "P_1/2") || continue
@@ -1246,7 +1246,7 @@ end
         couplings[k, i] =
             Levels.dipole_cg(1//2, lo.m, q, 1//2) *
             dipole_geometry(ε)[Int(q)+2] *
-            u"µs^-1"
+            u"rad/µs"
     end
     reference = StateSpec("S_1/2", -1//2) => StateSpec("P_1/2", -1//2)
     Ω_ref = rabi_frequency(
@@ -1259,23 +1259,23 @@ end
     scaled = rabi_normalised(couplings, basis, reference, Ω_ref)
 
     function exact_shifts(δ)
-        h = ustrip.(u"µs^-1", (scaled .+ scaled') ./ 2)
+        h = ustrip.(u"rad/µs", (scaled .+ scaled') ./ 2)
         for (i, state) in enumerate(basis)
-            h[i, i] = ustrip(u"µs^-1", zeeman[i])
+            h[i, i] = ustrip(u"rad/µs", zeeman[i])
             state.level == convert(NoHyperfineNumberSpec, "P_1/2") &&
-                (h[i, i] -= ustrip(u"µs^-1", δ))
+                (h[i, i] -= ustrip(u"rad/µs", δ))
         end
         unperturbed = real.(diag(h))
         values, vectors = eigen(Hermitian(h))
         [
-            (values[argmax(abs2.(vectors[k, :]))] - unperturbed[k]) * u"µs^-1" for
+            (values[argmax(abs2.(vectors[k, :]))] - unperturbed[k]) * u"rad/µs" for
             k in 1:length(basis)
         ]
     end
 
     # Detunings beyond a few linewidths (γ(P₁/₂) ≈ 2π × 21.5 MHz), where the
     # γ-free pole approximation both models share is legitimate.
-    for δ in (2π * 150.0u"MHz", -2π * 220.0u"MHz")
+    for δ in (angular(150.0u"MHz"), -angular(220.0u"MHz"))
         exact = exact_shifts(δ)
         for (i, state) in enumerate(basis)
             @test light_shift(coefficients, state, intensity, ε; δ, parts=:resonant) ≈
@@ -1295,7 +1295,7 @@ end
     B = 0.5u"mT"
     intensity = 100.0u"W/m^2"
     _, ε = beam_vectors(1.1, 0.7, 0.4)
-    δ = 2π * 500.0u"GHz"
+    δ = angular(500.0u"GHz")
     rel = RelativeFrequency("S_1/2" => "P_1/2", δ)
     c = LightShiftCoefficients(sr88, ["S_1/2"], rel; B)
     absolute = Levels.transition_frequency(sr88, "S_1/2" => "P_1/2") + δ
@@ -1453,7 +1453,7 @@ end
     B = 0.5u"mT"
     intensity = 20.0u"W/m^2"
     _, ε = beam_vectors(1.1, 0.7, 0.4)
-    δ = 2π * 150.0u"MHz"
+    δ = angular(150.0u"MHz")
 
     hyperfine = LightShiftCoefficients(
         toy,
@@ -1566,7 +1566,7 @@ end
     # Parked and driven evaluations must be consistent for hyperfine states
     # too: the ±x average around the probed component converges onto the
     # driven result (see the fine-structure twin of this test).
-    rel = RelativeFrequency(s.level => d.level, 0.0u"s^-1")
+    rel = RelativeFrequency(s.level => d.level, 0.0u"rad/s")
     parked = LightShiftCoefficients(ca43, basis, rel; B)
     il = stateindex(basis, s)
     probed = parked.channels[il][findfirst(
@@ -1576,7 +1576,7 @@ end
     pair(δ) =
         light_shift(parked, d, intensity, ε; direction=n, δ, parts=:resonant) -
         light_shift(parked, s, intensity, ε; direction=n, δ, parts=:resonant)
-    x = 2π * 0.01u"MHz"
+    x = angular(0.01u"MHz")
     @test (pair(probed.Δ + x) + pair(probed.Δ - x)) / 2 ≈
           driven_light_shift(parked, s => d, intensity, ε; direction=n, parts=:resonant) rtol =
         1e-3
@@ -1600,7 +1600,7 @@ end
     # Large enough that the ~Ω₀·1e-7-scale resonance-finder tolerance of
     # sideband_rabi stays well below the ∝ Ω₀² shift, small enough that
     # Ω₀ ≪ the ~MHz Zeeman splittings keeps higher orders negligible.
-    Ω0 = 2π * 10.0u"kHz"
+    Ω0 = angular(10.0u"kHz")
 
     # Intensity that gives the probed component the carrier Rabi frequency Ω0.
     ref_intensity = 1.0u"W/m^2"
@@ -1621,7 +1621,7 @@ end
         ca43,
         basis,
         s => d;
-        drive_frequency=2π * 30.0u"MHz",
+        drive_frequency=angular(30.0u"MHz"),
         B,
         coupling,
     )

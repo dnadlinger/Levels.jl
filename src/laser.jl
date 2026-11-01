@@ -6,7 +6,7 @@ using Unitful
 A laser frequency given relative to the zero-field `lower` → `upper`
 transition frequency — the reference point at which all Zeeman components of
 the two levels are degenerate — plus `offset` (an angular frequency, e.g.
-`2π * 1.5u"MHz"`).
+`angular(1.5u"MHz")`).
 
 The point of the parametrisation is precision: consumers such as the
 near-resonant machinery of [`light_shift`](@ref) only ever use `offset`
@@ -50,7 +50,7 @@ function RelativeFrequency(pair::Pair, offset)
     if !(offset isa Unitful.Frequency)
         throw(
             ArgumentError(
-                "The offset must be an angular frequency (e.g. 2π * 1.5u\"MHz\")",
+                "The offset must be an angular frequency (e.g. angular(1.5u\"MHz\"))",
             ),
         )
     end
@@ -74,7 +74,7 @@ function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detunin
     if !(detuning isa Unitful.Frequency)
         throw(
             ArgumentError(
-                "The detuning must be an angular frequency (e.g. 2π * 1.5u\"MHz\"), " *
+                "The detuning must be an angular frequency (e.g. angular(1.5u\"MHz\")), " *
                 "got $detuning",
             ),
         )
@@ -110,16 +110,22 @@ photon_energy(species, laser::RelativeFrequency) = uconvert(
 """
     angular(frequency)
 
-Converts a stated cyclic frequency to an angular frequency in inverse
-microseconds, e.g. `angular(50u"MHz")`. Does not apply to decay or heating rates.
+Converts a stated cyclic frequency to an angular frequency in radians per
+microsecond, e.g. `angular(50u"MHz")` is `2π × 50 rad µs⁻¹`. Angular
+frequencies carry Unitful's dimensionless `rad` as a marker throughout the
+package; it is not enforced by the dimension system (Hz, s⁻¹ and rad s⁻¹ all
+have the dimension of inverse time), so the conversion is a physical one, not
+a change of units. Does not apply to decay or heating rates, which are plain
+inverse times.
 """
-angular(frequency::Unitful.Frequency) = uconvert(u"µs^-1", 2π * frequency)
+angular(frequency::Unitful.Frequency) = uconvert(u"rad/µs", 2π * u"rad" * frequency)
 
 """
     cyclic(angular_frequency)
 
-Converts an angular frequency to a cyclic frequency in hertz.
+Converts an angular frequency to a cyclic frequency in hertz, the inverse of
+[`angular`](@ref).
 """
-cyclic(frequency::Unitful.Frequency) = uconvert(u"Hz", frequency / 2π)
+cyclic(frequency::Unitful.Frequency) = uconvert(u"Hz", frequency / (2π * u"rad"))
 
 export RelativeFrequency, photon_energy, angular, cyclic

@@ -28,9 +28,9 @@ function dress_manifold(
     min_overlap=0.0,
 )
     # Strip to a common inverse-time unit for the eigensolver.
-    h0 = ustrip.(u"µs^-1", H0.diag)
-    h1 = ustrip.(u"µs^-1", H1)
-    Ω_common = ustrip(u"µs^-1", Ω)
+    h0 = ustrip.(u"rad/µs", H0.diag)
+    h1 = ustrip.(u"rad/µs", H1)
+    Ω_common = ustrip(u"rad/µs", Ω)
 
     d = length(h0)
     dim = (2 * harmonic_cutoff + 1) * d
@@ -66,7 +66,7 @@ function dress_manifold(
             U[:, it, α] .+= v[:, k+harmonic_cutoff+1] .* cis(k * θ)
         end
     end
-    ε .* u"µs^-1", U
+    ε .* u"rad/µs", U
 end
 
 """
@@ -149,7 +149,7 @@ function sideband_rabi(
     θs = 2π .* (0:(num_time_samples-1)) ./ num_time_samples
     phase_fn = phase_function(modulation, dt.drive_frequency)
     g = map(enumerate(θs)) do (it, θ)
-        t = ustrip(u"s", θ / dt.drive_frequency)
+        t = ustrip(u"s", θ * u"rad" / dt.drive_frequency)
         f = 0.5 * cis(-phase_fn(t))
         f * dot(view(d.u_upper, :, it, α_upper), L, view(d.u_lower, :, it, α_lower))
     end
@@ -158,13 +158,13 @@ function sideband_rabi(
 
     a = gn(sideband)
     (
-        Ω=uconvert(u"µs^-1", 2 * abs(a)),
+        Ω=uconvert(u"rad/µs", 2 * abs(a)),
         δ_res=uconvert(
-            u"µs^-1",
+            u"rad/µs",
             d.ε_upper[α_upper] - d.ε_lower[α_lower] + sideband * dt.drive_frequency,
         ),
-        amp=uconvert(u"µs^-1", a),
-        carrier=uconvert(u"µs^-1", 2 * abs(gn(0))),
+        amp=uconvert(u"rad/µs", a),
+        carrier=uconvert(u"rad/µs", 2 * abs(gn(0))),
     )
 end
 

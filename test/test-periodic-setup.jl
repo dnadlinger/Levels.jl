@@ -9,8 +9,8 @@
 
     const BASIS = StateBasis(["S_1/2", "D_5/2"])
     const B0 = 0.5u"mT"
-    const Ω_RF = 2π * 50.0u"MHz"
-    const Ω0 = 2π * 100.0u"kHz"
+    const Ω_RF = angular(50.0u"MHz")
+    const Ω0 = angular(100.0u"kHz")
     const μ_B = Unitful.q * u"ħ" / (2 * Unitful.me)
 
     # The eight probed transitions, sorted by increasing magnetic-field

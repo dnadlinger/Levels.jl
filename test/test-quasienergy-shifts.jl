@@ -25,6 +25,7 @@
     @test only(terms).coupling ≈ g
     @test only(terms).detuning ≈ -detuning
     @test only(terms).shift ≈ pt
+    @test unit(only(terms).shift) == u"rad/µs"
 end
 
 @testitem "Magnetic-phasor quasienergy convenience API" tags=[:unit, :fast] begin

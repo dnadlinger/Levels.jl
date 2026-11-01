@@ -70,17 +70,17 @@ end
     # detunings Ω_rf ± ω_z differ). Both paths involve one Δm = −1 rf photon, so
     # the transverse-field azimuth θ enters as a common phase only: the isolated
     # two-photon Rabi frequency is θ-independent.
-    Ω_rf = 2π * 29.687u"MHz"
+    Ω_rf = angular(29.687u"MHz")
     b_static = 0.417u"mT"
     B_perp = 27.6u"µT"
-    Ω_probe = 2π * 131.7u"kHz"
+    Ω_probe = angular(131.7u"kHz")
     probe = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", -5//2)
     C1, C2 = 0.515 / sqrt(3), 0.515   # laser coupling factors (Table I, RSB row)
 
     path1 = (-3//2, 1//2, C1)    # laser Δm = −2, then rf photon within D
     path2 = (-5//2, -1//2, C2)   # rf photon within S, then laser Δm = −2
     function coupling_for(paths...)
-        L = zeros(ComplexF64, length(BASIS), length(BASIS)) .* u"ms^-1"
+        L = zeros(ComplexF64, length(BASIS), length(BASIS)) .* u"rad/ms"
         for (m_upper, m_lower, c) in paths
             L[
                 stateindex(BASIS, "D_5/2", m_upper),
@@ -109,8 +109,8 @@ end
     Ω_b1 = lande_g(sr88, "D_5/2") * μ_B * B_perp / u"ħ" * sqrt(5) / 2  # ⟨−5/2|J₋|−3/2⟩ = √5
     Ω_b2 = lande_g(sr88, "S_1/2") * μ_B * B_perp / u"ħ" / 2            # ⟨−1/2|J₋|+1/2⟩ = 1
     for (sb, s) in ((-1, +1), (+1, -1))   # RSB: mediator detuning Ω_rf + ω_z; BSB: −
-        t1 = uconvert(u"ms^-1", C1 * Ω_probe * Ω_b1 / (2 * (Ω_rf + s * ω_zD)))
-        t2 = uconvert(u"ms^-1", C2 * Ω_probe * Ω_b2 / (2 * (Ω_rf + s * ω_zS)))
+        t1 = uconvert(u"rad/ms", C1 * Ω_probe * Ω_b1 / (2 * (Ω_rf + s * ω_zD)))
+        t2 = uconvert(u"rad/ms", C2 * Ω_probe * Ω_b2 / (2 * (Ω_rf + s * ω_zS)))
         @test twophoton(coupling_for(path1), sb) ≈ t1 rtol = 1e-3
         @test twophoton(coupling_for(path2), sb) ≈ t2 rtol = 1e-3
         both = twophoton(coupling_for(path1, path2), sb)

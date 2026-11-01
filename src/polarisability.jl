@@ -195,7 +195,7 @@ struct ManifoldSolution{L<:LevelSpec}
     basis::StateBasis{L}
 
     "The state energies relative to the level centroid, aligned to `basis`."
-    energies::Vector{typeof(1.0u"µs^-1")}
+    energies::Vector{typeof(1.0u"rad/µs")}
 
     "Eigenvector columns in the coupled basis, aligned to `basis`."
     states::Matrix{Float64}
@@ -220,8 +220,8 @@ function manifold_solution(species, fs, B, cache)
     get!(cache, fs) do
         basis = StateBasis([fs])
         energies = [
-            isnothing(B) ? 0.0u"µs^-1" :
-            uconvert(u"µs^-1", zeeman_shift(species, s; B)) for s in basis
+            isnothing(B) ? 0.0u"rad/µs" :
+            uconvert(u"rad/µs", zeeman_shift(species, s; B)) for s in basis
         ]
         ManifoldSolution(fs, basis, energies, identity_states(length(basis)))
     end
@@ -236,7 +236,7 @@ function manifold_solution(species::HyperfineOneElectronSpecies, fs, B, cache)
         end
         basis = StateBasis(species, fs)
         energies =
-            [known ? hyperfine_shift(species, s.level) : 0.0u"µs^-1" for s in basis]
+            [known ? hyperfine_shift(species, s.level) : 0.0u"rad/µs" for s in basis]
         ManifoldSolution(fs, basis, energies, identity_states(length(basis)))
     end
 end
@@ -433,10 +433,10 @@ struct ResonantChannel{S<:StateSpec}
     q::Int8
 
     "Signed shift weight (see above)."
-    weight::typeof(1.0u"m^2/(W*µs^2)")
+    weight::typeof(1.0u"rad^2*m^2/(W*µs^2)")
 
     "Position of the component relative to the pair's zero-field reference."
-    Δ::typeof(1.0u"µs^-1")
+    Δ::typeof(1.0u"rad/µs")
 
     "Total decay rate of the upper level of the pair."
     γ::typeof(1.0u"µs^-1")
@@ -549,7 +549,7 @@ function resonant_channels(species, basis::StateBasis, laser, B, cache)
         rotated = relative_amplitudes(species, m_lo, m_hi, rank)
         # Centroid intervals cancel; subtract the named F levels' Casimir
         # offsets to express component positions relative to the reference.
-        ref = 0.0u"µs^-1"
+        ref = 0.0u"rad/µs"
         if (lo, hi) == named
             ref =
                 level_offset(species, laser.upper) - level_offset(species, laser.lower)
@@ -563,14 +563,14 @@ function resonant_channels(species, basis::StateBasis, laser, B, cache)
                     abs(q) <= rank || continue
                     amp = rotated[k, li]
                     iszero(amp) && continue
-                    Δ = uconvert(u"µs^-1", m_hi.energies[k] - m_lo.energies[li] - ref)
+                    Δ = uconvert(u"rad/µs", m_hi.energies[k] - m_lo.energies[li] - ref)
                     push!(
                         channels[i],
                         ResonantChannel(
                             partner,
                             Int8(rank),
                             Int8(Int(q)),
-                            scale * amp^2,
+                            uconvert(u"rad^2*m^2/(W*µs^2)", scale * amp^2),
                             Δ,
                             γ,
                         ),
@@ -583,14 +583,14 @@ function resonant_channels(species, basis::StateBasis, laser, B, cache)
                     abs(q) <= rank || continue
                     amp = rotated[ui, k]
                     iszero(amp) && continue
-                    Δ = uconvert(u"µs^-1", m_hi.energies[ui] - m_lo.energies[k] - ref)
+                    Δ = uconvert(u"rad/µs", m_hi.energies[ui] - m_lo.energies[k] - ref)
                     push!(
                         channels[i],
                         ResonantChannel(
                             partner,
                             Int8(rank),
                             Int8(Int(q)),
-                            -scale * amp^2,
+                            uconvert(u"rad^2*m^2/(W*µs^2)", -scale * amp^2),
                             Δ,
                             γ,
                         ),
@@ -605,7 +605,7 @@ end
 # The zero-field offset of a reference level from its fine-structure centroid:
 # the Casimir hyperfine shift of an F level, nothing for a fine-structure one.
 level_offset(species, level::HyperfineNumberSpec) = hyperfine_shift(species, level)
-level_offset(species, level::NoHyperfineNumberSpec) = 0.0u"µs^-1"
+level_offset(species, level::NoHyperfineNumberSpec) = 0.0u"rad/µs"
 
 """
 A bare laser frequency closer than this to an explicit electric-dipole channel
@@ -790,7 +790,7 @@ end
 Converts a polarisability into the corresponding shift at the given intensity.
 """
 shift_at_intensity(α, intensity) =
-    uconvert(u"µs^-1", -intensity * α / (2 * u"c" * u"ε0" * u"ħ"))
+    uconvert(u"rad/µs", -intensity * α / (2 * u"c" * u"ε0" * u"ħ"))
 
 """
 Raises an error unless `parts` is a valid part selector.
@@ -821,7 +821,7 @@ to one partner state (the resonantly driven component of
 [`driven_light_shift`](@ref)).
 """
 function resonant_state_shift(c, index, other, δ, intensity, w_pol, w_quad, exclude)
-    shift = 0.0u"µs^-1"
+    shift = 0.0u"rad/µs"
     state = c.basis[index]
     for ch in c.channels[index]
         fine_structure(ch.partner.level) == other || continue
@@ -833,15 +833,15 @@ function resonant_state_shift(c, index, other, δ, intensity, w_pol, w_quad, exc
         if rabi² > (CHANNEL_RABI_RATIO * d)^2
             @warn "Channel Rabi frequency is comparable to its detuning; " *
                   "second-order perturbation theory may be inaccurate." state = state partner =
-                ch.partner rabi = uconvert(u"µs^-1", sqrt(rabi²)) detuning =
-                uconvert(u"µs^-1", d)
+                ch.partner rabi = uconvert(u"rad/µs", sqrt(rabi²)) detuning =
+                uconvert(u"rad/µs", d)
         end
         if abs(d) < CHANNEL_LINEWIDTH_RATIO * ch.γ
             @warn "Laser within a few linewidths of a channel resonance, where " *
                   "the pole approximation of the shift breaks down." state = state partner =
-                ch.partner detuning = uconvert(u"µs^-1", d) linewidth = ch.γ
+                ch.partner detuning = uconvert(u"rad/µs", d) linewidth = ch.γ
         end
-        shift += ch.weight * intensity * w / d
+        shift += uconvert(u"rad/µs", ch.weight * intensity * w / d)
     end
     shift
 end
@@ -919,7 +919,7 @@ function light_shift(
     end
     other = reference_partner_manifold(c.laser, c.basis[index].level)
     resonant = if isnothing(other)
-        0.0u"µs^-1"
+        0.0u"rad/µs"
     else
         rank = multipole_rank(
             fine_structure(c.laser.lower) => fine_structure(c.laser.upper),
@@ -936,7 +936,7 @@ function light_shift(
         end
         resonant_state_shift(c, index, other, δ_eval, intensity, w_pol, w_quad, nothing)
     end
-    parts == :resonant ? resonant : background() + resonant
+    uconvert(u"rad/µs", parts == :resonant ? resonant : background() + resonant)
 end
 
 function light_shift(
@@ -1064,7 +1064,7 @@ function driven_light_shift(
     iu = stateindex(c.basis, transition.second)
     lower, upper = c.basis[il], c.basis[iu]
     w_pol = polarisation_weights(ε)
-    background = 0.0u"µs^-1"
+    background = 0.0u"rad/µs"
     if parts != :resonant
         resonance = uconvert(
             u"J",
@@ -1121,7 +1121,7 @@ function driven_light_shift(
     resonant =
         resonant_state_shift(c, iu, fs_lo, ch.Δ, intensity, w_pol, w_quad, lower) -
         resonant_state_shift(c, il, fs_hi, ch.Δ, intensity, w_pol, w_quad, upper)
-    parts == :resonant ? resonant : background + resonant
+    uconvert(u"rad/µs", parts == :resonant ? resonant : background + resonant)
 end
 
 function driven_light_shift(
@@ -1162,7 +1162,7 @@ function driven_light_shift(
         )
         return driven_light_shift(c, lower => upper, intensity, ε; direction, parts)
     end
-    laser = RelativeFrequency(lower.level => upper.level, 0.0u"µs^-1")
+    laser = RelativeFrequency(lower.level => upper.level, 0.0u"rad/µs")
     c = LightShiftCoefficients(species, levels, laser; B)
     driven_light_shift(c, lower => upper, intensity, ε; direction, parts)
 end
@@ -1190,7 +1190,7 @@ specifies a linearly oscillating field: the ``π`` entry applies along ẑ,
 and the mean of the ``σ`` entries applies perpendicular to it.
 
 `frequency` is the wavelength or angular frequency of the driving field — a
-laser or a trap rf drive; `0u"s^-1"` gives the static response. Frequencies
+laser or a trap rf drive; `0u"rad/s"` gives the static response. Frequencies
 within ~100 GHz of an explicit E1 line are refused because precise detunings
 require cancellation of the uncertain line centre. That regime is handled
 by [`LightShiftCoefficients`](@ref) and [`light_shift`](@ref); this accessor

@@ -51,16 +51,16 @@
     @test_throws ArgumentError polarisability(
         ca43,
         s,
-        RelativeFrequency("S_1/2 F=4" => "P_1/2 F=4", 2π * 1.0u"GHz"),
+        RelativeFrequency("S_1/2 F=4" => "P_1/2 F=4", angular(1.0u"GHz")),
         ε,
     )
     @test length(polarisability(ca43, s, λ_397 + 1.0u"nm")) == 3
 
     state = StateSpec("D_5/2 F=4", 3)
     for B in (0.0u"mT", [0, 0, 1]u"mT", 1u"s", NaN * u"mT", (1 + im)u"mT")
-        @test_throws ArgumentError polarisability(ca43, state, 0u"s^-1", ε; B)
+        @test_throws ArgumentError polarisability(ca43, state, 0u"rad/s", ε; B)
     end
-    @test_throws ArgumentError polarisability(ca43, state, 0u"s^-1", zeros(3))
+    @test_throws ArgumentError polarisability(ca43, state, 0u"rad/s", zeros(3))
     @test_throws ArgumentError polarisability(
         sr88,
         StateSpec("D_3/2", 1//2),
@@ -72,21 +72,21 @@
     @test_throws ArgumentError polarisability(
         ca43,
         StateSpec("D_5/2", 3//2),
-        0u"s^-1",
+        0u"rad/s",
         ε,
     )
     @test_throws ArgumentError polarisability(
         sr88,
         StateSpec("S_1/2 F=2", 2),
-        0u"s^-1",
+        0u"rad/s",
         ε,
     )
 
     # Fine-structure eigenvectors are unchanged. A large field exposes the
     # otherwise tiny Zeeman correction to the denominators.
     fine = StateSpec("D_5/2", 3//2)
-    @test polarisability(sr88, fine, 0u"s^-1", ε; B=0.5u"mT") ≈
-          polarisability(sr88, fine, 0u"s^-1", ε) rtol = 1e-6
+    @test polarisability(sr88, fine, 0u"rad/s", ε; B=0.5u"mT") ≈
+          polarisability(sr88, fine, 0u"rad/s", ε) rtol = 1e-6
     B = 10.0u"T"
     w = Levels.polarisation_weights(ε)
     data = level_polarisability(sr88, fine.level)
@@ -112,10 +112,10 @@
             channel(upper, d, q) for
             (upper, d) in data.reduced_dipoles, q in -1:1 if abs(m + q) <= upper.j
         )
-    @test polarisability(sr88, fine, 0u"s^-1", ε; B) ≈ expected rtol = 1e-12
+    @test polarisability(sr88, fine, 0u"rad/s", ε; B) ≈ expected rtol = 1e-12
     @test !isapprox(
-        polarisability(sr88, fine, 0u"s^-1", ε; B),
-        polarisability(sr88, fine, 0u"s^-1", ε);
+        polarisability(sr88, fine, 0u"rad/s", ε; B),
+        polarisability(sr88, fine, 0u"rad/s", ε);
         rtol=1e-6,
     )
 end
@@ -201,7 +201,7 @@ end
 
     _, elliptical = beam_vectors(0.4, 0.6, 0.8)
     for state in (StateSpec("S_1/2 F=4", 4), StateSpec("D_5/2 F=4", 3)),
-        laser in (0.0u"s^-1", 422.0u"nm"),
+        laser in (0.0u"rad/s", 422.0u"nm"),
         ε in ([0, 0, 1], [1, im, 0], elliptical)
 
         B = 0.4958333u"mT"
@@ -234,8 +234,8 @@ end
     end
     d = first(states)
     @test !isapprox(
-        polarisability(ca43, d, 0u"s^-1", [0, 0, 1]; B),
-        polarisability(ca43, d, 0u"s^-1", [0, 0, 1]);
+        polarisability(ca43, d, 0u"rad/s", [0, 0, 1]; B),
+        polarisability(ca43, d, 0u"rad/s", [0, 0, 1]);
         rtol=1e-3,
     )
 end
@@ -245,7 +245,7 @@ end
 
     state = StateSpec("S_1/2 F=4", 4)
     B = 0.5u"mT"
-    laser = RelativeFrequency("S_1/2 F=4" => "P_1/2 F=4", 2π * 50.0u"GHz")
+    laser = RelativeFrequency("S_1/2 F=4" => "P_1/2 F=4", angular(50.0u"GHz"))
     c = LightShiftCoefficients(ca43, StateBasis(ca43, "S_1/2", "P_1/2"), laser; B)
     ω = Levels.photon_energy(ca43, laser) / u"ħ"
     _, ε = beam_vectors(0.4, 0.6, 0.8)
@@ -293,15 +293,15 @@ end
         3 - 7 * (3m^2 - j * (j + 1)) / (j * (2j - 1)) for m in (-j):j for
         _ in (-i_nuc):i_nuc
     ])
-    H0 = ustrip.(u"µs^-1", Levels.manifold_hamiltonian(remainder, fs; B))
+    H0 = ustrip.(u"rad/µs", Levels.manifold_hamiltonian(remainder, fs; B))
     # Symmetric finite perturbation of the full Hamiltonian is independent of
     # taking an expectation in the field eigenvector inside the implementation.
     perturbation = 1e-4
-    target_energy = ustrip(u"µs^-1", manifold.energies[index])
+    target_energy = ustrip(u"rad/µs", manifold.energies[index])
     energy_index = argmin(abs.(eigvals(Symmetric(H0)) .- target_energy))
     plus = eigvals(Symmetric(H0 + perturbation * (U' * operator * U)))[energy_index]
     minus = eigvals(Symmetric(H0 - perturbation * (U' * operator * U)))[energy_index]
-    @test polarisability(remainder, state, 0u"s^-1", [0, 0, 1]; B) / au ≈
+    @test polarisability(remainder, state, 0u"rad/s", [0, 0, 1]; B) / au ≈
           (plus - minus) / (2perturbation) rtol = 1e-6
 
     # The established approximation for an intermediate without constants is
@@ -332,5 +332,6 @@ end
         (k, m) in enumerate([m for m in (-j):j for _ in (-i_nuc):i_nuc])
     )
     expected += data.static_scalar + data.static_tensor * tensor
-    @test polarisability(missing, state, 0u"s^-1", [0, 0, 1]; B) ≈ expected rtol = 1e-12
+    @test polarisability(missing, state, 0u"rad/s", [0, 0, 1]; B) ≈ expected rtol =
+        1e-12
 end

@@ -8,16 +8,16 @@ import Optim
 """
 Returns a fast unit-stripped in-place evaluator `ham!(H, t)` of the full
 rotating-frame Hamiltonian of the model — the single point where the exact
-engine leaves unitful quantities (angular ``s^{-1}``, time in seconds), directly
+engine leaves unitful quantities (angular ``\\mathrm{rad}\\,s^{-1}``, time in seconds), directly
 ahead of the ODE solves.
 """
 function stripped_hamiltonian(dt::DrivenTransition, δ, modulation)
-    Ω = ustrip(u"s^-1", dt.drive_frequency)
-    L = ustrip.(u"s^-1", dt.coupling)
-    amplitudes = [ustrip.(u"s^-1", drive.amplitude) for drive in dt.drives]
+    Ω = ustrip(u"rad/s", dt.drive_frequency)
+    L = ustrip.(u"rad/s", dt.coupling)
+    amplitudes = [ustrip.(u"rad/s", drive.amplitude) for drive in dt.drives]
     phases = [drive.phase for drive in dt.drives]
-    diagonal = ustrip.(u"s^-1", dt.frame)
-    diagonal[dt.upper_range] .-= ustrip(u"s^-1", δ)
+    diagonal = ustrip.(u"rad/s", dt.frame)
+    diagonal[dt.upper_range] .-= ustrip(u"rad/s", δ)
     phase_fn = phase_function(modulation, dt.drive_frequency)
 
     function ham!(H, t)
@@ -51,7 +51,7 @@ function monodromy(
     δ=zero(dt.drive_frequency),
     modulation=HarmonicPhaseModulation(),
 )
-    period = ustrip(u"s", 2π / dt.drive_frequency)
+    period = ustrip(u"s", 2π * u"rad" / dt.drive_frequency)
     num_states = length(dt.basis)
     ham! = stripped_hamiltonian(dt, δ, modulation)
     H = zeros(ComplexF64, num_states, num_states)
@@ -96,7 +96,7 @@ carrying the probed lower- and upper-state characters. At a sideband resonance,
 the minimum of this gap over the detuning equals the effective Rabi frequency.
 """
 function probe_gap(dt::DrivenTransition, δ, modulation, method::Monodromy)
-    Ω = ustrip(u"s^-1", dt.drive_frequency)
+    Ω = ustrip(u"rad/s", dt.drive_frequency)
     ε, V = floquet_from_monodromy(monodromy(dt, method; δ, modulation), Ω)
     w_lower = abs2.(V[dt.lower, :])
     w_upper = abs2.(V[dt.upper, :])
@@ -128,10 +128,10 @@ function sideband_rabi(
 )
     estimate = sideband_rabi(dress(dt, method.estimate); sideband, modulation)
 
-    δ_estimate = ustrip(u"s^-1", estimate.δ_res)
-    halfwidth = max(method.bracket_scale * ustrip(u"s^-1", estimate.Ω), 2π * 100)
+    δ_estimate = ustrip(u"rad/s", estimate.δ_res)
+    halfwidth = max(method.bracket_scale * ustrip(u"rad/s", estimate.Ω), 2π * 100)
     result = Optim.optimize(
-        δ -> probe_gap(dt, δ * u"s^-1", modulation, method),
+        δ -> probe_gap(dt, δ * u"rad/s", modulation, method),
         δ_estimate - halfwidth,
         δ_estimate + halfwidth,
         Optim.Brent();
@@ -139,8 +139,8 @@ function sideband_rabi(
     )
 
     (
-        Ω=uconvert(u"µs^-1", Optim.minimum(result) * u"s^-1"),
-        δ_res=uconvert(u"µs^-1", Optim.minimizer(result) * u"s^-1"),
+        Ω=uconvert(u"rad/µs", Optim.minimum(result) * u"rad/s"),
+        δ_res=uconvert(u"rad/µs", Optim.minimizer(result) * u"rad/s"),
     )
 end
 

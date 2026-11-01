@@ -33,11 +33,11 @@ H(t) = H_0 + \\sum_j \\left( M_j e^{-i w_j t} + M_j^† e^{+i w_j t} \\right),
 ```
 
 over the states of `basis`: `hamiltonian` is the static ``H_0`` (Hermitian,
-µs⁻¹) — the frame diagonal plus the couplings ``(C + C^†)/2`` of all
+rad µs⁻¹) — the frame diagonal plus the couplings ``(C + C^†)/2`` of all
 time-independent beam components, with `C` from [`coupling_matrix`](@ref) — and
 `harmonics` the ``(w_j, M_j)`` pairs of the components left with a beat note
 (empty for a static model). `couplings` keeps the complex coupling matrix
-``C_b`` of each beam (µs⁻¹, upper⟨row|lower⟩⟨col|, exact at the static field)
+``C_b`` of each beam (rad µs⁻¹, upper⟨row|lower⟩⟨col|, exact at the static field)
 as it entered the Hamiltonian, beat-note components included — the per-beam
 split that the motional layer needs, e.g. to attach each beam's displacement
 operator in [`motional_model`](@ref). `jump_operators` (µs⁻¹ᐟ²) are labelled by
@@ -268,6 +268,8 @@ function lindblad_model(
             )
         end
         L = zeros(J, num_states, num_states)
+        # The angular FWHM doubles as the phase-diffusion rate (its rad marker is
+        # dropped by the conversion, like an Einstein A's angular linewidth).
         γ = uconvert(JUMP_UNIT, sqrt(beam.linewidth))
         for i in 1:num_states
             L[i, i] = complex(frame.traversals[i, b]) * γ
