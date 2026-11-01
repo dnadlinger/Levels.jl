@@ -6,16 +6,16 @@ One running-wave laser beam.
 
 The frequency is a [`RelativeFrequency`](@ref) — a detuning from the zero-field
 interval of a named pair of levels (``F`` levels for a hyperfine species), so
-the tabulated line centres never enter the model. `ε` and `n` are the
+the tabulated line centres never enter the model. `ε` and `direction` are the
 (complex) polarisation and the unit propagation direction in the frame with the
 quantisation axis along ẑ (cf. [`Levels.beam_vectors`](@ref)); only their directions
 matter, the field amplitude being fixed by `intensity`. `linewidth` is the
 Lorentzian full width at half maximum of the laser spectrum (angular units),
 modelled as phase diffusion (cf. [`lindblad_model`](@ref)).
 
-Constructed via `LaserBeam(frequency, intensity, ε, n; linewidth)`, or with the
+Constructed via `LaserBeam(frequency, intensity, ε, direction; linewidth)`, or with the
 level pair and detuning spelled out as `LaserBeam(lower => upper, detuning,
-intensity, ε, n; linewidth)`.
+intensity, ε, direction; linewidth)`.
 """
 struct LaserBeam{F<:RelativeFrequency,I<:Quantity,W<:Quantity}
     "Laser frequency relative to a zero-field line centre."
@@ -28,13 +28,19 @@ struct LaserBeam{F<:RelativeFrequency,I<:Quantity,W<:Quantity}
     ε::SVector{3,ComplexF64}
 
     "Propagation direction (unit length)."
-    n::SVector{3,Float64}
+    direction::SVector{3,Float64}
 
     "Laser linewidth (FWHM, angular units)."
     linewidth::W
 end
 
-function LaserBeam(frequency::RelativeFrequency, intensity, ε, n; linewidth=0.0u"µs^-1")
+function LaserBeam(
+    frequency::RelativeFrequency,
+    intensity,
+    ε,
+    direction;
+    linewidth=0.0u"µs^-1",
+)
     if dimension(intensity) != dimension(1.0u"W/m^2")
         throw(
             ArgumentError(
@@ -50,31 +56,31 @@ function LaserBeam(frequency::RelativeFrequency, intensity, ε, n; linewidth=0.0
             ),
         )
     end
-    if length(ε) != 3 || length(n) != 3
+    if length(ε) != 3 || length(direction) != 3
         throw(ArgumentError("Polarisation and beam direction must be 3-vectors"))
     end
     ε_scale = sqrt(sum(abs2, ε))
-    n_scale = sqrt(sum(abs2, n))
+    n_scale = sqrt(sum(abs2, direction))
     if iszero(ε_scale) || iszero(n_scale)
         throw(ArgumentError("Polarisation and beam direction must be non-zero"))
     end
-    if !all(isreal, n)
+    if !all(isreal, direction)
         throw(ArgumentError("The beam direction must be a real vector"))
     end
     ε_unit = SVector{3,ComplexF64}(ε ./ ε_scale)
-    n_unit = SVector{3,Float64}(real.(n) ./ n_scale)
+    n_unit = SVector{3,Float64}(real.(direction) ./ n_scale)
     if abs(sum(ε_unit .* n_unit)) > 1e-6
         throw(
             ArgumentError(
-                "Polarisation must be transverse to the beam direction (ε ⋅ n = 0)",
+                "Polarisation must be transverse to the beam direction (ε ⋅ direction = 0)",
             ),
         )
     end
     LaserBeam(frequency, intensity, ε_unit, n_unit, linewidth)
 end
 
-LaserBeam(pair::Pair, detuning, intensity, ε, n; linewidth=0.0u"µs^-1") =
-    LaserBeam(RelativeFrequency(pair, detuning), intensity, ε, n; linewidth)
+LaserBeam(pair::Pair, detuning, intensity, ε, direction; linewidth=0.0u"µs^-1") =
+    LaserBeam(RelativeFrequency(pair, detuning), intensity, ε, direction; linewidth)
 
 """
 The lower and upper fine-structure levels a beam connects.
@@ -104,13 +110,13 @@ per-level (default) or per-state frame construction.
 For a hyperfine species the field must be non-zero, as the basis states denote
 the adiabatically-labelled field eigenstates (cf. [`hyperfine_manifold`](@ref)).
 
-Constructed via `LaserScheme(basis, beams; static_field, frame_reference)`; the
+Constructed via `LaserScheme(basis, beams; B, frame_reference)`; the
 atomic data enter only when a [`LindbladModel`](@ref) is derived from it.
 """
 struct LaserScheme{B<:StateBasis,F<:Quantity}
     basis::B
     beams::Vector{LaserBeam}
-    static_field::F
+    B::F
     frame_reference::NoHyperfineNumberSpec
     frame_kind::Symbol
 end
@@ -118,7 +124,7 @@ end
 function LaserScheme(
     basis::StateBasis,
     beams;
-    static_field,
+    B,
     frame_reference=nothing,
     frame_kind::Symbol=:levels,
 )
@@ -126,10 +132,8 @@ function LaserScheme(
     frame_kind in (:levels, :states) ||
         throw(ArgumentError("frame_kind must be :levels or :states, got $frame_kind"))
     isempty(basis) && throw(ArgumentError("The basis must contain at least one state"))
-    if dimension(static_field) != dimension(1.0u"T")
-        throw(
-            ArgumentError("The static field must be a flux density, got $static_field"),
-        )
+    if dimension(B) != dimension(1.0u"T")
+        throw(ArgumentError("The static field must be a flux density, got $B"))
     end
     levels = fine_structure_levels(basis)
     level_kind = eltype(basis.levels)
@@ -165,7 +169,7 @@ function LaserScheme(
             ),
         )
     end
-    LaserScheme(basis, beams, static_field, reference, frame_kind)
+    LaserScheme(basis, beams, B, reference, frame_kind)
 end
 
 """

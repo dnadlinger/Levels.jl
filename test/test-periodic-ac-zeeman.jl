@@ -16,8 +16,8 @@
     # B_⊥ x̂ + B_∥ ẑ, 50 µT each (the reference README scenario).
     const B_DRIVE = [0.05u"mT", 0.0u"mT", 0.05u"mT"]
 
-    s_manifold(b=B0) = hyperfine_manifold(ca43, "S_1/2", b)
-    d_manifold(b=B0) = hyperfine_manifold(ca43, "D_5/2", b)
+    s_manifold(b=B0) = hyperfine_manifold(ca43, "S_1/2"; B=b)
+    d_manifold(b=B0) = hyperfine_manifold(ca43, "D_5/2"; B=b)
 end
 
 @testitem "PT ac Zeeman shift vs reference implementation" tags=[:unit, :fast] setup=[
@@ -90,8 +90,8 @@ end
     f(b) = ustrip(
         u"Hz",
         (
-            state_energy(d_manifold(b * u"mT"), D_PROBE) -
-            state_energy(s_manifold(b * u"mT"), S_PROBE)
+            state_offset(d_manifold(b * u"mT"), D_PROBE) -
+            state_offset(s_manifold(b * u"mT"), S_PROBE)
         ) / 2π,
     )
     curvature = central_fdm(7, 2)(f, ustrip(u"mT", B0)) # Hz/mT²
@@ -135,7 +135,7 @@ end
     # Driving close to a D_5/2 internal splitting: the PT sum warns that its
     # result is unreliable there.
     m_d = d_manifold()
-    Δ = abs(state_energy(m_d, StateSpec("D_5/2 F=5", 3)) - state_energy(m_d, D_PROBE))
+    Δ = abs(state_offset(m_d, StateSpec("D_5/2 F=5", 3)) - state_offset(m_d, D_PROBE))
     ω = Δ + 2π * 50.0u"kHz"
     @test_logs (:warn, r"Near-resonant term") match_mode = :any ac_zeeman_shift(
         m_d,
@@ -160,7 +160,7 @@ end
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     n, ε = beam_vectors(π / 2, π / 4)
     coupling = rabi_normalised(
-        quadrupole_couplings(ca43, basis, "S_1/2", "D_5/2", ε, n),
+        quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n),
         basis,
         S_PROBE => D_PROBE,
         2π * 10.0u"kHz",
@@ -171,7 +171,7 @@ end
         basis,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling,
         drives,
     )
@@ -182,7 +182,7 @@ end
     @test iszero(dt.frame[dt.upper])
     m_s = s_manifold()
     for i in dt.lower_range
-        @test dt.frame[i] ≈ state_energy(m_s, basis[i]) - state_energy(m_s, S_PROBE) atol =
+        @test dt.frame[i] ≈ state_offset(m_s, basis[i]) - state_offset(m_s, S_PROBE) atol =
             1e-9u"µs^-1"
     end
 
@@ -210,7 +210,7 @@ end
         basis,
         StateSpec("S_1/2 F=4", 4) => StateSpec("S_1/2 F=3", 3);
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling,
         drives,
     )
@@ -219,7 +219,7 @@ end
         basis,
         StateSpec("S_1/2", 1//2) => D_PROBE;
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling,
         drives,
     )
@@ -229,7 +229,7 @@ end
         incomplete,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling=zeros(ComplexF64, 57, 57) .* u"µs^-1",
         drives=HarmonicDrive[],
     )
@@ -239,7 +239,7 @@ end
         basis,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling,
         drives=[bad_drive],
     )
@@ -280,7 +280,7 @@ end
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
     n, ε = beam_vectors(π / 2, π / 4)
     coupling = rabi_normalised(
-        quadrupole_couplings(ca43, basis, "S_1/2", "D_5/2", ε, n),
+        quadrupole_couplings(ca43, basis, "S_1/2" => "D_5/2", ε, n),
         basis,
         S_PROBE => D_PROBE,
         2π * 2.0u"kHz",
@@ -290,7 +290,7 @@ end
         basis,
         S_PROBE => D_PROBE;
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling,
         drives=zeeman_drives(ca43, basis, B_DRIVE),
     )

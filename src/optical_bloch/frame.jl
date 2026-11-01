@@ -104,7 +104,7 @@ end
 # The complex coupling matrix of each beam over the basis (µs⁻¹), exact at the
 # static field.
 function beam_couplings(species, scheme::LaserScheme)
-    B = scheme.static_field
+    B = scheme.B
     map(scheme.beams) do beam
         lo, hi = beam_levels(beam)
         coupling_matrix(
@@ -113,7 +113,7 @@ function beam_couplings(species, scheme::LaserScheme)
             lo => hi,
             beam.intensity,
             beam.ε,
-            beam.n,
+            beam.direction;
             B,
         )
     end

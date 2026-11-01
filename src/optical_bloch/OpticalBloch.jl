@@ -75,7 +75,7 @@ using ..Levels:
     multipole_rank,
     parse_level,
     photon_energy,
-    state_energy,
+    state_offset,
     stateindex,
     transition_frequency,
     zeeman_shift

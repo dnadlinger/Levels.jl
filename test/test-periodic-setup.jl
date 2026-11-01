@@ -16,14 +16,14 @@
     # The eight probed transitions, sorted by increasing magnetic-field
     # sensitivity χ as in thesis fig. 5.12.
     const TRANSITIONS = sort!(
-        state_pairs("S_1/2", "D_5/2"; Δm=[-2, -1, 1, 2]);
+        state_pairs("S_1/2" => "D_5/2"; Δm=[-2, -1, 1, 2]);
         by=t -> zeeman_sensitivity(sr88, t),
     )
 
     function probe_coupling(probe; Ω0=Ω0)
         n, ε = beam_vectors(π / 2, π / 4)
         rabi_normalised(
-            quadrupole_couplings(BASIS, "S_1/2", "D_5/2", ε, n),
+            quadrupole_couplings(BASIS, "S_1/2" => "D_5/2", ε, n),
             BASIS,
             probe,
             Ω0,
@@ -34,17 +34,9 @@
         probe;
         drives=HarmonicDrive[],
         drive_frequency=Ω_RF,
-        static_field=B0,
+        B=B0,
         coupling=probe_coupling(probe),
     )
-        DrivenTransition(
-            sr88,
-            BASIS,
-            probe;
-            drive_frequency,
-            static_field,
-            coupling,
-            drives,
-        )
+        DrivenTransition(sr88, BASIS, probe; drive_frequency, B, coupling, drives)
     end
 end

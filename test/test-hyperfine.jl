@@ -62,7 +62,7 @@ end
     # The zero-field manifold Hamiltonian is diagonal with the Casimir shifts —
     # D_5/2 exercises both the A and the B term.
     basis = StateBasis(ca43, "D_5/2")
-    h = manifold_hamiltonian(ca43, "D_5/2", 0.0u"mT")
+    h = manifold_hamiltonian(ca43, "D_5/2"; B=0.0u"mT")
     expected = Diagonal([hyperfine_shift(ca43, s.level) for s in basis])
     @test all(abs.(h .- expected) .< 2π * 1e-6u"Hz")
 
@@ -71,8 +71,8 @@ end
     @test_throws ArgumentError hyperfine_shift(ca43, "D_5/2")
 
     # Hyperfine-resolved transition frequency = centroid + Casimir offsets.
-    @test Levels.transition_frequency(ca43, "S_1/2 F=4", "D_5/2 F=6") ≈
-          Levels.transition_frequency(ca43, "S_1/2", "D_5/2") -
+    @test Levels.transition_frequency(ca43, "S_1/2 F=4" => "D_5/2 F=6") ≈
+          Levels.transition_frequency(ca43, "S_1/2" => "D_5/2") -
           hyperfine_shift(ca43, "S_1/2 F=4") + hyperfine_shift(ca43, "D_5/2 F=6")
 end
 
@@ -101,9 +101,9 @@ end
     end
 
     for b_mt in (0.01, 0.1, 0.4965, 1.0)
-        m = hyperfine_manifold(ca43, "S_1/2", b_mt * u"mT")
+        m = hyperfine_manifold(ca43, "S_1/2"; B=b_mt * u"mT")
         for state in m.basis
-            e_pkg = ustrip(u"s^-1", state_energy(m, state)) / 2π
+            e_pkg = ustrip(u"s^-1", state_offset(m, state)) / 2π
             e_ref = breit_rabi(b_mt * 1e-3, Float64(state.level.f), Float64(state.m))
             @test e_pkg ≈ e_ref rtol = 1e-12 atol = 1e-3
         end
@@ -115,7 +115,7 @@ end
     using Unitful
     using Levels: manifold_hamiltonian
 
-    m = hyperfine_manifold(ca43, "D_5/2", 0.496u"mT")
+    m = hyperfine_manifold(ca43, "D_5/2"; B=0.496u"mT")
 
     # m_F is exact: the eigenvector labelled (F, m_F) lives entirely in the
     # m_F block of the coupled basis.
@@ -128,11 +128,11 @@ end
     # Eigenvectors are orthonormal, and diagonalise the manifold Hamiltonian
     # with the stored (label-aligned) energies.
     @test m.states' * m.states ≈ I atol = 1e-12
-    h = ustrip.(u"µs^-1", manifold_hamiltonian(ca43, "D_5/2", 0.496u"mT"))
+    h = ustrip.(u"µs^-1", manifold_hamiltonian(ca43, "D_5/2"; B=0.496u"mT"))
     @test m.states' * h * m.states ≈ diagm(ustrip.(u"µs^-1", m.energies)) atol = 1e-10
 
     # Labels are undefined at zero field.
-    @test_throws ArgumentError hyperfine_manifold(ca43, "D_5/2", 0.0u"mT")
+    @test_throws ArgumentError hyperfine_manifold(ca43, "D_5/2"; B=0.0u"mT")
 
     # At low field, the exact shift approaches g_F m_F μ_B B / ħ. The residual
     # second-order term is ∼ g_J μ_B B / ΔE_hfs relative to the linear shift
@@ -148,10 +148,10 @@ end
             u"µs^-1",
             lande_g(ca43, state.level) * state.m * Levels.BOHR_MAGNETON * b / u"ħ",
         )
-        @test zeeman_shift(ca43, state, b) ≈ expected rtol = 1e-5
+        @test zeeman_shift(ca43, state; B=b) ≈ expected rtol = 1e-5
     end
-    @test iszero(zeeman_shift(ca43, StateSpec("S_1/2 F=4", 4), 0.0u"mT"))
-    @test_throws ArgumentError zeeman_shift(ca43, StateSpec("S_1/2", 1//2), 0.1u"mT")
+    @test iszero(zeeman_shift(ca43, StateSpec("S_1/2 F=4", 4); B=0.0u"mT"))
+    @test_throws ArgumentError zeeman_shift(ca43, StateSpec("S_1/2", 1//2); B=0.1u"mT")
 end
 
 @testitem "Low-field ladder-operator relations" tags=[:unit, :fast] begin
@@ -175,7 +175,7 @@ end
     # relation too. Fields as in the low-field limit test above (D_5/2 needs
     # a much smaller one, its F intervals being MHz-scale).
     for (fs_level, b) in (("S_1/2", 1e-4u"mT"), ("D_5/2", 3e-7u"mT"))
-        m = hyperfine_manifold(ca43, fs_level, b)
+        m = hyperfine_manifold(ca43, fs_level; B=b)
         @test maximum(abs.(m.states - I)) < 1e-5
 
         j = m.level.j
@@ -207,7 +207,7 @@ end
     # coupled-basis matrix elements.
     b = [0.2, -0.1, 0.3]u"mT"
     basis = StateBasis(ca43, "S_1/2")
-    h = zeeman_hamiltonian(ca43, basis, b)
+    h = zeeman_hamiltonian(ca43, basis; B=b)
     @test h ≈ h'
 
     i_nuc = 7//2
@@ -233,7 +233,7 @@ end
     @test abs(h[stateindex(basis, "S_1/2 F=3", 2), stateindex(basis, "S_1/2 F=4", 3)]) >
           2π * 1u"Hz"
     # …while a longitudinal field is diagonal in m_F.
-    hz = zeeman_hamiltonian(ca43, basis, [0.0, 0.0, 0.5]u"mT")
+    hz = zeeman_hamiltonian(ca43, basis; B=[0.0, 0.0, 0.5]u"mT")
     for i in 1:length(basis), k in 1:length(basis)
         if basis[i].m != basis[k].m
             @test abs(hz[i, k]) < 2π * 1e-9u"Hz"
@@ -247,7 +247,7 @@ end
         StateSpec("S_1/2 F=4", 3),
         StateSpec("S_1/2 F=3", 2),
     ])
-    hs = zeeman_hamiltonian(ca43, scrambled, b)
+    hs = zeeman_hamiltonian(ca43, scrambled; B=b)
     @test iszero(hs[1, 2])
     @test iszero(hs[1, 3])
     @test hs[3, 2] ==
@@ -255,7 +255,7 @@ end
 
     # A hyperfine basis must not silently pass through the no-hyperfine code
     # path (which would read m_F as m_J).
-    @test_throws MethodError zeeman_hamiltonian(sr88, basis, b)
+    @test_throws MethodError zeeman_hamiltonian(sr88, basis; B=b)
 end
 
 @testitem "Hellmann–Feynman sensitivity" tags=[:unit, :fast] begin
@@ -273,10 +273,10 @@ end
     # on the remaining GHz-scale energies.)
     energy_hz(manifold, state, b) = ustrip(
         u"Hz",
-        state_energy(hyperfine_manifold(ca43, manifold, b * u"mT"), state) / 2π,
+        state_offset(hyperfine_manifold(ca43, manifold; B=b * u"mT"), state) / 2π,
     )
     for b_mt in (0.3, 0.496)
-        χ_hf = ustrip(u"Hz/mT", zeeman_sensitivity(ca43, s, d, b_mt * u"mT") / 2π)
+        χ_hf = ustrip(u"Hz/mT", zeeman_sensitivity(ca43, s => d; B=b_mt * u"mT") / 2π)
         f(b) = energy_hz("D_5/2", d, b) - energy_hz("S_1/2", s, b)
         χ_fd = central_fdm(5, 1)(f, b_mt)
         @test χ_hf ≈ χ_fd rtol = 1e-6
@@ -284,18 +284,17 @@ end
 
     # Pair form, and a same-manifold (microwave) transition.
     pair = StateSpec("S_1/2 F=4", 0) => StateSpec("S_1/2 F=3", 1)
-    @test zeeman_sensitivity(ca43, pair, 0.3u"mT") ==
-          zeeman_sensitivity(ca43, pair.first, pair.second, 0.3u"mT")
+    @test zeeman_sensitivity(ca43, pair; B=0.3u"mT") ==
+          zeeman_sensitivity(ca43, pair.first => pair.second; B=0.3u"mT")
     f_mw(b) = energy_hz("S_1/2", pair.second, b) - energy_hz("S_1/2", pair.first, b)
-    @test ustrip(u"Hz/mT", zeeman_sensitivity(ca43, pair, 14.6u"mT") / 2π) ≈
+    @test ustrip(u"Hz/mT", zeeman_sensitivity(ca43, pair; B=14.6u"mT") / 2π) ≈
           central_fdm(5, 1)(f_mw, 14.6) rtol = 1e-6
 
     # Zero-field limit of the frequency reproduces the ground-state splitting.
     @test Levels.transition_frequency(
         ca43,
-        StateSpec("S_1/2 F=4", 0),
-        StateSpec("S_1/2 F=3", 0),
-        1e-9u"mT",
+        StateSpec("S_1/2 F=4", 0) => StateSpec("S_1/2 F=3", 0);
+        B=1e-9u"mT",
     ) ≈ 2π * 3225.60828640u"MHz" rtol = 1e-9
 end
 
@@ -315,8 +314,8 @@ end
 
     # By default the root is converged to the floating-point limit, so the residual
     # sensitivity should just be numerical noise.
-    @test abs(zeeman_sensitivity(ca43, s, d, upper)) < 1e-12u"µs^-1/mT"
-    @test abs(zeeman_sensitivity(ca43, s, d, lower)) < 1e-12u"µs^-1/mT"
+    @test abs(zeeman_sensitivity(ca43, s => d; B=upper)) < 1e-12u"µs^-1/mT"
+    @test abs(zeeman_sensitivity(ca43, s => d; B=lower)) < 1e-12u"µs^-1/mT"
     # The finite-tolerance result should lie within the expected interval.
     coarse = insensitive_field(ca43, s => d, (0.45u"mT", 0.55u"mT"); abstol=1e-4u"mT")
     @test abs(coarse - upper) < 1e-4u"mT"
@@ -350,7 +349,7 @@ end
 
     B = 0.3u"mT"
     basis = StateBasis(ca43, "S_1/2", "D_5/2")
-    v = eigenbasis_transform(ca43, basis, B)
+    v = eigenbasis_transform(ca43, basis; B)
 
     # Orthogonal, and block-diagonal in the manifolds.
     @test v' * v ≈ I atol = 1e-12
@@ -360,17 +359,17 @@ end
     @test all(iszero, v[d_range, s_range])
 
     # The manifold form matches the species convenience form.
-    m_s = hyperfine_manifold(ca43, "S_1/2", B)
-    m_d = hyperfine_manifold(ca43, "D_5/2", B)
+    m_s = hyperfine_manifold(ca43, "S_1/2"; B)
+    m_d = hyperfine_manifold(ca43, "D_5/2"; B)
     @test eigenbasis_transform(basis, m_s, m_d) == v
 
     # Rotating the full hyperfine + Zeeman Hamiltonian over the basis into the
     # eigenbasis diagonalises it, with the diagonal matching the labelled
     # eigen-energies.
     energy(state) =
-        state_energy(fine_structure(state.level) == m_s.level ? m_s : m_d, state)
+        state_offset(fine_structure(state.level) == m_s.level ? m_s : m_d, state)
     hamiltonian(b) =
-        Diagonal([hyperfine_shift(ca43, s.level) for s in b]) .+ zeeman_hamiltonian(ca43, b, [0.0u"mT", 0.0u"mT", B])
+        Diagonal([hyperfine_shift(ca43, s.level) for s in b]) .+ zeeman_hamiltonian(ca43, b; B=[0.0u"mT", 0.0u"mT", B])
     h = hamiltonian(basis)
     reference = [energy(s) for s in basis]
     @test maximum(abs.(v' * h * v .- Diagonal(reference))) <
@@ -378,7 +377,7 @@ end
 
     # A scrambled state order is supported.
     scrambled = StateBasis(reverse(collect(basis)))
-    v2 = eigenbasis_transform(ca43, scrambled, B)
+    v2 = eigenbasis_transform(ca43, scrambled; B)
     reference2 = [energy(s) for s in scrambled]
     @test maximum(abs.(v2' * hamiltonian(scrambled) * v2 .- Diagonal(reference2))) <
           1e-9 * maximum(abs.(reference2))
@@ -387,14 +386,14 @@ end
     # solutions, and the B = 0 rejection of hyperfine_manifold all surface.
     @test_throws ArgumentError eigenbasis_transform(
         ca43,
-        StateBasis(ca43, "S_1/2 F=4", "D_5/2"),
+        StateBasis(ca43, "S_1/2 F=4", "D_5/2");
         B,
     )
     @test_throws ArgumentError eigenbasis_transform(basis, m_s)
     @test_throws ArgumentError eigenbasis_transform(
         basis,
         m_s,
-        hyperfine_manifold(ca43, "D_5/2", 2 * B),
+        hyperfine_manifold(ca43, "D_5/2"; B=2 * B),
     )
-    @test_throws ArgumentError eigenbasis_transform(ca43, basis, 0.0u"mT")
+    @test_throws ArgumentError eigenbasis_transform(ca43, basis; B=0.0u"mT")
 end

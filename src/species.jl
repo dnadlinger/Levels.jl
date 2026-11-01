@@ -24,7 +24,7 @@ function validate_mass(mass)
 end
 
 function normalise_rate_table(entries, energies)
-    result = Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Any}()
+    result = Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Any}()
     for (pair, rate) in entries
         lo, hi = convert.(NoHyperfineNumberSpec, Tuple(pair))
         for level in (lo, hi)
@@ -43,9 +43,9 @@ function normalise_rate_table(entries, energies)
                 ArgumentError("An Einstein A must be a non-negative, finite rate"),
             )
         end
-        haskey(result, (lo, hi)) &&
+        haskey(result, lo => hi) &&
             throw(ArgumentError("Duplicate transition '$lo' => '$hi'"))
-        result[(lo, hi)] = rate
+        result[lo=>hi] = rate
     end
     result
 end
@@ -173,7 +173,7 @@ ReducedDipole(d::Quantity) = ReducedDipole(uconvert(u"C*m", d))
 
 resolve_rate(rate, pair, energies) = rate
 
-function resolve_rate(spec::ReducedDipole, (lower, upper)::Tuple, energies)
+function resolve_rate(spec::ReducedDipole, (lower, upper)::Pair, energies)
     Δ = energies[upper] - energies[lower]
     if Δ <= zero(Δ)
         throw(
@@ -183,7 +183,7 @@ function resolve_rate(spec::ReducedDipole, (lower, upper)::Tuple, energies)
             ),
         )
     end
-    if multipole_rank(lower, upper) != 1 || abs(upper.j - lower.j) > 1
+    if multipole_rank(lower => upper) != 1 || abs(upper.j - lower.j) > 1
         throw(
             ArgumentError(
                 "A ReducedDipole strength applies only to electric-dipole " *
@@ -201,7 +201,7 @@ unchanged.
 """
 function resolve_einstein_as(einstein_as, energies)
     isempty(einstein_as) && return Dict{
-        Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},
+        Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},
         typeof(1.0u"µs^-1"),
     }()
     Dict(
@@ -308,7 +308,7 @@ function resolve_polarisability(
                 ),
             )
         end
-        if multipole_rank(level, channel) != 1 || abs(channel.j - j) > 1
+        if multipole_rank(level => channel) != 1 || abs(channel.j - j) > 1
             throw(
                 ArgumentError(
                     "'$level' → '$channel' is not an electric-dipole pair, so " *
@@ -317,7 +317,7 @@ function resolve_polarisability(
             )
         end
         Δ = energies[channel] - e_level
-        pair = Δ > zero(Δ) ? (level, channel) : (channel, level)
+        pair = Δ > zero(Δ) ? (level => channel) : (channel => level)
         d = if isnothing(dipole)
             a = get(einstein_as, pair, nothing)
             if isnothing(a)
@@ -426,7 +426,7 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
     The sum of all A coefficients for a given upper level is the reciprocal
     level lifetime, so this is the linewidth contribution in angular units.
     """
-    einstein_as::Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
+    einstein_as::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
     """
     Measured electronic g-factors overriding the LS-coupling Landé formula in
@@ -476,6 +476,18 @@ function NoHyperfineOneElectronSpecies(;
         resolve_polarisabilities(polarisabilities, energies, resolved_as),
     )
 end
+
+"""
+    StateBasis(species::NoHyperfineOneElectronSpecies, levels...)
+
+Creates a basis from the given fine-structure levels, each contributing all its
+Zeeman sublevels in order of increasing ``m_J`` — the same as
+[`StateBasis(levels...)`](@ref StateBasis), with the species argument letting
+code construct bases for either species kind alike (for a
+[`HyperfineOneElectronSpecies`](@ref), the corresponding method expands
+fine-structure levels into their ``F`` levels).
+"""
+StateBasis(::NoHyperfineOneElectronSpecies, levels...) = StateBasis(levels...)
 
 """
 Hyperfine coupling constants of one fine-structure level, stored as energies
@@ -555,7 +567,7 @@ struct HyperfineOneElectronSpecies{
     The sum of all A coefficients for a given upper level is the reciprocal
     level lifetime, so this is the linewidth contribution in angular units.
     """
-    einstein_as::Dict{Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
+    einstein_as::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
     """
     Measured electronic g-factors overriding the LS-coupling Landé formula in
@@ -645,9 +657,15 @@ the stored (centroid) energy for a fine-structure level, plus the zero-field
 hyperfine shift for a hyperfine level.
 """
 level_energy(species::OneElectronSpecies, level::NoHyperfineNumberSpec) =
-    species.energies[level]
+    get(species.energies, level) do
+        throw(ArgumentError("Unknown level '$level'"))
+    end
 level_energy(species::HyperfineOneElectronSpecies, level::HyperfineNumberSpec) =
-    species.energies[fine_structure(level)] + u"ħ" * hyperfine_shift(species, level)
+    level_energy(species, fine_structure(level)) +
+    u"ħ" * hyperfine_shift(species, level)
+level_energy(species::OneElectronSpecies, level::AbstractString) =
+    level_energy(species, parse_level(level))
+
 function level_energy(species::OneElectronSpecies, level::LevelSpec)
     throw(
         ArgumentError(
@@ -657,7 +675,7 @@ function level_energy(species::OneElectronSpecies, level::LevelSpec)
 end
 
 """
-    transition_frequency(species::OneElectronSpecies, lower, upper)
+    transition_frequency(species::OneElectronSpecies, lower => upper)
 
 Returns the frequency of a given transition (in angular units).
 
@@ -668,20 +686,30 @@ the centroid splitting.
 An error is raised if the two levels are not connected by a known transition or
 if the levels are incorrectly ordered.
 """
-function transition_frequency(species::OneElectronSpecies, lower, upper)
-    # TODO: Nicer errors on wrong keys.
-    e1 = level_energy(species, parse_level(lower))
-    e2 = level_energy(species, parse_level(upper))
-
-    if e1 > e2
-        throw(ArgumentError("'$lower' is of higher energy than '$upper'"))
+function transition_frequency(species::OneElectronSpecies, transition::Pair; B=nothing)
+    lower, upper = transition
+    if lower isa StateSpec && upper isa StateSpec
+        field = isnothing(B) ? 0.0u"mT" : B
+        centroid =
+            (
+                level_energy(species, fine_structure(upper.level)) -
+                level_energy(species, fine_structure(lower.level))
+            ) / u"ħ"
+        offset(state) =
+            hyperfine_shift(species, state.level) +
+            zeeman_shift(species, state; B=field)
+        return uconvert(u"µs^-1", centroid + offset(upper) - offset(lower))
     end
-
-    uconvert(u"ps^-1", (e2 - e1) / u"ħ")
+    isnothing(B) ||
+        throw(ArgumentError("A field-resolved frequency requires a pair of states"))
+    e1 = level_energy(species, lower)
+    e2 = level_energy(species, upper)
+    e1 <= e2 || throw(ArgumentError("'$lower' is of higher energy than '$upper'"))
+    uconvert(u"µs^-1", (e2 - e1) / u"ħ")
 end
 
 """
-    einstein_a(species::OneElectronSpecies, lower, upper)
+    einstein_a(species::OneElectronSpecies, lower => upper)
 
 Returns the Einstein A coefficient for the given two levels.
 
@@ -693,8 +721,9 @@ of them; cf. [`Levels.hyperfine_reduction`](@ref)).
 
 Returns `nothing` if there is no decay from `upper` to `lower`.
 """
-function einstein_a(species::OneElectronSpecies, lower, upper)
-    get(species.einstein_as, (fine_structure(lower), fine_structure(upper)), nothing)
+function einstein_a(species::OneElectronSpecies, transition::Pair)
+    lower, upper = transition
+    get(species.einstein_as, fine_structure(lower) => fine_structure(upper), nothing)
 end
 
 """
@@ -728,7 +757,7 @@ function level_polarisability(species::OneElectronSpecies, level)
 end
 
 """
-    saturation_intensity(species::OneElectronSpecies, lower, upper)
+    saturation_intensity(species::OneElectronSpecies, lower => upper)
 
 Returns the saturation intensity ``I_0`` of the transition between the two levels, in
 the Oxford ion-trap group's convention (follwoing A. Steane's `[SATSUM]` note).
@@ -762,11 +791,23 @@ coefficient for the pair itself is not required, as it does not enter the defini
   same convention in Metcalf & van der Straten, "Laser Cooling and Trapping"
   (1999), §2.4.
 """
-function saturation_intensity(species::OneElectronSpecies, lower, upper)
-    ω = transition_frequency(species, lower, upper)
+function saturation_intensity(species::OneElectronSpecies, transition::Pair)
+    lower, upper = transition
+    ω = transition_frequency(species, lower => upper)
     τ = lifetime(species, upper)
+    isnothing(τ) && throw(ArgumentError("No decay data for level '$upper'"))
     uconvert(u"W/m^2", u"ħ" * ω^3 / (6 * π * τ * u"c"^2))
 end
+
+"Returns the known fine-structure levels in increasing energy order."
+levels(species::OneElectronSpecies) =
+    sort!(collect(keys(species.energies)); by=l->species.energies[l])
+
+"Returns the known decay transitions as lower => upper pairs, in energy order."
+transitions(species::OneElectronSpecies) = sort!(
+    [lo => hi for (lo, hi) in keys(species.einstein_as)];
+    by=p->(species.energies[p.second], species.energies[p.first]),
+)
 
 export Species,
     OneElectronSpecies,
@@ -779,5 +820,9 @@ export Species,
     einstein_a,
     lifetime,
     level_polarisability,
-    saturation_intensity
-public transition_frequency, BOHR_RADIUS, DIPOLE_AU, POLARISABILITY_AU, level_energy
+    saturation_intensity,
+    transition_frequency,
+    level_energy,
+    levels,
+    transitions
+public BOHR_RADIUS, DIPOLE_AU, POLARISABILITY_AU

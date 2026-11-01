@@ -62,17 +62,17 @@ end
 # dispatched on: first-order Zeeman shifts for a fine-structure species, exact
 # hyperfine + Zeeman eigen-energies (adiabatic labels) for a hyperfine one.
 function centroid_energies(species, basis::StateBasis{NoHyperfineNumberSpec}, B)
-    [uconvert(ANGULAR_UNIT, zeeman_shift(species, state, B)) for state in basis]
+    [uconvert(ANGULAR_UNIT, zeeman_shift(species, state; B)) for state in basis]
 end
 
 function centroid_energies(species, basis::StateBasis{HyperfineNumberSpec}, B)
     manifolds = Dict(
-        fs => hyperfine_manifold(species, fs, B) for fs in fine_structure_levels(basis)
+        fs => hyperfine_manifold(species, fs; B) for fs in fine_structure_levels(basis)
     )
     [
         uconvert(
             ANGULAR_UNIT,
-            state_energy(manifolds[fine_structure(state.level)], state),
+            state_offset(manifolds[fine_structure(state.level)], state),
         ) for state in basis
     ]
 end
@@ -149,7 +149,7 @@ function lindblad_model(
     )
 
     basis = scheme.basis
-    B = scheme.static_field
+    B = scheme.B
     num_states = length(basis)
     couplings = beam_couplings(species, scheme)
     frame = rotating_frame(species, scheme, couplings)
@@ -190,8 +190,8 @@ function lindblad_model(
         )
     end
     for (lo, hi) in pairs
-        rank = multipole_rank(lo, hi)
-        a = einstein_a(species, lo, hi)
+        rank = multipole_rank(lo => hi)
+        a = einstein_a(species, lo => hi)
         lower_levels = unique!([l for l in basis.levels if fine_structure(l) == lo])
         upper_levels = unique!([l for l in basis.levels if fine_structure(l) == hi])
         amplitude = amplitude_evaluator(species, lower_levels, upper_levels, B)

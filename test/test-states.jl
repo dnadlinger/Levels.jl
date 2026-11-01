@@ -87,29 +87,29 @@ end
 
 @testitem "state_pairs" tags=[:unit, :fast] begin
     # The eight quadrupole components observable with Δm = 0 suppressed.
-    e2 = state_pairs("S_1/2", "D_5/2"; Δm=[-2, -1, 1, 2])
+    e2 = state_pairs("S_1/2" => "D_5/2"; Δm=[-2, -1, 1, 2])
     @test length(e2) == 8
     @test all(p -> abs(p.second.m - p.first.m) in 1:2, e2)
     @test (StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -5//2)) in e2
     @test !((StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -1//2)) in e2)
 
-    @test length(state_pairs("S_1/2", "D_5/2"; Δm=-2:2)) == 10
+    @test length(state_pairs("S_1/2" => "D_5/2"; Δm=-2:2)) == 10
 
     # E1-type enumeration, and a Δm = 0 (π-transition) singleton collection.
-    @test length(state_pairs("S_1/2", "P_1/2"; Δm=-1:1)) == 4
-    @test state_pairs("S_1/2", "P_1/2"; Δm=0) == [
+    @test length(state_pairs("S_1/2" => "P_1/2"; Δm=-1:1)) == 4
+    @test state_pairs("S_1/2" => "P_1/2"; Δm=0) == [
         StateSpec("S_1/2", -1//2) => StateSpec("P_1/2", -1//2),
         StateSpec("S_1/2", 1//2) => StateSpec("P_1/2", 1//2),
     ]
 
     # Δm is deliberately without default.
-    @test_throws UndefKeywordError state_pairs("S_1/2", "D_5/2")
+    @test_throws UndefKeywordError state_pairs("S_1/2" => "D_5/2")
 
     # Hyperfine levels enumerate m_F; kinds must not mix.
-    hf = state_pairs("S_1/2 F=4", "D_5/2 F=3"; Δm=0)
+    hf = state_pairs("S_1/2 F=4" => "D_5/2 F=3"; Δm=0)
     @test length(hf) == 7
     @test hf[1] == (StateSpec("S_1/2 F=4", -3) => StateSpec("D_5/2 F=3", -3))
     # All 9 lower m_F reach 5 upper states each within |m_F| ≤ 6.
-    @test length(state_pairs("S_1/2 F=4", "D_5/2 F=6"; Δm=-2:2)) == 9 * 5
-    @test_throws ArgumentError state_pairs("S_1/2", "D_5/2 F=3"; Δm=0)
+    @test length(state_pairs("S_1/2 F=4" => "D_5/2 F=6"; Δm=-2:2)) == 9 * 5
+    @test_throws ArgumentError state_pairs("S_1/2" => "D_5/2 F=3"; Δm=0)
 end

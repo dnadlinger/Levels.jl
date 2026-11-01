@@ -2,9 +2,9 @@ using StaticArrays: SVector
 using WignerSymbols
 
 """
-    beam_vectors(φ_k, γ_pol, η_pol = 0.0) -> (n, ε)
+    beam_vectors(φ_k, γ_pol, η_pol = 0.0) -> (direction, ε)
 
-Returns the unit propagation direction `n` and (complex) polarisation vector `ε`
+Returns the unit propagation direction `direction` and (complex) polarisation vector `ε`
 (as `SVector{3}`s) for a beam at angle `φ_k` to the quantisation axis ẑ, with k
 in the x–z plane.
 
@@ -16,11 +16,11 @@ gives ``ε = (x̂ + i ŷ)/\\sqrt{2}``, a σ⁺ beam along the quantisation axis
 (driving ``Δm = +1``).
 """
 function beam_vectors(φ_k, γ_pol, η_pol=0.0)
-    n = SVector{3,Float64}(sin(φ_k), 0.0, cos(φ_k))
+    direction = SVector{3,Float64}(sin(φ_k), 0.0, cos(φ_k))
     ε =
         cos(γ_pol) .* SVector{3,ComplexF64}(cos(φ_k), 0.0, -sin(φ_k)) .+
         (cis(η_pol) * sin(γ_pol)) .* SVector{3,ComplexF64}(0.0, 1.0, 0.0)
-    n, ε
+    direction, ε
 end
 
 """
@@ -57,12 +57,12 @@ const RANK2_CG = [
 ]
 
 """
-    quadrupole_geometry(ε, n)
+    quadrupole_geometry(ε, direction)
 
 Returns the geometric amplitudes ``Γ_q`` of the electric-quadrupole coupling for
-the ``Δm = q`` transition channels for polarisation `ε` and beam direction `n` —
+the ``Δm = q`` transition channels for polarisation `ε` and beam direction `direction` —
 the coefficients of the atomic operators ``r^2 (r̂ ⊗ r̂)^{(2)}_q`` in
-``(ε · r)(n · r)``, i.e. ``Γ_q = (-1)^q (ε ⊗ n)^{(2)}_{-q}`` in terms of the
+``(ε · r)(direction · r)``, i.e. ``Γ_q = (-1)^q (ε ⊗ direction)^{(2)}_{-q}`` in terms of the
 irreducible tensor product of polarisation and beam direction — as a length-5
 complex `SVector` indexed by `q + 3` for ``q = -2, …, 2``.
 
@@ -70,7 +70,7 @@ A σ⁺-polarised beam along the quantisation axis thus carries its full weight 
 the ``Δm = +1`` channel. The components are kept complex so that the relative
 phases between the ``Δm`` channels are preserved.
 """
-function quadrupole_geometry(ε, n)
+function quadrupole_geometry(ε, direction)
     Γ = zeros(ComplexF64, 5)
     for q in -2:2, μ in -1:1
         ν = -q - μ
@@ -79,13 +79,13 @@ function quadrupole_geometry(ε, n)
             (-1.0)^q *
             RANK2_CG[μ+2, ν+2] *
             spherical_component(ε, μ) *
-            spherical_component(n, ν)
+            spherical_component(direction, ν)
     end
     SVector{5,ComplexF64}(Γ)
 end
 
 """
-    quadrupole_couplings(basis::StateBasis, lower_level, upper_level, ε, n)
+    quadrupole_couplings(basis::StateBasis, lower_level => upper_level, ε, direction)
 
 Returns the relative electric-quadrupole coupling amplitudes
 ``c_{m→m'} = ⟨j_l m; 2 Δm | j_u m'⟩ Γ_{Δm}`` between the Zeeman states of the two
@@ -97,10 +97,11 @@ The overall scale is arbitrary; it is typically fixed by normalising one probed
 transition to a known carrier Rabi frequency using [`rabi_normalised`](@ref)
 (e.g. one computed from the beam intensity with [`rabi_frequency`](@ref)).
 """
-function quadrupole_couplings(basis::StateBasis, lower_level, upper_level, ε, n)
+function quadrupole_couplings(basis::StateBasis, transition::Pair, ε, direction)
+    lower_level, upper_level = transition
     lower = convert(NoHyperfineNumberSpec, lower_level)
     upper = convert(NoHyperfineNumberSpec, upper_level)
-    Γ = quadrupole_geometry(ε, n)
+    Γ = quadrupole_geometry(ε, direction)
     C = zeros(ComplexF64, length(basis), length(basis))
     for (i, lower_state) in enumerate(basis)
         lower_state.level == lower || continue
@@ -117,7 +118,7 @@ function quadrupole_couplings(basis::StateBasis, lower_level, upper_level, ε, n
 end
 
 """
-    quadrupole_couplings(species, basis::StateBasis, lower, upper, ε, n)
+    quadrupole_couplings(species, basis::StateBasis, lower => upper, ε, direction)
 
 Species-first form: for a [`HyperfineOneElectronSpecies`](@ref), returns the
 relative ``F``-resolved coupling amplitudes
@@ -140,17 +141,17 @@ species-less form.
 function quadrupole_couplings(
     species::HyperfineOneElectronSpecies,
     basis::StateBasis{HyperfineNumberSpec},
-    lower_level,
-    upper_level,
+    transition::Pair,
     ε,
-    n,
+    direction,
 )
+    lower_level, upper_level = transition
     lower = hyperfine_level_list(species, lower_level)
     upper = hyperfine_level_list(species, upper_level)
-    Γ = quadrupole_geometry(ε, n)
+    Γ = quadrupole_geometry(ε, direction)
     C = zeros(ComplexF64, length(basis), length(basis))
     for lo in lower, hi in upper
-        β = hyperfine_reduction(species.nuclear_spin, lo, hi; rank=2)
+        β = hyperfine_reduction(species.nuclear_spin, lo => hi; rank=2)
         iszero(β) && continue
         for (i, lower_state) in enumerate(basis)
             lower_state.level == lo || continue
@@ -171,10 +172,9 @@ end
 quadrupole_couplings(
     species::NoHyperfineOneElectronSpecies,
     basis::StateBasis{NoHyperfineNumberSpec},
-    lower_level,
-    upper_level,
+    transition::Pair,
     ε,
-    n,
-) = quadrupole_couplings(basis, lower_level, upper_level, ε, n)
+    direction,
+) = quadrupole_couplings(basis, transition, ε, direction)
 
 export beam_vectors, dipole_geometry, quadrupole_geometry, quadrupole_couplings

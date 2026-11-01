@@ -108,22 +108,23 @@ end
         lo, up = StateSpec("S_1/2", ml), StateSpec("P_1/2", mu)
         coupling[stateindex(sb, up), stateindex(sb, lo)] = rabi_frequency(
             sr88,
-            lo,
-            up,
-            saturation_intensity(sr88, "S_1/2", "P_1/2"),
+            lo => up,
+            saturation_intensity(sr88, "S_1/2" => "P_1/2"),
             ε,
             beam,
         )
     end
 
     # Polarisation-resolved spontaneous emission P_1/2 → S_1/2.
-    a_sp = einstein_a(sr88, "S_1/2", "P_1/2")
+    a_sp = einstein_a(sr88, "S_1/2" => "P_1/2")
     c_ops = map(-1:1) do q
         C = zeros(ComplexF64, 4, 4)
         for m in (-1 // 2, 1 // 2)
             abs(m + q) <= 1 // 2 || continue
             C[stateindex(sb, "S_1/2", m), stateindex(sb, "P_1/2", m + q)] =
-                Levels.clebsch_gordan(StateSpec("S_1/2", m), StateSpec("P_1/2", m + q))
+                Levels.clebsch_gordan(
+                    StateSpec("S_1/2", m) => StateSpec("P_1/2", m + q),
+                )
         end
         QuantumObject(sqrt(a_sp) .* C, sb)
     end
@@ -133,7 +134,7 @@ end
         sb,
         bright => excited;
         drive_frequency=2π * 50.48559u"MHz",
-        static_field=0.4955125u"mT",
+        B=0.4955125u"mT",
         coupling,
         drives=zeeman_drives(sr88, sb, b),
     )

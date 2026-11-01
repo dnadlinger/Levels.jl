@@ -14,12 +14,11 @@
     # channel) — its steady state is the saturation formula exactly.
     basis = StateBasis([StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)])
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
-    Γ = 2 / 3 * einstein_a(sr88, "S_1/2", "P_1/2")
-    I_sat = saturation_intensity(sr88, "S_1/2", "P_1/2")
+    Γ = 2 / 3 * einstein_a(sr88, "S_1/2" => "P_1/2")
+    I_sat = saturation_intensity(sr88, "S_1/2" => "P_1/2")
     for (s, δ_over_Γ) in ((0.5, 0.0), (2.0, 1.5), (7.0, -3.0))
         beam = LaserBeam("S_1/2" => "P_1/2", δ_over_Γ * Γ, s * I_sat, ε_σ, n_z)
-        scheme =
-            LaserScheme(basis, [beam]; static_field=0.0u"mT", frame_reference="S_1/2")
+        scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
         model = lindblad_model(sr88, scheme; open_channels=:drop)
         ρ = steadystate(model)
         Ω = 2 * abs(model.hamiltonian[2, 1])
@@ -39,7 +38,7 @@
     beam = LaserBeam("S_1/2" => "P_1/2", 0.0u"µs^-1", I_sat, ε_σ, n_z)
     two = lindblad_model(
         sr88,
-        LaserScheme(basis, [beam]; static_field=0.0u"mT", frame_reference="S_1/2");
+        LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2");
         open_channels=:drop,
     )
     eight =
@@ -116,7 +115,7 @@ end
                 LaserBeam("S_1/2 F=1" => "P_1/2 F=1", Δ, I0, ε, n),
                 LaserBeam("D_3/2 F=2" => "P_1/2 F=1", -Δ, 4I0, ε, n),
             ];
-            static_field=B,
+            B,
         ),
     )
     fs = lindblad_model(
@@ -127,7 +126,7 @@ end
                 LaserBeam("S_1/2" => "P_1/2", Δ, I0, ε, n),
                 LaserBeam("D_3/2" => "P_1/2", -Δ, 4I0, ε, n),
             ];
-            static_field=B,
+            B,
         ),
     )
     ρ_hf = steadystate(hf)
@@ -149,15 +148,14 @@ end
     # motional model reproduces n̄ and the relaxation time.
     basis = StateBasis([StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)])
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
-    Γ = 2 / 3 * einstein_a(sr88, "S_1/2", "P_1/2")
-    I_sat = saturation_intensity(sr88, "S_1/2", "P_1/2")
+    Γ = 2 / 3 * einstein_a(sr88, "S_1/2" => "P_1/2")
+    I_sat = saturation_intensity(sr88, "S_1/2" => "P_1/2")
     ω_m = 2π * 20.0u"MHz"
     mode = MotionalMode(ω_m, [0, 0, 1.0])
     for (s, δ_over_ω) in ((0.01, -1.0), (0.01, -0.7), (0.05, -1.0), (0.01, 1.0))
         δ = δ_over_ω * ω_m
         beam = LaserBeam("S_1/2" => "P_1/2", δ, s * I_sat, ε_σ, n_z)
-        scheme =
-            LaserScheme(basis, [beam]; static_field=0.0u"mT", frame_reference="S_1/2")
+        scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
         model = lindblad_model(sr88, scheme; open_channels=:drop)
         mc = motional_coupling(sr88, scheme, model, mode)
         ρ = steadystate(model)
@@ -205,7 +203,7 @@ end
     end
     # Vector form: one steady state shared by several modes.
     beam = LaserBeam("S_1/2" => "P_1/2", -ω_m, 0.01I_sat, ε_σ, n_z)
-    scheme = LaserScheme(basis, [beam]; static_field=0.0u"mT", frame_reference="S_1/2")
+    scheme = LaserScheme(basis, [beam]; B=0.0u"mT", frame_reference="S_1/2")
     model = lindblad_model(sr88, scheme; open_channels=:drop)
     modes = [mode, MotionalMode(2π * 5.0u"MHz", [1.0, 0, 1.0])]
     mcs = motional_coupling(sr88, scheme, model, modes)

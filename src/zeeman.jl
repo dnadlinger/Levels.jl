@@ -84,18 +84,18 @@ function lande_g(species::HyperfineOneElectronSpecies, level)
 end
 
 """
-    zeeman_shift(species, state::StateSpec, B)
+    zeeman_shift(species, state::StateSpec; B)
 
 Returns the first-order Zeeman shift of the given state in a static magnetic field
 `B` along the quantisation axis, in angular frequency units.
 """
-function zeeman_shift(species::NoHyperfineOneElectronSpecies, state::StateSpec, B)
+function zeeman_shift(species::NoHyperfineOneElectronSpecies, state::StateSpec; B)
     g = lande_g(species, state.level)
     uconvert(u"µs^-1", g * state.m * BOHR_MAGNETON * B / u"ħ")
 end
 
 """
-    zeeman_sensitivity(species, lower::StateSpec, upper::StateSpec)
+    zeeman_sensitivity(species, lower::StateSpec => upper::StateSpec)
     zeeman_sensitivity(species, transition::Pair)
 
 Returns the first-order magnetic-field sensitivity ``χ`` of the transition
@@ -107,9 +107,10 @@ The `Pair` form accepts a `lower => upper` pair as produced by
 """
 function zeeman_sensitivity(
     species::NoHyperfineOneElectronSpecies,
-    lower::StateSpec,
-    upper::StateSpec,
+    transition::Pair{<:StateSpec,<:StateSpec};
+    B=nothing,
 )
+    lower, upper = transition
     g_lower = lande_g(species, lower.level)
     g_upper = lande_g(species, upper.level)
     uconvert(
@@ -118,11 +119,10 @@ function zeeman_sensitivity(
     )
 end
 
-zeeman_sensitivity(species::NoHyperfineOneElectronSpecies, transition::Pair) =
-    zeeman_sensitivity(species, transition.first, transition.second)
+
 
 """
-    zeeman_hamiltonian(species, basis::StateBasis, B)
+    zeeman_hamiltonian(species, basis::StateBasis; B)
 
 Returns the matrix of the Zeeman Hamiltonian ``\\sum_J g_J (μ_B / ħ) \\vec{B} ⋅ \\vec{J}``
 in the given basis, in angular frequency units.
@@ -134,7 +134,7 @@ per-state, so any basis ordering (or subset of Zeeman sublevels) is supported.
 """
 function zeeman_hamiltonian(
     species::NoHyperfineOneElectronSpecies,
-    basis::StateBasis{NoHyperfineNumberSpec},
+    basis::StateBasis{NoHyperfineNumberSpec};
     B,
 )
     # B·J in terms of ladder operators: B_z J_z + (B_x - iB_y)/2 J₊ + (B_x + iB_y)/2 J₋.

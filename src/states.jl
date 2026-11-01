@@ -324,7 +324,7 @@ Base.convert(::Type{StateSpec{L}}, s::StateSpec) where {L<:LevelSpec} =
     StateSpec(convert(L, s.level), s.m)
 
 """
-    state_pairs(lower_level, upper_level; Δm)
+    state_pairs(lower_level => upper_level; Δm)
 
 Enumerates the transitions between the Zeeman states of the two given levels, as
 `lower => upper` pairs of [`StateSpec`](@ref)s.
@@ -342,7 +342,8 @@ amplitude suppressed by geometry.
 The pairs are ordered by increasing lower-state `m`, then upper-state `m`; re-sort
 as needed, e.g. by magnetic-field sensitivity using [`zeeman_sensitivity`](@ref).
 """
-function state_pairs(lower_level, upper_level; Δm)
+function state_pairs(transition::Pair; Δm)
+    lower_level, upper_level = transition
     lower = parse_level(lower_level)
     upper = parse_level(upper_level)
     if typeof(lower) != typeof(upper)
@@ -367,4 +368,5 @@ export LevelSpec,
     SpectroscopicSpec,
     fine_structure,
     state_pairs
-public ORBITAL_SYMBOLS, momentum, parse_level
+export parse_level
+public ORBITAL_SYMBOLS, momentum

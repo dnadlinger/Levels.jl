@@ -38,11 +38,13 @@
 
     # The 397 nm line is guarded at 0.03 nm (57 GHz), but not 1 nm (2 THz).
     s = StateSpec("S_1/2 F=4", 4)
-    λ_397 =
-        uconvert(u"nm", 2π * u"c" / Levels.transition_frequency(ca43, "S_1/2", "P_1/2"))
+    λ_397 = uconvert(
+        u"nm",
+        2π * u"c" / Levels.transition_frequency(ca43, "S_1/2" => "P_1/2"),
+    )
     @test_throws "'S_1/2' → 'P_1/2'" polarisability(ca43, s, λ_397 + 0.03u"nm")
     @test_throws ArgumentError polarisability(ca43, s, λ_397 + 0.03u"nm", ε)
-    ω_397 = Levels.transition_frequency(ca43, "S_1/2", "P_1/2")
+    ω_397 = Levels.transition_frequency(ca43, "S_1/2" => "P_1/2")
     @test_throws ArgumentError polarisability(ca43, s, -ω_397, ε)
     ω = 2π * u"c" / laser
     @test polarisability(ca43, s, -ω, ε) ≈ polarisability(ca43, s, ω, conj.(ε))
@@ -98,8 +100,8 @@
         (w[q+2] + w[2-q]) / (
             sr88.energies[upper] - sr88.energies[fine.level] +
             u"ħ" * (
-                zeeman_shift(sr88, StateSpec(upper, m + q), B) -
-                zeeman_shift(sr88, fine, B)
+                zeeman_shift(sr88, StateSpec(upper, m + q); B) -
+                zeeman_shift(sr88, fine; B)
             )
         ),
     )
@@ -133,12 +135,12 @@ end
         empty!(cache)
         m_lo = Levels.manifold_solution(species, fine_structure(lo), B, cache)
         m_hi = Levels.manifold_solution(species, fine_structure(hi), B, cache)
-        rank = Levels.multipole_rank(lo, hi)
+        rank = Levels.multipole_rank(lo => hi)
         amplitudes = Levels.relative_amplitudes(species, m_lo, m_hi, rank)
         for (i, s) in enumerate(m_lo.basis), (k, t) in enumerate(m_hi.basis)
             expected =
-                isnothing(B) ? transition_amplitude(species, s, t; rank) :
-                transition_amplitude(species, s, t, B; rank)
+                isnothing(B) ? transition_amplitude(species, s => t; rank) :
+                transition_amplitude(species, s => t; rank, B)
             @test amplitudes[k, i] ≈ expected atol = 1e-12
         end
     end
@@ -153,7 +155,7 @@ end
     # tensored with the nuclear identity, rather than F-basis CG × β factors.
     function product_sum(state, laser, B, ε)
         fs = fine_structure(state.level)
-        source = hyperfine_manifold(ca43, fs, B)
+        source = hyperfine_manifold(ca43, fs; B)
         v = Levels.coupling_transform(ca43, fs) * source.states
         index = stateindex(source.basis, state)
         data = level_polarisability(ca43, fs)
@@ -163,7 +165,7 @@ end
         ħω = Levels.photon_energy(laser)
         α = 0.0u"C*m^2/V"
         for (other, d) in data.reduced_dipoles
-            target = hyperfine_manifold(ca43, other, B)
+            target = hyperfine_manifold(ca43, other; B)
             u = Levels.coupling_transform(ca43, other) * target.states
             for q in -1:1
                 electronic = [
@@ -283,7 +285,7 @@ end
         ),
     )
     B, state = 0.5u"mT", StateSpec("D_5/2 F=4", 3)
-    manifold = hyperfine_manifold(remainder, fs, B)
+    manifold = hyperfine_manifold(remainder, fs; B)
     index = stateindex(manifold.basis, state)
     U = Levels.coupling_transform(remainder, fs)
     j, i_nuc = fs.j, remainder.nuclear_spin
@@ -291,7 +293,7 @@ end
         3 - 7 * (3m^2 - j * (j + 1)) / (j * (2j - 1)) for m in (-j):j for
         _ in (-i_nuc):i_nuc
     ])
-    H0 = ustrip.(u"µs^-1", Levels.manifold_hamiltonian(remainder, fs, B))
+    H0 = ustrip.(u"µs^-1", Levels.manifold_hamiltonian(remainder, fs; B))
     # Symmetric finite perturbation of the full Hamiltonian is independent of
     # taking an expectation in the field eigenvector inside the implementation.
     perturbation = 1e-4

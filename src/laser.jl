@@ -58,7 +58,7 @@ function RelativeFrequency(pair::Pair, offset)
 end
 
 """
-    RelativeFrequency(species, lower::StateSpec => upper::StateSpec, detuning, B)
+    RelativeFrequency(species, lower::StateSpec => upper::StateSpec, detuning; B)
 
 Returns the laser frequency `detuning` (angular) away from the `lower` →
 `upper` Zeeman component at the static field `B` along ẑ, expressed as a
@@ -69,7 +69,7 @@ offset, so the line centre still cancels downstream. This is how a detuning
 quoted "from the resonance" of one component of a scheme — a clock
 transition, a σ⁺ pump — is entered.
 """
-function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detuning, B)
+function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detuning; B)
     lower, upper = pair
     if !(detuning isa Unitful.Frequency)
         throw(
@@ -79,7 +79,7 @@ function RelativeFrequency(species, pair::Pair{<:StateSpec,<:StateSpec}, detunin
             ),
         )
     end
-    component = zeeman_shift(species, upper, B) - zeeman_shift(species, lower, B)
+    component = zeeman_shift(species, upper; B) - zeeman_shift(species, lower; B)
     RelativeFrequency(lower.level => upper.level, detuning + component)
 end
 
@@ -104,8 +104,22 @@ photon_energy(laser::RelativeFrequency) = throw(
 photon_energy(species, laser) = photon_energy(laser)
 photon_energy(species, laser::RelativeFrequency) = uconvert(
     u"J",
-    u"ħ" * (transition_frequency(species, laser.lower, laser.upper) + laser.offset),
+    u"ħ" * (transition_frequency(species, laser.lower => laser.upper) + laser.offset),
 )
 
-export RelativeFrequency
-public photon_energy
+"""
+    angular(frequency)
+
+Converts a stated cyclic frequency to an angular frequency in inverse
+microseconds, e.g. `angular(50u"MHz")`. Does not apply to decay or heating rates.
+"""
+angular(frequency::Unitful.Frequency) = uconvert(u"µs^-1", 2π * frequency)
+
+"""
+    cyclic(angular_frequency)
+
+Converts an angular frequency to a cyclic frequency in hertz.
+"""
+cyclic(frequency::Unitful.Frequency) = uconvert(u"Hz", frequency / 2π)
+
+export RelativeFrequency, photon_energy, angular, cyclic

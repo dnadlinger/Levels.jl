@@ -72,7 +72,7 @@ end
 
 function lamb_dicke(species, mode::MotionalMode, beam::LaserBeam; projected::Bool=true)
     k = photon_energy(species, beam.frequency) / (u"ħ" * u"c")
-    lamb_dicke(species, mode, k .* beam.n; projected)
+    lamb_dicke(species, mode, k .* beam.direction; projected)
 end
 
 # Angular radiation patterns of the electric multipole components, as
@@ -146,7 +146,11 @@ end
 # isotropic 1/3, or a constant.
 function decay_recoil_moment(setting::Symbol, label::DecayLabel, mode::MotionalMode)
     if setting === :exact
-        recoil_moment(multipole_rank(label.lower, label.upper), label.q, mode.direction)
+        recoil_moment(
+            multipole_rank(label.lower => label.upper),
+            label.q,
+            mode.direction,
+        )
     elseif setting === :isotropic
         recoil_moment(0, 0, mode.direction)
     else
@@ -216,7 +220,7 @@ function motional_coupling(
     ops = similar(model.jump_operators, 0)
     for k in recoil_indices
         label = model.jump_labels[k]
-        k_photon = transition_frequency(species, label.lower, label.upper) / u"c"
+        k_photon = transition_frequency(species, label.lower => label.upper) / u"c"
         η0_k = lamb_dicke(species, mode, k_photon .* mode.direction; projected=false)
         α_k = decay_recoil_moment(recoil_moment, label, mode)
         push!(η0, η0_k)

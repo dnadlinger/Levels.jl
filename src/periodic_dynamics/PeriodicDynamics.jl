@@ -46,7 +46,7 @@ using ..Levels:
     fine_structure,
     hyperfine_manifold,
     parse_level,
-    state_energy,
+    state_offset,
     stateindex,
     staterange,
     zeeman_hamiltonian,

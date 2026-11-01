@@ -12,7 +12,7 @@
 
     n, ε = beam_vectors(π / 2, π / 4)
     L = rabi_normalised(
-        quadrupole_couplings(basis, "S_1/2", "D_5/2", ε, n),
+        quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n),
         basis,
         probe,
         Ω0,
@@ -24,7 +24,7 @@
         basis,
         probe;
         drive_frequency=Ω_rf,
-        static_field=B0,
+        B=B0,
         coupling=L,
         drives=[drive],
     )
@@ -35,8 +35,8 @@
     @test iszero(dt.frame[stateindex(basis, probe.second)])
     i = stateindex(basis, "S_1/2", -1//2)
     @test dt.frame[i] ≈
-          zeeman_shift(sr88, StateSpec("S_1/2", -1//2), B0) -
-          zeeman_shift(sr88, probe.first, B0)
+          zeeman_shift(sr88, StateSpec("S_1/2", -1//2); B=B0) -
+          zeeman_shift(sr88, probe.first; B=B0)
 
     # H(t) is Hermitian, and the probed off-diagonal element is f(t)·L.
     t = 3.7u"ns"
@@ -85,18 +85,18 @@ end
     probe = StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2)
     n, ε = beam_vectors(π / 2, π / 4)
     L = rabi_normalised(
-        quadrupole_couplings(basis, "S_1/2", "D_5/2", ε, n),
+        quadrupole_couplings(basis, "S_1/2" => "D_5/2", ε, n),
         basis,
         probe,
         2π * 100.0u"kHz",
     )
-    kwargs = (drive_frequency=2π * 50.0u"MHz", static_field=0.5u"mT", coupling=L)
+    kwargs = (drive_frequency=2π * 50.0u"MHz", B=0.5u"mT", coupling=L)
 
     # The basis must consist of exactly the probed levels.
     wide = StateBasis(["S_1/2", "D_3/2", "D_5/2"])
     n2, ε2 = n, ε
     Lwide = rabi_normalised(
-        quadrupole_couplings(wide, "S_1/2", "D_5/2", ε2, n2),
+        quadrupole_couplings(wide, "S_1/2" => "D_5/2", ε2, n2),
         wide,
         probe,
         2π * 100.0u"kHz",

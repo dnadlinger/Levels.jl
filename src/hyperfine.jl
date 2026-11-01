@@ -195,7 +195,7 @@ function coupled_moments(species::HyperfineOneElectronSpecies, fs_level)
 end
 
 """
-    zeeman_hamiltonian(species::HyperfineOneElectronSpecies, basis, B)
+    zeeman_hamiltonian(species::HyperfineOneElectronSpecies, basis; B)
 
 Returns the matrix of the Zeeman Hamiltonian
 ``\\vec{B} ⋅ (g_J μ_B \\vec{J} - g_I μ_N \\vec{I}) / ħ`` over the given hyperfine
@@ -210,7 +210,7 @@ ordering or subset of sublevels is supported.
 """
 function zeeman_hamiltonian(
     species::HyperfineOneElectronSpecies,
-    basis::StateBasis{HyperfineNumberSpec},
+    basis::StateBasis{HyperfineNumberSpec};
     B,
 )
     for level in basis.levels
@@ -259,7 +259,7 @@ function manifold_index(
 end
 
 """
-    manifold_hamiltonian(species, fs_level, B)
+    manifold_hamiltonian(species, fs_level; B)
 
 Returns the hyperfine + Zeeman Hamiltonian of one fine-structure manifold at
 the static flux density `B` along the quantisation axis ẑ, over the canonical
@@ -269,7 +269,7 @@ The energy zero is the hyperfine centroid. The hyperfine part is diagonal
 (cf. [`hyperfine_shift`](@ref)); the Zeeman part mixes the ``F`` levels while
 staying diagonal in ``m_F``.
 """
-function manifold_hamiltonian(species::HyperfineOneElectronSpecies, fs_level, B)
+function manifold_hamiltonian(species::HyperfineOneElectronSpecies, fs_level; B)
     spec = fine_structure(parse_level(fs_level))
     basis = StateBasis(species, spec)
     shifts = [hyperfine_shift(species, s.level) for s in basis]
@@ -314,13 +314,13 @@ struct HyperfineManifold{S<:HyperfineOneElectronSpecies,B<:Quantity,E<:Quantity}
 end
 
 """
-    hyperfine_manifold(species, fs_level, B) -> HyperfineManifold
+    hyperfine_manifold(species, fs_level; B) -> HyperfineManifold
 
 Diagonalises [`manifold_hamiltonian`](@ref) at the static flux density `B ≠ 0`
 along ẑ and assigns the adiabatic ``(F, m_F)`` labels (cf.
 [`HyperfineManifold`](@ref)).
 """
-function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level, B)
+function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level; B)
     if iszero(B)
         throw(
             ArgumentError(
@@ -333,7 +333,7 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level, B)
     basis = StateBasis(species, spec)
     num_states = length(basis)
 
-    h = ustrip.(u"µs^-1", manifold_hamiltonian(species, spec, B))
+    h = ustrip.(u"µs^-1", manifold_hamiltonian(species, spec; B))
     vals, vecs = eigen(Symmetric(real(h)))
 
     # Fix the arbitrary eigenvector signs for reproducibility: largest-magnitude
@@ -374,20 +374,31 @@ function hyperfine_manifold(species::HyperfineOneElectronSpecies, fs_level, B)
 end
 
 """
-    state_energy(m::HyperfineManifold, state)
-    state_energy(m::HyperfineManifold, level, m_F)
+    state_offset(m::HyperfineManifold, state)
+    state_offset(m::HyperfineManifold, level, m_F)
 
 Returns the eigen-energy (relative to the hyperfine centroid, in angular
 frequency units) of the eigenstate with the given adiabatic ``(F, m_F)`` label.
 """
-state_energy(m::HyperfineManifold, state::StateSpec) =
+state_offset(m::HyperfineManifold, state::StateSpec) =
     m.energies[stateindex(m.basis, state)]
-state_energy(m::HyperfineManifold, level, m_f) =
+state_offset(m::HyperfineManifold, level, m_f) =
     m.energies[stateindex(m.basis, level, m_f)]
 
 """
+    state_energy(manifold::HyperfineManifold, state)
+
+Returns the eigen-energy relative to the fine-structure centroid, in joules.
+[`state_offset`](@ref) returns the corresponding angular-frequency offset.
+"""
+state_energy(manifold::HyperfineManifold, state) =
+    uconvert(u"J", u"ħ" * state_offset(manifold, state))
+state_energy(manifold::HyperfineManifold, level, m) =
+    state_energy(manifold, StateSpec(level, m))
+
+"""
     eigenbasis_transform(basis::StateBasis, manifolds::HyperfineManifold...)
-    eigenbasis_transform(species::HyperfineOneElectronSpecies, basis::StateBasis, B)
+    eigenbasis_transform(species::HyperfineOneElectronSpecies, basis::StateBasis; B)
 
 Returns the orthogonal matrix ``V`` relating the canonical coupled ``|F, m_F⟩``
 basis to the field eigenbasis over the given state basis: column ``k`` holds
@@ -467,18 +478,18 @@ end
 
 function eigenbasis_transform(
     species::HyperfineOneElectronSpecies,
-    basis::StateBasis{HyperfineNumberSpec},
+    basis::StateBasis{HyperfineNumberSpec};
     B,
 )
     manifolds = unique!([fine_structure(s.level) for s in basis])
     eigenbasis_transform(
         basis,
-        (hyperfine_manifold(species, fs, B) for fs in manifolds)...,
+        (hyperfine_manifold(species, fs; B) for fs in manifolds)...,
     )
 end
 
 """
-    zeeman_shift(species::HyperfineOneElectronSpecies, state, B)
+    zeeman_shift(species::HyperfineOneElectronSpecies, state; B)
 
 Returns the Zeeman shift ``E(B) - E(0)`` of the adiabatically-labelled
 hyperfine eigenstate, in angular frequency units.
@@ -489,15 +500,15 @@ the Breit–Rabi regime.
 """
 function zeeman_shift(
     species::HyperfineOneElectronSpecies,
-    state::StateSpec{HyperfineNumberSpec},
+    state::StateSpec{HyperfineNumberSpec};
     B,
 )
     iszero(B) && return zero(1.0u"µs^-1")
-    m = hyperfine_manifold(species, fine_structure(state.level), B)
-    uconvert(u"µs^-1", state_energy(m, state) - hyperfine_shift(species, state.level))
+    m = hyperfine_manifold(species, fine_structure(state.level); B)
+    uconvert(u"µs^-1", state_offset(m, state) - hyperfine_shift(species, state.level))
 end
 
-function zeeman_shift(species::HyperfineOneElectronSpecies, state::StateSpec, B)
+function zeeman_shift(species::HyperfineOneElectronSpecies, state::StateSpec; B)
     throw(
         ArgumentError(
             "State '$state' must specify a hyperfine (F) level for a hyperfine species",
@@ -518,8 +529,7 @@ function state_moment(m::HyperfineManifold, state)
 end
 
 """
-    zeeman_sensitivity(species::HyperfineOneElectronSpecies, lower, upper, B)
-    zeeman_sensitivity(species::HyperfineOneElectronSpecies, transition::Pair, B)
+    zeeman_sensitivity(species::HyperfineOneElectronSpecies, lower => upper; B)
 
 Returns the magnetic-field sensitivity ``χ = d(E_u - E_l)/dB`` of the
 transition between the two adiabatically-labelled hyperfine eigenstates at the
@@ -531,48 +541,27 @@ may lie within one fine-structure manifold or connect two.
 """
 function zeeman_sensitivity(
     species::HyperfineOneElectronSpecies,
-    lower::StateSpec{HyperfineNumberSpec},
-    upper::StateSpec{HyperfineNumberSpec},
-    B,
+    transition::Pair{<:StateSpec{HyperfineNumberSpec},<:StateSpec{HyperfineNumberSpec}};
+    B=0.0u"mT",
 )
+    lower, upper = transition
+    if iszero(B)
+        return uconvert(
+            u"µs^-1/mT",
+            (
+                lande_g(species, upper.level)*upper.m -
+                lande_g(species, lower.level)*lower.m
+            )*BOHR_MAGNETON/u"ħ",
+        )
+    end
     fs_lower = fine_structure(lower.level)
     fs_upper = fine_structure(upper.level)
-    m_lower = hyperfine_manifold(species, fs_lower, B)
-    m_upper = fs_upper == fs_lower ? m_lower : hyperfine_manifold(species, fs_upper, B)
+    m_lower = hyperfine_manifold(species, fs_lower; B)
+    m_upper = fs_upper == fs_lower ? m_lower : hyperfine_manifold(species, fs_upper; B)
     uconvert(u"µs^-1/mT", state_moment(m_upper, upper) - state_moment(m_lower, lower))
 end
 
-zeeman_sensitivity(species::HyperfineOneElectronSpecies, transition::Pair, B) =
-    zeeman_sensitivity(species, transition.first, transition.second, B)
 
-"""
-    transition_frequency(species::HyperfineOneElectronSpecies, lower::StateSpec,
-                         upper::StateSpec, B)
-
-Returns the exact frequency of the transition between two
-adiabatically-labelled hyperfine eigenstates at the static field `B` along ẑ,
-from the manifold eigen-energies on top of the centroid splitting (in angular
-units).
-
-Unlike the level form, the result is the signed difference upper − lower, as
-within one fine-structure manifold either state may lie higher.
-"""
-function transition_frequency(
-    species::HyperfineOneElectronSpecies,
-    lower::StateSpec{HyperfineNumberSpec},
-    upper::StateSpec{HyperfineNumberSpec},
-    B,
-)
-    fs_lower = fine_structure(lower.level)
-    fs_upper = fine_structure(upper.level)
-    m_lower = hyperfine_manifold(species, fs_lower, B)
-    m_upper = fs_upper == fs_lower ? m_lower : hyperfine_manifold(species, fs_upper, B)
-    centroid = (species.energies[fs_upper] - species.energies[fs_lower]) / u"ħ"
-    uconvert(
-        u"ps^-1",
-        centroid + state_energy(m_upper, upper) - state_energy(m_lower, lower),
-    )
-end
 
 """
     insensitive_field(species, transition::Pair, bracket; abstol = 0u"mT")
@@ -600,7 +589,8 @@ function insensitive_field(
     abstol=0u"mT",
 )
     lower, upper = transition
-    f(b, _) = ustrip(u"µs^-1/mT", zeeman_sensitivity(species, lower, upper, b * u"mT"))
+    f(b, _) =
+        ustrip(u"µs^-1/mT", zeeman_sensitivity(species, lower => upper; B=b * u"mT"))
     prob = IntervalNonlinearProblem{false}(f, ustrip.(u"mT", bracket))
     sol = solve(prob, ITP(); abstol=ustrip(u"mT", abstol))
     if !successful_retcode(sol)
@@ -618,6 +608,7 @@ export HyperfineManifold,
     hyperfine_levels,
     hyperfine_shift,
     hyperfine_manifold,
+    state_offset,
     state_energy,
     eigenbasis_transform,
     insensitive_field

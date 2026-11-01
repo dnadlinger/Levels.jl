@@ -69,14 +69,14 @@ const sr88 = NoHyperfineOneElectronSpecies(;
         ]
     ),
     einstein_as=Dict(
-        convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
+        convert(Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
         (k, v) in [
-            ("S_1/2", "P_3/2") => 141u"µs^-1", # …(2) [Sansonetti2012]
-            ("S_1/2", "P_1/2") => 127.9u"µs^-1", # …(1.3) [Likforman2016]
-            ("S_1/2", "D_5/2") => 2.559u"s^-1", # …(10) [Sansonetti2012]
-            ("S_1/2", "D_3/2") => 2.299u"s^-1", # …(21) [Sansonetti2012]
-            ("D_3/2", "P_1/2") => 7.46u"µs^-1", # …(14) [Likforman2016]
-            ("D_3/2", "P_3/2") => 1.0u"µs^-1", # …(2) [Sansonetti2012]
+            ("S_1/2" => "P_3/2") => 141u"µs^-1", # …(2) [Sansonetti2012]
+            ("S_1/2" => "P_1/2") => 127.9u"µs^-1", # …(1.3) [Likforman2016]
+            ("S_1/2" => "D_5/2") => 2.559u"s^-1", # …(10) [Sansonetti2012]
+            ("S_1/2" => "D_3/2") => 2.299u"s^-1", # …(21) [Sansonetti2012]
+            ("D_3/2" => "P_1/2") => 7.46u"µs^-1", # …(14) [Likforman2016]
+            ("D_3/2" => "P_3/2") => 1.0u"µs^-1", # …(2) [Sansonetti2012]
             # Given as the matrix element: the all-order ⟨4d₅/₂‖d‖5p₃/₂⟩ =
             # 4.187 e a₀ of [Jiang2009] (equivalent to A = 8.06 µs⁻¹) is far
             # better determined than the 8.7(15) µs⁻¹ compilation value of
@@ -85,7 +85,7 @@ const sr88 = NoHyperfineOneElectronSpecies(;
             # of α₀(4d₅/₂) — by the measured static differential
             # polarisability of the clock transition (see
             # test-polarisability.jl).
-            ("D_5/2", "P_3/2") => ReducedDipole(4.187DIPOLE_AU),
+            ("D_5/2" => "P_3/2") => ReducedDipole(4.187DIPOLE_AU),
         ]
     ),
     lande_g_overrides=Dict(
@@ -167,26 +167,26 @@ Einstein A coefficients of the Ca⁺ ion; all lifetimes and branching fractions 
 measured in ⁴⁰Ca⁺, the isotope dependence being far below the quoted uncertainties.
 """
 const CA_EINSTEIN_AS = Dict(
-    convert(Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
+    convert(Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
     (k, v) in [
         # τ(D_5/2) = 1.1649(44) s [Shao2017]; the E2 decay to S_1/2 is the only relevant
         # channel (D_5/2 → D_3/2 M1 is ~µHz).
-        ("S_1/2", "D_5/2") => 1 / 1.1649u"s",
+        ("S_1/2" => "D_5/2") => 1 / 1.1649u"s",
         # τ(D_3/2) from the directly measured lifetime ratio τ(D_3/2)/τ(D_5/2) =
         # 1.0257(43) [Shao2018] times the [Shao2017] τ(D_5/2), i.e. 1.1948(66) s,
         # consistent with the direct measurement 1.195(8) s [Shao2016]; both supersede
         # the 1176(11) ms of [Kreuter2005].
-        ("S_1/2", "D_3/2") => 1 / (1.0257 * 1.1649u"s"),
+        ("S_1/2" => "D_3/2") => 1 / (1.0257 * 1.1649u"s"),
         # τ(P_1/2) = 6.904(26) ns [Hettrich2015], split by the branching
         # fractions 0.93565(7)/0.06435(7) of [Ramm2013].
-        ("S_1/2", "P_1/2") => 0.93565 / 6.904u"ns",
-        ("D_3/2", "P_1/2") => 0.06435 / 6.904u"ns",
+        ("S_1/2" => "P_1/2") => 0.93565 / 6.904u"ns",
+        ("D_3/2" => "P_1/2") => 0.06435 / 6.904u"ns",
         # τ(P_3/2) = 6.639(42) ns [Meir2020] (in 6σ tension with the older 6.924(19) ns
         # of Jin & Church 1993, which [Meir2020] argues to be superseded), split by the
         # branching fractions 0.9347(3)/0.0587(2)/ 0.00661(4) of [Gerritsma2008].
-        ("S_1/2", "P_3/2") => 0.9347 / 6.639u"ns",
-        ("D_5/2", "P_3/2") => 0.0587 / 6.639u"ns",
-        ("D_3/2", "P_3/2") => 0.00661 / 6.639u"ns",
+        ("S_1/2" => "P_3/2") => 0.9347 / 6.639u"ns",
+        ("D_5/2" => "P_3/2") => 0.0587 / 6.639u"ns",
+        ("D_3/2" => "P_3/2") => 0.00661 / 6.639u"ns",
     ]
 )
 

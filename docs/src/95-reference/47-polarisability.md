@@ -71,8 +71,8 @@ laser = RelativeFrequency(s.level => d.level, 2π * 20u"MHz")
 c = LightShiftCoefficients(ca43, [s, d], laser; B=B0)
 intensity = 1u"W/m^2"
 n, ε = beam_vectors(π / 2, π / 4, 0.3)
-Δω_parked = light_shift(c, d, intensity, ε; n) -
-            light_shift(c, s, intensity, ε; n)
+Δω_parked = light_shift(c, d, intensity, ε; direction=n) -
+            light_shift(c, s, intensity, ε; direction=n)
 ```
 
 For a resonantly driven component, [`driven_light_shift`](@ref) returns the
@@ -81,7 +81,7 @@ tuned to the probed component and excludes that component as the coherent
 drive. A positive result raises the resonance frequency.
 
 ```@example polarisability
-Δω_driven = driven_light_shift(c, s => d, intensity, ε; n)
+Δω_driven = driven_light_shift(c, s => d, intensity, ε; direction=n)
 ```
 
 Both APIs accept `parts = :total | :background | :resonant` (default

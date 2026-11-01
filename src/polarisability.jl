@@ -59,29 +59,29 @@ function polarisation_weights(ε)
 end
 
 """
-    quadrupole_weights(ε, n)
+    quadrupole_weights(ε, direction)
 
 Returns the weights ``|Γ_q|^2`` with which the beam intensity drives each of the
 ``Δm = q`` electric-quadrupole channels, as a length-5 tuple indexed by
 `q + 3`.
 
-Uses [`quadrupole_geometry`](@ref) with normalised `ε` and `n`. Both must be
-nonzero and transverse, ``ε ⋅ n = 0`` (tolerance ``10^{-3}`` after
+Uses [`quadrupole_geometry`](@ref) with normalised `ε` and `direction`. Both must be
+nonzero and transverse, ``ε ⋅ direction = 0`` (tolerance ``10^{-3}`` after
 normalisation). The weights need not sum to one: only the rank-two part of
-``ε ⊗ n`` couples.
+``ε ⊗ direction`` couples.
 """
-function quadrupole_weights(ε, n)
+function quadrupole_weights(ε, direction)
     ε_scale = sqrt(sum(abs2, ε))
-    n_scale = sqrt(sum(abs2, n))
+    n_scale = sqrt(sum(abs2, direction))
     if iszero(ε_scale) || iszero(n_scale)
         throw(ArgumentError("Polarisation and beam direction must be non-zero"))
     end
     ε_unit = ε ./ ε_scale
-    n_unit = n ./ n_scale
+    n_unit = direction ./ n_scale
     if abs(sum(ε_unit .* n_unit)) > 1e-3
         throw(
             ArgumentError(
-                "Polarisation must be transverse to the beam direction (ε ⋅ n = 0)",
+                "Polarisation must be transverse to the beam direction (ε ⋅ direction = 0)",
             ),
         )
     end
@@ -221,7 +221,7 @@ function manifold_solution(species, fs, B, cache)
         basis = StateBasis([fs])
         energies = [
             isnothing(B) ? 0.0u"µs^-1" :
-            uconvert(u"µs^-1", zeeman_shift(species, s, B)) for s in basis
+            uconvert(u"µs^-1", zeeman_shift(species, s; B)) for s in basis
         ]
         ManifoldSolution(fs, basis, energies, identity_states(length(basis)))
     end
@@ -231,7 +231,7 @@ function manifold_solution(species::HyperfineOneElectronSpecies, fs, B, cache)
     get!(cache, fs) do
         known = haskey(species.hyperfine, fs)
         if known && !isnothing(B)
-            m = hyperfine_manifold(species, fs, B)
+            m = hyperfine_manifold(species, fs; B)
             return ManifoldSolution(fs, m.basis, m.energies, m.states)
         end
         basis = StateBasis(species, fs)
@@ -282,7 +282,7 @@ reduction_factor(
     lo::HyperfineNumberSpec,
     hi::HyperfineNumberSpec,
     rank,
-) = hyperfine_reduction(species.nuclear_spin, lo, hi; rank)
+) = hyperfine_reduction(species.nuclear_spin, lo => hi; rank)
 
 """
 Returns the static remainder's tensor factor in each eigenstate:
@@ -450,9 +450,9 @@ function quadrupole_pairs(species, levels)
     pairs = Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}[]
     for lo in levels, hi in levels
         species.energies[lo] < species.energies[hi] || continue
-        multipole_rank(lo, hi) == 2 || continue
+        multipole_rank(lo => hi) == 2 || continue
         abs(lo.j - hi.j) <= 2 <= lo.j + hi.j || continue
-        isnothing(einstein_a(species, lo, hi)) && continue
+        isnothing(einstein_a(species, lo => hi)) && continue
         push!(pairs, (lo, hi))
     end
     pairs
@@ -460,8 +460,8 @@ end
 
 # Ω²/(4 × intensity) for a unit-amplitude component; see rabi_frequency.
 function channel_scale(species, lo, hi, rank)
-    a = einstein_a(species, lo, hi)
-    ω = transition_frequency(species, lo, hi)
+    a = einstein_a(species, lo => hi)
+    ω = transition_frequency(species, lo => hi)
     prefactor = rank == 1 ? 6.0 : 20.0
     uconvert(u"m^2/(W*µs^2)", prefactor * π * u"c"^2 * a / (4 * u"ħ" * ω^3))
 end
@@ -474,7 +474,7 @@ fine-structure levels and multipole rank.
 function validate_reference(species, laser::RelativeFrequency)
     lo = fine_structure(laser.lower)
     hi = fine_structure(laser.upper)
-    rank = multipole_rank(lo, hi)
+    rank = multipole_rank(lo => hi)
     if !(abs(lo.j - hi.j) <= rank <= lo.j + hi.j)
         throw(
             ArgumentError(
@@ -483,8 +483,8 @@ function validate_reference(species, laser::RelativeFrequency)
             ),
         )
     end
-    if isnothing(einstein_a(species, lo, hi))
-        if !isnothing(einstein_a(species, hi, lo))
+    if isnothing(einstein_a(species, lo => hi))
+        if !isnothing(einstein_a(species, hi => lo))
             throw(
                 ArgumentError(
                     "'$(laser.lower)' is of higher energy than '$(laser.upper)'; " *
@@ -507,7 +507,7 @@ function exclusion_partner(laser)
     laser isa RelativeFrequency || return Returns(nothing)
     lo = fine_structure(laser.lower)
     hi = fine_structure(laser.upper)
-    multipole_rank(lo, hi) == 1 || return Returns(nothing)
+    multipole_rank(lo => hi) == 1 || return Returns(nothing)
     function (level)
         fs = fine_structure(parse_level(level))
         fs == lo ? hi : fs == hi ? lo : nothing
@@ -541,7 +541,7 @@ function resonant_channels(species, basis::StateBasis, laser, B, cache)
     for (lo, hi) in pairs
         validate_field_solution(species, lo, B)
         validate_field_solution(species, hi, B)
-        rank = multipole_rank(lo, hi)
+        rank = multipole_rank(lo => hi)
         scale = channel_scale(species, lo, hi, rank)
         γ = uconvert(u"µs^-1", 1 / lifetime(species, hi))
         m_lo = manifold_solution(species, lo, B, cache)
@@ -847,8 +847,8 @@ function resonant_state_shift(c, index, other, δ, intensity, w_pol, w_quad, exc
 end
 
 """
-    light_shift(coefficients::LightShiftCoefficients, state::StateSpec, intensity, ε; n, δ, parts)
-    light_shift(species, state::StateSpec, laser, intensity, ε; n, B, δ, parts)
+    light_shift(coefficients::LightShiftCoefficients, state::StateSpec, intensity, ε; direction, δ, parts)
+    light_shift(species, state::StateSpec, laser, intensity, ε; direction, B, δ, parts)
 
 Returns the ac Stark (light) shift of the given state (in angular units) for a
 beam of the given intensity and polarisation `ε`, parked at the laser frequency
@@ -860,7 +860,7 @@ the polarisation alone, never on the beam direction — plus, for a
 **near-resonant** sum over the Zeeman components connecting the state to the
 other manifold of the reference pair, at their exact at-field detunings from
 the stated laser offset. For an electric-quadrupole reference pair the beam
-direction `n` is required, as the quadrupole coupling depends on it; for an
+direction `direction` is required, as the quadrupole coupling depends on it; for an
 electric-dipole one it is not used. `parts` selects `:total` (the default),
 `:background` or `:resonant`.
 
@@ -888,7 +888,7 @@ function light_shift(
     state::StateSpec,
     intensity,
     ε;
-    n=nothing,
+    direction=nothing,
     δ=nothing,
     parts=:total,
 )
@@ -921,16 +921,18 @@ function light_shift(
     resonant = if isnothing(other)
         0.0u"µs^-1"
     else
-        rank = multipole_rank(fine_structure(c.laser.lower), fine_structure(c.laser.upper))
+        rank = multipole_rank(
+            fine_structure(c.laser.lower) => fine_structure(c.laser.upper),
+        )
         w_quad = nothing
         if rank == 2
-            isnothing(n) && throw(
+            isnothing(direction) && throw(
                 ArgumentError(
-                    "The beam direction n is required: the reference pair is an " *
+                    "The beam direction is required: the reference pair is an " *
                     "electric-quadrupole transition, whose coupling depends on it",
                 ),
             )
-            w_quad = quadrupole_weights(ε, n)
+            w_quad = quadrupole_weights(ε, direction)
         end
         resonant_state_shift(c, index, other, δ_eval, intensity, w_pol, w_quad, nothing)
     end
@@ -943,51 +945,22 @@ function light_shift(
     laser,
     intensity,
     ε;
-    n=nothing,
+    direction=nothing,
     B=nothing,
     δ=nothing,
     parts=:total,
 )
     c = LightShiftCoefficients(species, [state.level], laser; B)
-    light_shift(c, state, intensity, ε; n, δ, parts)
+    light_shift(c, state, intensity, ε; direction, δ, parts)
 end
 
-# The pair forms of light_shift were replaced by the parked/driven split;
-# fail with guidance rather than a MethodError.
-light_shift(c::LightShiftCoefficients, transition::Pair, intensity, ε; kwargs...) =
-    throw(
-        ArgumentError(
-            "The light shift of a pair is driven_light_shift (laser locked to " *
-            "the driven component) or, for a parked beam, the difference of the " *
-            "two states' light_shift results",
-        ),
-    )
-light_shift(
-    species,
-    lower::StateSpec,
-    upper::StateSpec,
-    laser,
-    intensity,
-    ε;
-    kwargs...,
-) = throw(
-    ArgumentError(
-        "The light shift of a pair is driven_light_shift (laser locked to " *
-        "the driven component; no laser argument — the probed transition fixes " *
-        "it) or, for a parked beam, the difference of the two states' " *
-        "light_shift results",
-    ),
-)
-
-# Explains why no channel connects the probed pair, mirroring the checks the
-# construction applies.
 function throw_undriveable(c, lower, upper)
     fs_lo = fine_structure(lower.level)
     fs_hi = fine_structure(upper.level)
-    rank = multipole_rank(fs_lo, fs_hi)
+    rank = multipole_rank(fs_lo => fs_hi)
     connected =
         abs(fs_lo.j - fs_hi.j) <= rank <= fs_lo.j + fs_hi.j &&
-        !isnothing(einstein_a(c.species, fs_lo, fs_hi))
+        !isnothing(einstein_a(c.species, fs_lo => fs_hi))
     if connected
         named =
             !isnothing(c.laser) &&
@@ -1020,7 +993,7 @@ function throw_undriveable(c, lower, upper)
             ),
         )
     end
-    if !isnothing(einstein_a(c.species, fs_hi, fs_lo))
+    if !isnothing(einstein_a(c.species, fs_hi => fs_lo))
         throw(
             ArgumentError(
                 "'$lower' is of higher energy than '$upper'; give the transition " *
@@ -1037,8 +1010,8 @@ function throw_undriveable(c, lower, upper)
 end
 
 """
-    driven_light_shift(coefficients::LightShiftCoefficients, transition::Pair, intensity, ε; n, parts)
-    driven_light_shift(species, lower::StateSpec, upper::StateSpec, intensity, ε; n, B, parts)
+    driven_light_shift(coefficients::LightShiftCoefficients, transition::Pair, intensity, ε; direction, parts)
+    driven_light_shift(species, lower::StateSpec => upper::StateSpec, intensity, ε; direction, B, parts)
 
 Returns the angular-frequency displacement of the `lower => upper` resonance
 under a laser tuned to that component. A positive result raises the resonance
@@ -1063,7 +1036,7 @@ with linear polarisation the field-reversal identity is instead
 The probed pair may be any electric-quadrupole transition with channels in the
 coefficients (which requires construction with `B`); an electric-dipole pair
 must additionally be the [`RelativeFrequency`](@ref) reference pair. The beam
-direction `n` is required for electric-quadrupole pairs and unused for
+direction `direction` is required for electric-quadrupole pairs and unused for
 electric-dipole ones. For the background part, the coefficients' laser
 frequency must be consistent with the probed transition (rtol ``10^{-3}``) —
 in driven mode the laser *is* on that line. Like the parked
@@ -1083,7 +1056,7 @@ function driven_light_shift(
     transition::Pair,
     intensity,
     ε;
-    n=nothing,
+    direction=nothing,
     parts=:total,
 )
     validate_parts(parts)
@@ -1095,7 +1068,7 @@ function driven_light_shift(
     if parts != :resonant
         resonance = uconvert(
             u"J",
-            u"ħ" * transition_frequency(c.species, lower.level, upper.level),
+            u"ħ" * transition_frequency(c.species, lower.level => upper.level),
         )
         if !isapprox(c.photon_energy, resonance; rtol=1e-3)
             wavelength(ħω) = round(u"nm", 2π * u"ħ" * u"c" / ħω; digits=3)
@@ -1135,13 +1108,13 @@ function driven_light_shift(
     end
     w_quad = nothing
     if ch.rank == 2
-        isnothing(n) && throw(
+        isnothing(direction) && throw(
             ArgumentError(
-                "The beam direction n is required for an electric-quadrupole " *
+                "The beam direction is required for an electric-quadrupole " *
                 "transition, whose coupling depends on it",
             ),
         )
-        w_quad = quadrupole_weights(ε, n)
+        w_quad = quadrupole_weights(ε, direction)
     end
     fs_lo = fine_structure(lower.level)
     fs_hi = fine_structure(upper.level)
@@ -1152,15 +1125,15 @@ function driven_light_shift(
 end
 
 function driven_light_shift(
-    species,
-    lower::StateSpec,
-    upper::StateSpec,
+    species::OneElectronSpecies,
+    transition::Pair{<:StateSpec,<:StateSpec},
     intensity,
     ε;
-    n=nothing,
+    direction=nothing,
     B=nothing,
     parts=:total,
 )
+    lower, upper = transition
     levels = [lower.level, upper.level]
     if isnothing(B)
         if parts != :background
@@ -1172,7 +1145,7 @@ function driven_light_shift(
         end
         fs_lo = fine_structure(parse_level(lower.level))
         fs_hi = fine_structure(parse_level(upper.level))
-        if multipole_rank(fs_lo, fs_hi) == 1
+        if multipole_rank(fs_lo => fs_hi) == 1
             throw(
                 ArgumentError(
                     "The background of a driven electric-dipole line requires B: " *
@@ -1185,13 +1158,13 @@ function driven_light_shift(
         c = LightShiftCoefficients(
             species,
             levels,
-            transition_frequency(species, lower.level, upper.level),
+            transition_frequency(species, lower.level => upper.level),
         )
-        return driven_light_shift(c, lower => upper, intensity, ε; n, parts)
+        return driven_light_shift(c, lower => upper, intensity, ε; direction, parts)
     end
     laser = RelativeFrequency(lower.level => upper.level, 0.0u"µs^-1")
     c = LightShiftCoefficients(species, levels, laser; B)
-    driven_light_shift(c, lower => upper, intensity, ε; n, parts)
+    driven_light_shift(c, lower => upper, intensity, ε; direction, parts)
 end
 
 """
@@ -1262,7 +1235,7 @@ polarisability(
 )
 
 """
-    scalar_polarisability(species, level, laser)
+    scalar_polarisability(species, level, frequency)
 
 Returns the zero-field scalar polarisability ``α_0(ω)`` at a wavelength or
 angular frequency; zero frequency gives the static limit. Accepts a
@@ -1286,8 +1259,8 @@ the zero-field stretched-state responses:
 ``α_{σ^+} = α_0 + α_1/2 - α_2/2``. These single-``F`` factors do not apply
 to a mixed field eigenstate.
 """
-function scalar_polarisability(species, level, laser)
-    ħω = photon_energy(laser)
+function scalar_polarisability(species, level, frequency)
+    ħω = photon_energy(frequency)
     parsed = parse_level(level)
     if parsed isa HyperfineNumberSpec
         α = state_polarisabilities(species, StateSpec(parsed, parsed.f), ħω)
@@ -1304,7 +1277,7 @@ function scalar_polarisability(species, level, laser)
 end
 
 """
-    vector_polarisability(species, level, laser)
+    vector_polarisability(species, level, frequency)
 
 Returns the zero-field vector polarisability ``α_1(ω)`` at a wavelength or
 angular frequency; see [`scalar_polarisability`](@ref) for the convention.
@@ -1312,8 +1285,8 @@ angular frequency; see [`scalar_polarisability`](@ref) for the convention.
 Vanishes in the static limit. The model assigns no vector remainder to the
 unresolved channels, so only explicit dipoles contribute.
 """
-function vector_polarisability(species, level, laser)
-    ħω = photon_energy(laser)
+function vector_polarisability(species, level, frequency)
+    ħω = photon_energy(frequency)
     parsed = parse_level(level)
     if parsed isa HyperfineNumberSpec
         parsed.f > 0 || return 0.0u"C*m^2/V"
@@ -1333,15 +1306,15 @@ function vector_polarisability(species, level, laser)
 end
 
 """
-    tensor_polarisability(species, level, laser)
+    tensor_polarisability(species, level, frequency)
 
 Returns the zero-field tensor polarisability ``α_2(ω)`` at a wavelength or
 angular frequency; see [`scalar_polarisability`](@ref) for the convention.
 
 Zero for ``j ≤ 1/2``, which cannot support a rank-two tensor response.
 """
-function tensor_polarisability(species, level, laser)
-    ħω = photon_energy(laser)
+function tensor_polarisability(species, level, frequency)
+    ħω = photon_energy(frequency)
     parsed = parse_level(level)
     if parsed isa HyperfineNumberSpec
         parsed.f >= 1 || return 0.0u"C*m^2/V"

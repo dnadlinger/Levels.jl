@@ -21,7 +21,7 @@ Returns the [`HarmonicDrive`](@ref) describing an ac magnetic field
 [`Levels.zeeman_hamiltonian`](@ref).
 """
 zeeman_drive(species, basis, B; phase=0.0) =
-    HarmonicDrive(zeeman_hamiltonian(species, basis, B), Float64(phase))
+    HarmonicDrive(zeeman_hamiltonian(species, basis; B), Float64(phase))
 
 """
     zeeman_drives(species, basis, b; phase = 0.0)
@@ -177,13 +177,13 @@ function normalise_driven_matrices(coupling, drives)
 end
 
 """
-    DrivenTransition(species, basis, probe::Pair; drive_frequency, static_field,
+    DrivenTransition(species, basis, probe::Pair; drive_frequency, B,
                      coupling, drives = HarmonicDrive[])
 
 Assembles the rotating-frame model for probing the `lower => upper` pair of
 Zeeman states `probe`.
 
-The rotating-frame energies are the Zeeman shifts in `static_field` (the static
+The rotating-frame energies are the Zeeman shifts in `B` (the static
 magnetic flux density along the quantisation axis ẑ) relative to the probed pair.
 `coupling` is the complex matrix of laser carrier Rabi frequencies (angular
 units) in the upper⟨row|lower⟩⟨col| block, e.g. from
@@ -199,7 +199,7 @@ For a [`HyperfineOneElectronSpecies`](@ref), the basis must consist of the two
 (all ``F``, all ``m_F``, contiguous per manifold — e.g. from
 `StateBasis(species, "S_1/2", "D_5/2")`). The basis states then denote the
 **adiabatically-labelled eigenstates** of the hyperfine + Zeeman Hamiltonian at
-`static_field` (cf. [`Levels.hyperfine_manifold`](@ref)): the rotating-frame
+`B` (cf. [`Levels.hyperfine_manifold`](@ref)): the rotating-frame
 energies are the exact manifold eigen-energies, and `coupling` and `drives` —
 supplied in the coupled zero-field ``|F, m_F⟩`` basis, e.g. from
 [`Levels.quadrupole_couplings`](@ref) and [`zeeman_drives`](@ref) — are rotated
@@ -213,7 +213,7 @@ function DrivenTransition(
     basis::StateBasis{NoHyperfineNumberSpec},
     probe::Pair;
     drive_frequency,
-    static_field,
+    B,
     coupling,
     drives=HarmonicDrive[],
 )
@@ -240,8 +240,7 @@ function DrivenTransition(
         reference = state.level == lower_state.level ? lower_state : upper_state
         uconvert(
             u"µs^-1",
-            zeeman_shift(species, state, static_field) -
-            zeeman_shift(species, reference, static_field),
+            zeeman_shift(species, state; B) - zeeman_shift(species, reference; B),
         )
     end
 
@@ -280,7 +279,7 @@ function DrivenTransition(
     basis::StateBasis{HyperfineNumberSpec},
     probe::Pair;
     drive_frequency,
-    static_field,
+    B,
     coupling,
     drives=HarmonicDrive[],
 )
@@ -308,8 +307,8 @@ function DrivenTransition(
     end
     validate_driven_blocks(num_states, coupling, drives, lower_range, upper_range)
 
-    m_lower = hyperfine_manifold(species, fs_lower, static_field)
-    m_upper = hyperfine_manifold(species, fs_upper, static_field)
+    m_lower = hyperfine_manifold(species, fs_lower; B)
+    m_upper = hyperfine_manifold(species, fs_upper; B)
     # The transform (and its complete-manifold validation) aligns the (possibly
     # reordered) user basis with the label-aligned eigen-solutions.
     v = eigenbasis_transform(basis, m_lower, m_upper)
@@ -320,7 +319,7 @@ function DrivenTransition(
         m, reference =
             fine_structure(state.level) == fs_lower ? (m_lower, lower_state) :
             (m_upper, upper_state)
-        state_energy(m, state) - state_energy(m, reference)
+        state_offset(m, state) - state_offset(m, reference)
     end
 
     # Rotate the coupled-basis coupling and drives into the field eigenbasis

@@ -172,11 +172,11 @@ manifold_state_index(m::HyperfineManifold, state::StateSpec) =
 
 """
     ac_zeeman_shift(species::HyperfineOneElectronSpecies, probe::Pair,
-                    static_field, Ω, drives; warn_ratio = 20)
+                    B, Ω, drives; warn_ratio = 20)
 
 Returns the ac Zeeman shift of the transition between the two
 adiabatically-labelled hyperfine eigenstates `probe` (`lower => upper`
-[`StateSpec`](@ref)s) at the static field `static_field` along ẑ, for driving
+[`StateSpec`](@ref)s) at the static field `B` along ẑ, for driving
 at the angular frequency `Ω`, as a named tuple `(; shift, lower, upper)` with
 `shift = upper - lower` (positive: the transition frequency increases).
 
@@ -189,7 +189,7 @@ ones.
 function ac_zeeman_shift(
     species::HyperfineOneElectronSpecies,
     probe::Pair,
-    static_field,
+    B,
     Ω,
     drives;
     warn_ratio=20,
@@ -197,10 +197,8 @@ function ac_zeeman_shift(
     lower, upper = probe
     fs_lower = fine_structure(parse_level(lower.level))
     fs_upper = fine_structure(parse_level(upper.level))
-    m_lower = hyperfine_manifold(species, fs_lower, static_field)
-    m_upper =
-        fs_upper == fs_lower ? m_lower :
-        hyperfine_manifold(species, fs_upper, static_field)
+    m_lower = hyperfine_manifold(species, fs_lower; B)
+    m_upper = fs_upper == fs_lower ? m_lower : hyperfine_manifold(species, fs_upper; B)
     δ_lower = ac_zeeman_shift(m_lower, lower, Ω, drives; warn_ratio)
     δ_upper = ac_zeeman_shift(m_upper, upper, Ω, drives; warn_ratio)
     (shift=δ_upper - δ_lower, lower=δ_lower, upper=δ_upper)

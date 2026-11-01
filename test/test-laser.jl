@@ -11,7 +11,7 @@
     # its precision, which is the point of keeping the offset separate.
     rel = RelativeFrequency("S_1/2" => "D_5/2", 2π * 1.0u"MHz")
     @test_throws ArgumentError Levels.photon_energy(rel)
-    ω0 = Levels.transition_frequency(sr88, "S_1/2", "D_5/2")
+    ω0 = Levels.transition_frequency(sr88, "S_1/2" => "D_5/2")
     @test Levels.photon_energy(sr88, rel) ≈ uconvert(u"J", u"ħ" * (ω0 + 2π * 1.0u"MHz"))
 
     # The wavelength and angular-frequency forms agree with each other (and

@@ -105,7 +105,7 @@ end
             BASIS,
             probe;
             drive_frequency=Ω_rf,
-            static_field=b_static,
+            B=b_static,
             coupling,
             drives,
         )

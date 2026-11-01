@@ -56,7 +56,7 @@
                     linewidth,
                 ),
             ];
-            static_field=B_LAMBDA,
+            B=B_LAMBDA,
             kwargs...,
         )
     end
@@ -107,14 +107,9 @@
                 ) => uconvert(u"µs^-1", γ),
             ),
         )
-        intensity = intensity_for_rabi(species, TOY_S, TOY_P, Ω, σ_MINUS, Z_AXIS)
+        intensity = intensity_for_rabi(species, TOY_S => TOY_P, Ω, σ_MINUS, Z_AXIS)
         beam = LaserBeam("S_1/2" => "P_3/2", δ, intensity, σ_MINUS, Z_AXIS)
-        scheme = LaserScheme(
-            TOY_BASIS,
-            [beam];
-            static_field=0.0u"mT",
-            frame_reference="S_1/2",
-        )
+        scheme = LaserScheme(TOY_BASIS, [beam]; B=0.0u"mT", frame_reference="S_1/2")
         model = lindblad_model(species, scheme)
         mode = MotionalMode(ω, Z_AXIS)
         (;
@@ -134,8 +129,8 @@ end
 
     n, ε = beam_vectors(0.4, 0.3)
     beam = LaserBeam("S_1/2" => "P_1/2", 2π * 10.0u"MHz", 3.0u"W/m^2", 2ε, 5n)
-    @test beam.ε isa SVector{3,ComplexF64} && beam.n isa SVector{3,Float64}
-    @test beam.ε ≈ ε && beam.n ≈ n   # normalised
+    @test beam.ε isa SVector{3,ComplexF64} && beam.direction isa SVector{3,Float64}
+    @test beam.ε ≈ ε && beam.direction ≈ n   # normalised
     @test iszero(beam.linewidth)
     @test beam.frequency == RelativeFrequency("S_1/2" => "P_1/2", 2π * 10.0u"MHz")
     @test LaserBeam(beam.frequency, 3.0u"mW/cm^2", ε, n; linewidth=2π * 0.1u"MHz").linewidth ==
@@ -161,28 +156,28 @@ end
     @test_throws ArgumentError LaserBeam(beam.frequency, 3.0u"W/m^2", ε, [1.0, 2.0])
 
     basis = StateBasis(["S_1/2", "P_1/2"])
-    scheme = LaserScheme(basis, [beam]; static_field=0.5u"mT")
+    scheme = LaserScheme(basis, [beam]; B=0.5u"mT")
     @test scheme.frame_reference == convert(NoHyperfineNumberSpec, "P_1/2")   # upper of first beam
-    @test LaserScheme(basis, [beam]; static_field=0.5u"mT", frame_reference="S_1/2").frame_reference ==
+    @test LaserScheme(basis, [beam]; B=0.5u"mT", frame_reference="S_1/2").frame_reference ==
           convert(NoHyperfineNumberSpec, "S_1/2")
-    @test LaserScheme(basis, LaserBeam[]; static_field=0.5u"mT").frame_reference ==
+    @test LaserScheme(basis, LaserBeam[]; B=0.5u"mT").frame_reference ==
           convert(NoHyperfineNumberSpec, "S_1/2")
-    @test_throws ArgumentError LaserScheme(basis, [beam]; static_field=0.5u"m")
+    @test_throws ArgumentError LaserScheme(basis, [beam]; B=0.5u"m")
     @test_throws ArgumentError LaserScheme(
         basis,
         [beam];
-        static_field=0.5u"mT",
+        B=0.5u"mT",
         frame_reference="D_3/2",
     )
     other = LaserBeam("D_3/2" => "P_1/2", 0.0u"µs^-1", 3.0u"W/m^2", ε, n)
-    @test_throws ArgumentError LaserScheme(basis, [beam, other]; static_field=0.5u"mT")
+    @test_throws ArgumentError LaserScheme(basis, [beam, other]; B=0.5u"mT")
     # Hyperfine reference levels on a fine-structure basis (and vice versa).
     hf_beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=4", 0.0u"µs^-1", 3.0u"W/m^2", ε, n)
-    @test_throws ArgumentError LaserScheme(basis, [hf_beam]; static_field=0.5u"mT")
+    @test_throws ArgumentError LaserScheme(basis, [hf_beam]; B=0.5u"mT")
     @test_throws ArgumentError LaserScheme(
         StateBasis(ca43, "S_1/2", "P_1/2"),
         [beam];
-        static_field=0.5u"mT",
+        B=0.5u"mT",
     )
 
     mode = MotionalMode(2π * 1.2u"MHz", [1.0, 0.0, 1.0])
@@ -207,8 +202,7 @@ end
     traversal(frame, level) = frame.traversals[first(staterange(basis, level)), :]
 
     # Reference P (default): the lower levels sit at minus their beams' detunings.
-    frame =
-        rotating_frame(sr88, LaserScheme(basis, [b422, b1092]; static_field=0.5u"mT"))
+    frame = rotating_frame(sr88, LaserScheme(basis, [b422, b1092]; B=0.5u"mT"))
     @test frame.kind == :levels
     @test frame.reference == P
     @test offset(frame, P) == 0.0u"µs^-1"
@@ -228,12 +222,7 @@ end
     # 422 nm beam and down the 1092 nm one.
     frame_s = rotating_frame(
         sr88,
-        LaserScheme(
-            basis,
-            [b422, b1092];
-            static_field=0.5u"mT",
-            frame_reference="S_1/2",
-        ),
+        LaserScheme(basis, [b422, b1092]; B=0.5u"mT", frame_reference="S_1/2"),
     )
     @test offset(frame_s, S) == 0.0u"µs^-1"
     @test offset(frame_s, P) ≈ Δ1
@@ -248,31 +237,21 @@ end
     # one does not (and adds coherently).
     Δ3 = 2π * 26.0u"MHz"
     b422b = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε, n)
-    frame_b = rotating_frame(
-        sr88,
-        LaserScheme(basis, [b422, b1092, b422b]; static_field=0.5u"mT"),
-    )
+    frame_b = rotating_frame(sr88, LaserScheme(basis, [b422, b1092, b422b]; B=0.5u"mT"))
     @test frame_b.tree_beams == [1, 2]
     @test !isempty(frame_b.beats) && all(t -> t[1] == 3, frame_b.beats)
     @test all(t -> t[4] ≈ Δ3 - Δ1, frame_b.beats)
     @test length(frame_b.beats) ==
           count(!iszero, coupling_matrix(sr88, basis, "S_1/2" => "P_1/2", I0, ε, n))
-    model_b = lindblad_model(
-        sr88,
-        LaserScheme(basis, [b422, b1092, b422b]; static_field=0.5u"mT"),
-    )
+    model_b = lindblad_model(sr88, LaserScheme(basis, [b422, b1092, b422b]; B=0.5u"mT"))
     @test length(model_b.harmonics) == 1
     @test model_b.harmonics[1][1] ≈ Δ3 - Δ1
     s_range, p_range = staterange(basis, "S_1/2"), staterange(basis, "P_1/2")
     @test model_b.harmonics[1][2][p_range, s_range] ≈
           coupling_matrix(sr88, basis, "S_1/2" => "P_1/2", I0, ε, n)[p_range, s_range] ./
           2
-    model_1 =
-        lindblad_model(sr88, LaserScheme(basis, [b422, b1092]; static_field=0.5u"mT"))
-    model_2 = lindblad_model(
-        sr88,
-        LaserScheme(basis, [b422, b1092, b422]; static_field=0.5u"mT"),
-    )
+    model_1 = lindblad_model(sr88, LaserScheme(basis, [b422, b1092]; B=0.5u"mT"))
+    model_2 = lindblad_model(sr88, LaserScheme(basis, [b422, b1092, b422]; B=0.5u"mT"))
     @test isempty(model_2.harmonics)
     @test model_2.hamiltonian[p_range, s_range] ≈
           2 .* model_1.hamiltonian[p_range, s_range]
@@ -286,7 +265,7 @@ end
     b1004 = LaserBeam("D_3/2" => "P_3/2", Δ5, I0, ε, n)
     frame_4 = rotating_frame(
         sr88,
-        LaserScheme(basis4, [b422, b1092, b408, b1004]; static_field=0.5u"mT"),
+        LaserScheme(basis4, [b422, b1092, b408, b1004]; B=0.5u"mT"),
     )
     @test frame_4.tree_beams == [1, 2, 3]
     @test !isempty(frame_4.beats) && all(t -> t[1] == 4, frame_4.beats)
@@ -294,15 +273,14 @@ end
 
     # A level no beam reaches keeps its centroid as frame frequency.
     basis5 = StateBasis(["S_1/2", "P_1/2", "D_3/2", "D_5/2"])
-    frame_5 =
-        rotating_frame(sr88, LaserScheme(basis5, [b422, b1092]; static_field=0.5u"mT"))
+    frame_5 = rotating_frame(sr88, LaserScheme(basis5, [b422, b1092]; B=0.5u"mT"))
     @test frame_offset(frame_5, basis5, "D_5/2") == 0.0u"µs^-1"
 
     # Hyperfine reference levels: the frame offset across a beam includes the
     # zero-field hyperfine shifts of its reference F levels.
     hb = StateBasis(ca43, "S_1/2", "P_1/2")
     beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=3", Δ1, I0, ε, n)
-    frame_hf = rotating_frame(ca43, LaserScheme(hb, [beam]; static_field=0.5u"mT"))
+    frame_hf = rotating_frame(ca43, LaserScheme(hb, [beam]; B=0.5u"mT"))
     @test frame_offset(frame_hf, hb, S) ≈ -(
         Δ1 + Levels.hyperfine_shift(ca43, "P_1/2 F=3") -
         Levels.hyperfine_shift(ca43, "S_1/2 F=4")
@@ -317,15 +295,14 @@ end
     n_x, ε_π = beam_vectors(π / 2, 0.0)
     pump = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε_σ, n_z)
     probe = LaserBeam("S_1/2" => "P_1/2", Δ3, I0, ε_π, n_x)
-    levels_frame =
-        rotating_frame(sr88, LaserScheme(sp, [pump, probe]; static_field=0.5u"mT"))
+    levels_frame = rotating_frame(sr88, LaserScheme(sp, [pump, probe]; B=0.5u"mT"))
     @test length(levels_frame.beats) == 2   # the two π components
     states_frame = rotating_frame(
         sr88,
         LaserScheme(
             sp,
             [pump, probe];
-            static_field=0.5u"mT",
+            B=0.5u"mT",
             frame_kind=:states,
             frame_reference="S_1/2",
         ),
@@ -345,7 +322,7 @@ end
     @test_throws ArgumentError frame_offset(states_frame, sp, "S_1/2")
     eit = lindblad_model(
         sr88,
-        LaserScheme(sp, [pump, probe]; static_field=0.5u"mT", frame_kind=:states);
+        LaserScheme(sp, [pump, probe]; B=0.5u"mT", frame_kind=:states);
         open_channels=:drop,
     )
     @test isempty(eit.harmonics)
@@ -354,14 +331,9 @@ end
     # either frame, and a grouped decay operator is then no longer static in the
     # per-state frame either.
     probe2 = LaserBeam("S_1/2" => "P_1/2", Δ1, I0, ε_π, n_x)
-    two_pi = LaserScheme(sp, [probe, probe2]; static_field=0.5u"mT", frame_kind=:states)
+    two_pi = LaserScheme(sp, [probe, probe2]; B=0.5u"mT", frame_kind=:states)
     @test !isempty(rotating_frame(sr88, two_pi).beats)
-    @test_throws ArgumentError LaserScheme(
-        sp,
-        [pump];
-        static_field=0.5u"mT",
-        frame_kind=:other,
-    )
+    @test_throws ArgumentError LaserScheme(sp, [pump]; B=0.5u"mT", frame_kind=:other)
 end
 
 @testitem "Lindblad model of the Λ system" tags=[:unit, :fast] setup=[OpticalBlochSetup] begin
@@ -398,7 +370,7 @@ end
             OpticalBloch.beam_levels(beam)[1] => OpticalBloch.beam_levels(beam)[2],
             beam.intensity,
             beam.ε,
-            beam.n,
+            beam.direction,
         ) for beam in scheme.beams
     )
     @test H - Diagonal(H) ≈ (C + C') / 2
@@ -413,9 +385,9 @@ end
     # Gordan branching fractions of the components.
     ops, labels = decay_operators(model)
     @test all(l isa DecayLabel && isnothing(l.component) for l in labels)
-    A_ps = einstein_a(CA40_NONREL_G, "S_1/2", "P_1/2")
-    A_pd = einstein_a(CA40_NONREL_G, "D_3/2", "P_1/2")
-    A_ds = einstein_a(CA40_NONREL_G, "S_1/2", "D_3/2")
+    A_ps = einstein_a(CA40_NONREL_G, "S_1/2" => "P_1/2")
+    A_pd = einstein_a(CA40_NONREL_G, "D_3/2" => "P_1/2")
+    A_ds = einstein_a(CA40_NONREL_G, "S_1/2" => "D_3/2")
     total = sum(L' * L for L in ops)
     expected = zeros(ComplexF64, 8, 8) .* u"µs^-1"
     for i in p
@@ -465,7 +437,7 @@ end
     open_scheme = LaserScheme(
         open_basis,
         [LaserBeam("S_1/2" => "P_1/2", Δ397, 1.0u"W/m^2", ε, n)];
-        static_field=B_LAMBDA,
+        B=B_LAMBDA,
     )
     err = try
         lindblad_model(CA40_NONREL_G, open_scheme)
@@ -489,7 +461,7 @@ end
         LaserScheme(
             partial,
             [LaserBeam("S_1/2" => "P_1/2", 0.0u"µs^-1", 1.0u"W/m^2", ε_σ, n_z)];
-            static_field=0.0u"mT",
+            B=0.0u"mT",
         );
         open_channels=:drop,
     )
@@ -497,7 +469,7 @@ end
     @test ustrip(
         u"µs^-1",
         real(sum(L' * L for L in partial_model.jump_operators)[2, 2]),
-    ) ≈ 2 / 3 * ustrip(u"µs^-1", einstein_a(sr88, "S_1/2", "P_1/2"))
+    ) ≈ 2 / 3 * ustrip(u"µs^-1", einstein_a(sr88, "S_1/2" => "P_1/2"))
     @test_throws ArgumentError lindblad_model(CA40_NONREL_G, scheme; decay=:other)
     @test_throws ArgumentError lindblad_model(
         CA40_NONREL_G,
@@ -549,7 +521,7 @@ end
     scheme = lambda_scheme(Δ397, Δ866)
     @test_throws ArgumentError lindblad_model(
         CA40_NONREL_G,
-        LaserScheme(LAMBDA_BASIS, [scheme.beams; extra]; static_field=B_LAMBDA),
+        LaserScheme(LAMBDA_BASIS, [scheme.beams; extra]; B=B_LAMBDA),
     )
 end
 
@@ -571,7 +543,7 @@ end
             LaserBeam("S_1/2 F=1" => "P_1/2 F=1", Δ, I0, ε, n),
             LaserBeam("D_3/2 F=2" => "P_1/2 F=1", -Δ, I0, ε, n),
         ];
-        static_field=B,
+        B,
     )
     fs_scheme = LaserScheme(
         fs_basis,
@@ -579,7 +551,7 @@ end
             LaserBeam("S_1/2" => "P_1/2", Δ, I0, ε, n),
             LaserBeam("D_3/2" => "P_1/2", -Δ, I0, ε, n),
         ];
-        static_field=B,
+        B,
     )
     hf = lindblad_model(SR88_TOY_HF, hf_scheme)
     fs = lindblad_model(sr88, fs_scheme)
@@ -608,12 +580,12 @@ end
     # trace-preserving on the kept channel, and undefined at zero field.
     basis = StateBasis(ca43, "S_1/2", "P_1/2")
     beam = LaserBeam("S_1/2 F=4" => "P_1/2 F=4", Δ, I0, ε, n)
-    scheme = LaserScheme(basis, [beam]; static_field=B)
+    scheme = LaserScheme(basis, [beam]; B)
     @test_throws ArgumentError lindblad_model(ca43, scheme)
     model = lindblad_model(ca43, scheme; open_channels=:drop)
     @test ishermitian(strip_h(model.hamiltonian))
     total = sum(L' * L for L in model.jump_operators)
-    A = ustrip(u"µs^-1", einstein_a(ca43, "S_1/2", "P_1/2"))
+    A = ustrip(u"µs^-1", einstein_a(ca43, "S_1/2" => "P_1/2"))
     for i in staterange(basis, "P_1/2")
         @test ustrip(u"µs^-1", real(total[i, i])) ≈ A rtol = 1e-10
     end
@@ -622,7 +594,7 @@ end
     end
     @test_throws ArgumentError lindblad_model(
         ca43,
-        LaserScheme(basis, [beam]; static_field=0.0u"mT");
+        LaserScheme(basis, [beam]; B=0.0u"mT");
         open_channels=:drop,
     )
 end
@@ -639,7 +611,8 @@ end
     # unprojected one |k| x₀.
     x0 = sqrt(u"ħ" / (2 * CA40_NONREL_G.mass * ω_m))
     k397 =
-        2π / (2π * u"c" / Levels.transition_frequency(CA40_NONREL_G, "S_1/2", "P_1/2"))
+        2π /
+        (2π * u"c" / Levels.transition_frequency(CA40_NONREL_G, "S_1/2" => "P_1/2"))
     η397 = uconvert(NoUnits, k397 * x0)
     @test mc.projected_lamb_dicke[1] ≈ η397 * cos(deg2rad(140.0)) rtol = 1e-6   # thesis-like −0.130
     @test mc.projected_lamb_dicke[1] ≈ -0.130 atol = 5e-3
@@ -654,7 +627,7 @@ end
         scheme.beams[1].frequency,
         scheme.beams[1].intensity,
         scheme.beams[1].ε,
-        -scheme.beams[1].n,
+        -scheme.beams[1].direction,
     )
     @test lamb_dicke(CA40_NONREL_G, mode_z, flipped) ≈ -mc.projected_lamb_dicke[1]
     @test lamb_dicke(CA40_NONREL_G, MotionalMode(ω_m, [0, 1.0, 0]), scheme.beams[1]) ≈ 0 atol =
@@ -673,7 +646,7 @@ end
             OpticalBloch.beam_levels(beam)[1] => OpticalBloch.beam_levels(beam)[2],
             beam.intensity,
             beam.ε,
-            beam.n,
+            beam.direction,
         ) for beam in scheme.beams
     ]
     expected =
@@ -690,9 +663,10 @@ end
     @test length(mc.recoil_operators) == length(ops)
     for (k, (L, label)) in enumerate(zip(ops, labels))
         k_photon =
-            Levels.transition_frequency(CA40_NONREL_G, label.lower, label.upper) / u"c"
+            Levels.transition_frequency(CA40_NONREL_G, label.lower => label.upper) /
+            u"c"
         @test mc.recoil_lamb_dicke[k] ≈ uconvert(NoUnits, k_photon * x0) rtol = 1e-9
-        rank = Levels.multipole_rank(label.lower, label.upper)
+        rank = Levels.multipole_rank(label.lower => label.upper)
         @test mc.recoil_moments[k] == recoil_moment(rank, label.q, mode_z.direction)
         @test mc.recoil_operators[k] ≈
               (sqrt(mc.recoil_moments[k]) * mc.recoil_lamb_dicke[k]) .* L
@@ -943,18 +917,17 @@ end
     n_z, ε_σ = beam_vectors(0.0, π / 4, π / 2)
     lower, upper = StateSpec("S_1/2", -1//2), StateSpec("P_1/2", 1//2)
     Ω = 2π * 10.0u"MHz"
-    I0 = intensity_for_rabi(sr88, lower, upper, Ω, ε_σ, n_z)
+    I0 = intensity_for_rabi(sr88, lower => upper, Ω, ε_σ, n_z)
     @test dimension(I0) == dimension(1.0u"W/m^2")
-    @test abs(rabi_frequency(sr88, lower, upper, I0, ε_σ, n_z)) ≈ Ω
+    @test abs(rabi_frequency(sr88, lower => upper, I0, ε_σ, n_z)) ≈ Ω
     # Quadrupling the intensity doubles the Rabi frequency; a complex Ω counts by
     # its magnitude.
-    @test intensity_for_rabi(sr88, lower, upper, 2Ω, ε_σ, n_z) ≈ 4I0
-    @test intensity_for_rabi(sr88, lower, upper, Ω * cis(0.3), ε_σ, n_z) ≈ I0
+    @test intensity_for_rabi(sr88, lower => upper, 2Ω, ε_σ, n_z) ≈ 4I0
+    @test intensity_for_rabi(sr88, lower => upper, Ω * cis(0.3), ε_σ, n_z) ≈ I0
     # A σ⁺ beam does not drive the π component.
     @test_throws ArgumentError intensity_for_rabi(
         sr88,
-        lower,
-        StateSpec("P_1/2", -1//2),
+        lower => StateSpec("P_1/2", -1//2),
         Ω,
         ε_σ,
         n_z,
@@ -962,29 +935,30 @@ end
     # Hyperfine states, exact at field.
     B = 0.5u"mT"
     hf_lower, hf_upper = StateSpec("S_1/2 F=4", -4), StateSpec("P_1/2 F=4", -3)
-    I_hf = intensity_for_rabi(ca43, hf_lower, hf_upper, Ω, ε_σ, n_z, B)
-    @test abs(rabi_frequency(ca43, hf_lower, hf_upper, I_hf, ε_σ, n_z, B)) ≈ Ω
+    I_hf = intensity_for_rabi(ca43, hf_lower => hf_upper, Ω, ε_σ, n_z; B)
+    @test abs(rabi_frequency(ca43, hf_lower => hf_upper, I_hf, ε_σ, n_z; B)) ≈ Ω
 
     # Detuning from a Zeeman component at field: the offset carries the Zeeman
     # shifts of the two states relative to the zero-field line centre.
     δ = 2π * 1.5u"MHz"
-    rf = RelativeFrequency(sr88, lower => upper, δ, B)
+    rf = RelativeFrequency(sr88, lower => upper, δ; B)
     @test rf.lower == convert(NoHyperfineNumberSpec, "S_1/2")
     @test rf.upper == convert(NoHyperfineNumberSpec, "P_1/2")
-    @test rf.offset ≈ δ + zeeman_shift(sr88, upper, B) - zeeman_shift(sr88, lower, B)
+    @test rf.offset ≈ δ + zeeman_shift(sr88, upper; B) - zeeman_shift(sr88, lower; B)
     # σ⁺ component: (g_P/2 + g_S/2) μ_B B ≈ (9.3 + 28.0)/2 MHz/mT × B with the
     # measured ⁸⁸Sr⁺ sensitivities.
     @test rf.offset ≈ δ + 2π * (28.0 + 9.3) / 2 * u"MHz/mT" * B rtol = 2e-3
     # Hyperfine states: the exact at-field component frequency against the
     # zero-field F-level interval (cancellation noise of the ~10¹⁵ s⁻¹ optical
     # frequencies limits the comparison to ~1 s⁻¹).
-    rf_hf = RelativeFrequency(ca43, hf_lower => hf_upper, δ, B)
+    rf_hf = RelativeFrequency(ca43, hf_lower => hf_upper, δ; B)
     @test rf_hf.lower == hf_lower.level && rf_hf.upper == hf_upper.level
     @test rf_hf.offset ≈
-          δ + Levels.transition_frequency(ca43, hf_lower, hf_upper, B) -
-          Levels.transition_frequency(ca43, hf_lower.level, hf_upper.level) rtol = 1e-6
-    @test_throws ArgumentError RelativeFrequency(sr88, lower => upper, 1.0u"m", B)
-    @test_throws ArgumentError RelativeFrequency(ca43, lower => upper, δ, B)   # F levels required
+          δ + Levels.transition_frequency(ca43, hf_lower => hf_upper; B) -
+          Levels.transition_frequency(ca43, hf_lower.level => hf_upper.level) rtol =
+        1e-6
+    @test_throws ArgumentError RelativeFrequency(sr88, lower => upper, 1.0u"m"; B)
+    @test_throws ArgumentError RelativeFrequency(ca43, lower => upper, δ; B)   # F levels required
 
     # Peak intensity of a Gaussian beam.
     @test peak_intensity(1.0u"mW", 50.0u"µm") ≈
