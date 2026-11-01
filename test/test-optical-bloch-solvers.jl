@@ -304,7 +304,13 @@ end
     @test [l.node for l in exact.c_labels] == 1:12
     @test length(second.c_ops) == 3
     @test length(
-        motional_model(t.model, t.mc; num_fock, lamb_dicke_order=Inf, nodes=5).c_ops,
+        motional_model(
+            t.model,
+            t.mc;
+            num_fock,
+            lamb_dicke_order=Inf,
+            quadrature_order=5,
+        ).c_ops,
     ) == 5
 
     # First order: H = H_int ⊗ 1 + ω a†a + H_sb ⊗ (a + a†), the previous model.
@@ -487,8 +493,11 @@ end
     @test ae.A_plus == rates.A_plus && ae.A_minus == rates.A_minus
     # the low-intensity limit 7/48 (γ/ω)² of isotropic emission
     @test ae.nbar ≈ 7 / 48 * ustrip(NoUnits, γ / ω)^2 rtol = 0.02
-    it =
-        cooling_metrics(s.model, s.mc, IntegratedTransient(; nbar_ini=1.0, num_fock=20))
+    it = cooling_metrics(
+        s.model,
+        s.mc,
+        IntegratedTransient(; initial_nbar=1.0, num_fock=20),
+    )
     @test it.method.num_fock == 20 && isinf(it.method.lamb_dicke_order)
     @test it.model isa MotionalModel && it.solver isa IntegratedTransientSolver
     @test isnothing(it.A_plus)
@@ -498,7 +507,7 @@ end
         s.model,
         s.mc,
         IntegratedTransient(;
-            nbar_ini=1.0,
+            initial_nbar=1.0,
             num_fock=20,
             lamb_dicke_order=1,
             bandwidth=nothing,
@@ -514,11 +523,16 @@ end
     ρ0 = thermal_state(Matrix(steadystate(s.model).data), it.model.num_fock, 3.0)
     @test integral_relaxation_time(it.solver, ρ0) * u"µs" ≈ ae.τ_c rtol = 0.02
     # The default truncation follows the thermal tail.
-    auto = IntegratedTransient(; nbar_ini=2.0)
-    @test isnothing(auto.num_fock) && auto.bandwidth == 4 && isnothing(auto.nodes)
+    auto = IntegratedTransient(; initial_nbar=2.0)
+    @test isnothing(auto.num_fock) &&
+          auto.bandwidth == 4 &&
+          isnothing(auto.quadrature_order)
     @test cooling_metrics(s.model, s.mc, auto).model.num_fock == [fock_truncation(2.0)]
-    @test_throws ArgumentError IntegratedTransient(; nbar_ini=-1.0)
-    @test_throws ArgumentError IntegratedTransient(; nbar_ini=1.0, lamb_dicke_order=0)
+    @test_throws ArgumentError IntegratedTransient(; initial_nbar=-1.0)
+    @test_throws ArgumentError IntegratedTransient(;
+        initial_nbar=1.0,
+        lamb_dicke_order=0,
+    )
     @test_throws ArgumentError LiouvillianSpectrum(; num_fock=8, lamb_dicke_order=2.5)
     # A heating bath shifts the occupation alike in the rate equations and the
     # full model.
@@ -527,7 +541,7 @@ end
     it_h = cooling_metrics(
         s.model,
         s.mc,
-        IntegratedTransient(; nbar_ini=1.0, num_fock=20);
+        IntegratedTransient(; initial_nbar=1.0, num_fock=20);
         heating_rate=h,
     )
     @test ae_h.nbar > 1.5ae.nbar
@@ -543,7 +557,7 @@ end
     many_it = cooling_metrics(
         s.model,
         mcs,
-        IntegratedTransient(; nbar_ini=[1.0, 0.5], num_fock=[12, 4]),
+        IntegratedTransient(; initial_nbar=[1.0, 0.5], num_fock=[12, 4]),
     )
     @test length(many_ae) == 2 && length(many_it) == 2
     @test many_ae[1].nbar == ae.nbar
@@ -555,7 +569,7 @@ end
     @test_throws ArgumentError cooling_metrics(
         s.model,
         mcs,
-        IntegratedTransient(; nbar_ini=[1.0], num_fock=4),
+        IntegratedTransient(; initial_nbar=[1.0], num_fock=4),
     )
     # The internal problem alone: the integrated transient of a level population
     # — the quench-rate construction — on a LindbladModel.
@@ -585,7 +599,7 @@ end
     s = sideband_toy(; γ, ω, η=0.1, Ω=2π * 500.0u"kHz", δ=(-ω))
     num_fock = fock_truncation(20.0)
     @test num_fock == 189
-    m = cooling_metrics(s.model, s.mc, IntegratedTransient(; nbar_ini=20.0))
+    m = cooling_metrics(s.model, s.mc, IntegratedTransient(; initial_nbar=20.0))
     @test m.model.num_fock == [num_fock]
     @test m.τ_c * γ ≈ 81.5 rtol = 2e-3
     @test 0.05 < m.nbar < 0.2

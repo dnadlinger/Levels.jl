@@ -207,11 +207,11 @@ function ac_zeeman_shift(
 end
 
 """
-    floquet_zeeman_shift(m::HyperfineManifold, state, Ω, drives; nharm = 8)
+    floquet_zeeman_shift(m::HyperfineManifold, state, Ω, drives; harmonic_cutoff = 8)
 
 Returns the ac Zeeman shift of the adiabatically-labelled eigenstate `state` of
 the hyperfine manifold solution `m` from the nonperturbative Floquet dressing
-([`dress_manifold`](@ref), truncated at `nharm` harmonics): the difference
+([`dress_manifold`](@ref), truncated at `harmonic_cutoff` harmonics): the difference
 between the dressed quasienergy and the static eigen-energy.
 
 Exact in the drive amplitude up to the harmonic truncation, so it serves as the
@@ -219,10 +219,10 @@ cross-check for [`ac_zeeman_shift`](@ref) near resonances; a warning is emitted
 when the dressed-state identification becomes ambiguous (harmonic-0 overlap
 below 0.5).
 """
-function floquet_zeeman_shift(m::HyperfineManifold, state, Ω, drives; nharm=8)
+function floquet_zeeman_shift(m::HyperfineManifold, state, Ω, drives; harmonic_cutoff=8)
     h0, h1 = eigenbasis_blocks(m, resolve_drives(m, drives))
     α = manifold_state_index(m, state)
-    ε, _ = dress_manifold(h0, h1, Ω, nharm, 1; min_overlap=0.5)
+    ε, _ = dress_manifold(h0, h1, Ω, harmonic_cutoff, 1; min_overlap=0.5)
     uconvert(u"µs^-1", ε[α] - m.energies[α])
 end
 

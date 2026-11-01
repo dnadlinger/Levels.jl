@@ -376,8 +376,8 @@ function pattern_value(rank, q, c)
 end
 
 """
-    emission_rule(rank, q, direction; nodes = 12) -> (h, w)
-    emission_rule(rank, q, directions::AbstractVector{<:AbstractVector}; nodes = 6) -> (h, w)
+    emission_rule(rank, q, direction; quadrature_order = 12) -> (h, w)
+    emission_rule(rank, q, directions::AbstractVector{<:AbstractVector}; quadrature_order = 6) -> (h, w)
 
 Returns a quadrature rule — nodes `h` and weights `w` with ``\\sum_j w_j = 1`` —
 for the distribution of the projection ``h = \\hat{k} ⋅ \\vec{e}_m`` of the
@@ -391,46 +391,46 @@ the Lamb–Dicke parameter (Kulosa et al., New J. Phys. **25**, 053008 (2023),
 Eq. (A.3)).
 
 For one direction the result is the Gauss rule of the measure ``K(h) \\, dh``
-with `nodes` points, exact for polynomials of degree ``2 \\, \\mathtt{nodes} -
+with `quadrature_order` points, exact for polynomials of degree ``2 \\, \\mathtt{quadrature_order} -
 1``, obtained by the Stieltjes procedure (Lanczos with full
 reorthogonalisation) and the Golub–Welsch eigenvalue method on a fine product
 quadrature of the sphere (Gautschi, *Orthogonal Polynomials: Computation and
 Approximation*, Oxford (2004), Secs. 2.2 and 3.1). For several `directions`
 the nodes are the joint projections of a product rule on the sphere — row
 ``j`` of the matrix `h` holds ``\\hat{k}_j ⋅ \\vec{e}_m`` for every direction
-``m`` — with `nodes` Gauss–Legendre points in ``\\cos θ`` and twice as many
+``m`` — with `quadrature_order` Gauss–Legendre points in ``\\cos θ`` and twice as many
 equidistant azimuths, exact for integrands polynomial of degree up to
-``2 \\, \\mathtt{nodes} - 5`` in the direction cosines (the pattern itself
+``2 \\, \\mathtt{quadrature_order} - 5`` in the direction cosines (the pattern itself
 being of degree four).
 """
 function emission_rule(
     rank::Integer,
     q::Integer,
     direction::AbstractVector{<:Real};
-    nodes::Integer=12,
+    quadrature_order::Integer=12,
 )
     abs(q) <= rank || throw(ArgumentError("|q| must not exceed the rank"))
-    nodes >= 1 || throw(ArgumentError("At least one node is required"))
+    quadrature_order >= 1 || throw(ArgumentError("At least one node is required"))
     if rank == 0
         # K(h) = 1/2 on [−1, 1]: the Gauss–Legendre rule itself.
-        z, w = gausslegendre(nodes)
+        z, w = gausslegendre(quadrature_order)
         return z, w ./ 2
     end
     e = direction ./ sqrt(sum(abs2, direction))
     hs, ws = sphere_quadrature(rank, q, [e], 48)
-    discrete_gauss_rule(vec(hs), ws, nodes)
+    discrete_gauss_rule(vec(hs), ws, quadrature_order)
 end
 
 function emission_rule(
     rank::Integer,
     q::Integer,
     directions::AbstractVector{<:AbstractVector};
-    nodes::Integer=6,
+    quadrature_order::Integer=6,
 )
     abs(q) <= rank || throw(ArgumentError("|q| must not exceed the rank"))
-    nodes >= 1 || throw(ArgumentError("At least one node is required"))
+    quadrature_order >= 1 || throw(ArgumentError("At least one node is required"))
     es = [d ./ sqrt(sum(abs2, d)) for d in directions]
-    sphere_quadrature(rank, q, es, nodes)
+    sphere_quadrature(rank, q, es, quadrature_order)
 end
 
 # Product quadrature of the sphere weighted by the pattern (rank, q):
@@ -484,18 +484,18 @@ function discrete_gauss_rule(x, w, num_nodes)
 end
 
 """
-    fock_truncation(nbar; tail = 1e-4, minimum = 2)
+    fock_truncation(nbar; tail = 1e-4, min_num_fock = 2)
 
 Returns the number of Fock states needed to hold a thermal state of mean
 occupation `nbar` up to a population `tail` beyond the truncation: the smallest
 ``N`` with ``\\sum_{n ≥ N} p_n = (\\bar n / (\\bar n + 1))^N ≤ \\mathtt{tail}``,
-and at least `minimum`.
+and at least `min_num_fock`.
 """
-function fock_truncation(nbar::Real; tail::Real=1e-4, minimum::Integer=2)
+function fock_truncation(nbar::Real; tail::Real=1e-4, min_num_fock::Integer=2)
     nbar >= 0 || throw(ArgumentError("nbar must be non-negative"))
     0 < tail < 1 || throw(ArgumentError("tail must lie in (0, 1)"))
-    nbar == 0 && return Int(minimum)
-    max(Int(minimum), ceil(Int, log(tail) / log(nbar / (nbar + 1))))
+    nbar == 0 && return Int(min_num_fock)
+    max(Int(min_num_fock), ceil(Int, log(tail) / log(nbar / (nbar + 1))))
 end
 
 export MotionalCoupling, lamb_dicke, recoil_moment, motional_coupling

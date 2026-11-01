@@ -127,8 +127,8 @@ end
     # Harmonic-truncation convergence of the Floquet reference.
     m_d = d_manifold()
     ω = 2π * 30.0u"MHz"
-    @test floquet_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE; nharm=4) ≈
-          floquet_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE; nharm=6) rtol = 1e-4
+    @test floquet_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE; harmonic_cutoff=4) ≈
+          floquet_zeeman_shift(m_d, D_PROBE, ω, B_DRIVE; harmonic_cutoff=6) rtol = 1e-4
 end
 
 @testitem "Near-resonance warnings" tags=[:unit] setup=[Ca43ClockSetup] begin
@@ -201,7 +201,7 @@ end
     # The dressed carrier resonance shift agrees with the PT transition shift
     # up to the PT truncation error and the laser-induced ac Stark shift
     # (∝ Ω0², ~Hz here).
-    sb = sideband_rabi(dt; sideband=0, ngrid=32)
+    sb = sideband_rabi(dt; sideband=0, num_time_samples=32)
     @test abs(sb.δ_res - wrapper.shift) < 2π * 10.0u"Hz"
 
     # Constructor validation.
@@ -294,8 +294,8 @@ end
         coupling,
         drives=zeeman_drives(ca43, basis, B_DRIVE),
     )
-    fl = sideband_rabi(dt; sideband=0, ngrid=32)
-    ex = exact_sideband(dt; sideband=0, ngrid=32)
+    fl = sideband_rabi(dt; sideband=0, num_time_samples=32)
+    ex = exact_sideband(dt; sideband=0, num_time_samples=32)
     @test ex.Ω ≈ fl.Ω rtol = 1e-3
     # δ_res agrees between the engines up to the laser-induced ac Stark shift
     # (∝ Ω0², sub-Hz here).

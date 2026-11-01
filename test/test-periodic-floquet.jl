@@ -55,7 +55,7 @@ end
     B_perp = 2.0u"µT"
     drives = [zeeman_drive(sr88, BASIS, [1, 0, 0] .* B_perp; phase=π / 2)]
     dt = make_transition(StateSpec("S_1/2", 1//2) => StateSpec("D_5/2", 5//2); drives)
-    d = dress(dt; ngrid=16)
+    d = dress(dt; num_time_samples=16)
 
     for (level, r, ε) in
         (("S_1/2", dt.lower_range, d.ε_lower), ("D_5/2", dt.upper_range, d.ε_upper))

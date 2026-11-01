@@ -108,11 +108,11 @@ end
 
 """
     exact_sideband(dt::DrivenTransition; sideband, modulation = none,
-                   bracket_scale = 8.0, nharm = 8, ngrid = 256)
+                   bracket_scale = 8.0, harmonic_cutoff = 8, num_time_samples = 256)
 
 Computes the exact sideband Rabi frequency by minimising the Floquet quasienergy
 gap over the laser detuning, bracketed around the dressed-state prediction of
-[`sideband_amplitude`](@ref) (whose `nharm`/`ngrid` settings are passed through).
+[`sideband_amplitude`](@ref) (whose `harmonic_cutoff`/`num_time_samples` settings are passed through).
 
 Returns `(Ω, δ_res)`. This is the gold-standard cross-check for the dressed-state
 engine, nonperturbative in every coupling, so it also includes all laser-induced
@@ -123,10 +123,14 @@ function exact_sideband(
     sideband::Int,
     modulation=HarmonicPhaseModulation(),
     bracket_scale::Real=8.0,
-    nharm::Int=8,
-    ngrid::Int=256,
+    harmonic_cutoff::Int=8,
+    num_time_samples::Int=256,
 )
-    estimate = sideband_amplitude(dress(dt; nharm, ngrid); sideband, modulation)
+    estimate = sideband_amplitude(
+        dress(dt; harmonic_cutoff, num_time_samples);
+        sideband,
+        modulation,
+    )
 
     δ_estimate = ustrip(u"s^-1", estimate.δ_res)
     halfwidth = max(bracket_scale * ustrip(u"s^-1", estimate.Ω), 2π * 100)

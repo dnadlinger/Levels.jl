@@ -809,16 +809,16 @@ end
         @test abs(sum(w .* h .^ 3)) < 1e-12
     end
     # Isotropic emission: ⟨h⁴⟩ = 1/5; a σ pattern along ẑ: ⟨h⁴⟩ = ∫ c⁴ (1 + c²)/2 / ∫ (1 + c²)/2 = 3/14... computed
-    h, w = emission_rule(0, 0, [0, 0, 1.0]; nodes=6)
+    h, w = emission_rule(0, 0, [0, 0, 1.0]; quadrature_order=6)
     @test sum(w .* h .^ 4) ≈ 1 / 5
     h, w = emission_rule(1, 1, [0, 0, 1.0])
     @test sum(w .* h .^ 4) ≈ (2 / 5 + 2 / 7) / (2 + 2 / 3) atol = 1e-12
     @test_throws ArgumentError emission_rule(1, 2, [0, 0, 1.0])
-    @test_throws ArgumentError emission_rule(1, 0, [0, 0, 1.0]; nodes=0)
+    @test_throws ArgumentError emission_rule(1, 0, [0, 0, 1.0]; quadrature_order=0)
     # Several directions: the joint second moments of a σ pattern are
     # ⟨h_a h_b⟩ = a e_a·e_b + (⟨k_z²⟩ − a) e_az e_bz with a = (1 − ⟨k_z²⟩)/2.
     es = [[0, 0, 1.0], normalize([1.0, 0, 1.0]), [0, 1.0, 0]]
-    H, w = emission_rule(1, 1, es; nodes=8)
+    H, w = emission_rule(1, 1, es; quadrature_order=8)
     @test size(H) == (length(w), 3) && sum(w) ≈ 1
     kz2 = 2 / 5
     α = (1 - kz2) / 2
@@ -831,7 +831,7 @@ end
     # Fock truncation for a thermal tail.
     @test fock_truncation(20.0) == 189
     @test fock_truncation(0.0) == 2
-    @test fock_truncation(0.01; minimum=5) == 5
+    @test fock_truncation(0.01; min_num_fock=5) == 5
     @test fock_truncation(1.0; tail=1e-2) == ceil(Int, log(1e-2) / log(0.5))
     @test_throws ArgumentError fock_truncation(-1.0)
 end

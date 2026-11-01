@@ -121,7 +121,7 @@ wraps this as the `AdiabaticElimination` method next to the full-model ones.
 function cooling_rates end
 
 """
-    motional_model(model::LindbladModel, mc::MotionalCoupling; num_fock, lamb_dicke_order = 1, heating_rate = 0, nodes, time_unit = u"µs")
+    motional_model(model::LindbladModel, mc::MotionalCoupling; num_fock, lamb_dicke_order = 1, heating_rate = 0, quadrature_order, time_unit = u"µs")
     motional_model(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}; num_fock, …) -> MotionalModel
 
 Returns the full internal ⊗ motional master equation as a
@@ -170,7 +170,7 @@ operators are expanded, `Inf` keeping them exactly
     where it is accurate.
   - `Inf` keeps the full operators: beam couplings through the displacement
     matrix elements, each decay operator replaced by the quadrature set
-    ``\\sqrt{w_j} L ⊗ D(-η_0 \\vec{h}_j)`` over `nodes` emission directions (12
+    ``\\sqrt{w_j} L ⊗ D(-η_0 \\vec{h}_j)`` over `quadrature_order` emission directions (12
     by default; a product rule on the sphere for several modes, which makes
     the cross-mode recoil correlations exact). Required for
     ``η\\sqrt{2\\bar n + 1} ≳ 0.5`` — a Doppler-cooled ion at ``η ≈ 0.1`` — where
@@ -217,8 +217,8 @@ from the populations ``p_n`` of the reduced motional state, with `method`
 function mean_phonon_number end
 
 """
-    cooling_time(mm::MotionalModel; mode = nothing, eigvals = 12, dense_limit = 2500, weight_threshold = 0.1)
-    cooling_time(H, c_ops; time_unit = u"µs", mode_sizes = nothing, kwargs...)
+    cooling_time(mm::MotionalModel; mode = nothing, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
+    cooling_time(H, c_ops; time_unit = u"µs", num_fock = nothing, kwargs...)
 
 Returns the characteristic time of the slowest relaxation of the mean phonon
 number (of the given `mode`, or of the total phonon number of all modes) under
@@ -234,7 +234,7 @@ order ``η²`` through the sideband coupling — are thereby skipped, so the
 result matches the `τ_c` of [`cooling_rates`](@ref) where the adiabatic
 elimination holds (and the Fock truncation is loose enough not to shape the
 slowest mode). Liouvillians of dimension up to `dense_limit` are diagonalised
-densely, larger ones with a shift-inverted Arnoldi iteration for `eigvals`
+densely, larger ones with a shift-inverted Arnoldi iteration for `num_eigenpairs`
 eigenpairs around zero. Where the relaxation is not a single exponential — a
 hot ion whose Fock tail cools slowly — the asymptotic rate found here is not
 the cooling time; [`IntegratedTransientSolver`](@ref) then gives the
@@ -270,38 +270,38 @@ cooling of a hot ion under narrow quenching (``η Ω \\sqrt{n} ≳ γ_\\mathrm{e
 struct AdiabaticElimination <: CoolingMethod end
 
 """
-    IntegratedTransient(; nbar_ini, num_fock = fock_truncation.(nbar_ini), lamb_dicke_order = Inf, bandwidth = 4, nodes = nothing)
+    IntegratedTransient(; initial_nbar, num_fock = fock_truncation.(initial_nbar), lamb_dicke_order = Inf, bandwidth = 4, quadrature_order = nothing)
 
 The full internal ⊗ Fock master equation ([`motional_model`](@ref) to the
-given `lamb_dicke_order`, `nodes` emission directions) restricted to motional
+given `lamb_dicke_order`, `quadrature_order` emission directions) restricted to motional
 coherences within `bandwidth` ([`BandLiouvillian`](@ref); `nothing` for the
 full Liouvillian), solved by the integrated-transient method
 ([`IntegratedTransientSolver`](@ref)): the exact steady-state occupation, and
 as the cooling time the integral relaxation time of the phonon number from
-the internal steady state ⊗ a thermal state of `nbar_ini` quanta (one value,
+the internal steady state ⊗ a thermal state of `initial_nbar` quanta (one value,
 or one per mode; `num_fock` defaults to the truncation holding that thermal
 state to a ``10^{-4}`` tail, cf. [`fock_truncation`](@ref)). One sparse LU per
 evaluation; the result carries the solver, so the time from any other initial
 state is a dot product away ([`integral_relaxation_time`](@ref)).
 """
 struct IntegratedTransient <: CoolingMethod
-    nbar_ini::Union{Float64,Vector{Float64}}
+    initial_nbar::Union{Float64,Vector{Float64}}
     num_fock::Union{Nothing,Int,Vector{Int}}
     lamb_dicke_order::Float64
     bandwidth::Union{Nothing,Int}
-    nodes::Union{Nothing,Int}
+    quadrature_order::Union{Nothing,Int}
 end
 
 function IntegratedTransient(;
-    nbar_ini,
+    initial_nbar,
     num_fock=nothing,
     lamb_dicke_order::Real=Inf,
     bandwidth=4,
-    nodes=nothing,
+    quadrature_order=nothing,
 )
     validate_lamb_dicke_order(lamb_dicke_order)
-    nb = nbar_ini isa Real ? Float64(nbar_ini) : collect(Float64, nbar_ini)
-    all(>=(0), nb) || throw(ArgumentError("nbar_ini must be non-negative"))
+    nb = initial_nbar isa Real ? Float64(initial_nbar) : collect(Float64, initial_nbar)
+    all(>=(0), nb) || throw(ArgumentError("initial_nbar must be non-negative"))
     nf =
         isnothing(num_fock) ? nothing :
         num_fock isa Integer ? Int(num_fock) : collect(Int, num_fock)
@@ -310,12 +310,12 @@ function IntegratedTransient(;
         nf,
         Float64(lamb_dicke_order),
         isnothing(bandwidth) ? nothing : Int(bandwidth),
-        isnothing(nodes) ? nothing : Int(nodes),
+        isnothing(quadrature_order) ? nothing : Int(quadrature_order),
     )
 end
 
 """
-    LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, eigvals = 12, dense_limit = 2500, weight_threshold = 0.1)
+    LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
 
 The full internal ⊗ Fock master equation ([`motional_model`](@ref) with
 `num_fock` states per mode, to the given `lamb_dicke_order`) solved by
@@ -328,7 +328,7 @@ one but without its approximation.
 struct LiouvillianSpectrum <: CoolingMethod
     num_fock::Union{Int,Vector{Int}}
     lamb_dicke_order::Float64
-    eigvals::Int
+    num_eigenpairs::Int
     dense_limit::Int
     weight_threshold::Float64
 end
@@ -336,7 +336,7 @@ end
 function LiouvillianSpectrum(;
     num_fock,
     lamb_dicke_order::Real=1,
-    eigvals::Integer=12,
+    num_eigenpairs::Integer=12,
     dense_limit::Integer=2500,
     weight_threshold::Real=0.1,
 )
@@ -344,7 +344,7 @@ function LiouvillianSpectrum(;
     LiouvillianSpectrum(
         num_fock isa Integer ? Int(num_fock) : collect(Int, num_fock),
         Float64(lamb_dicke_order),
-        eigvals,
+        num_eigenpairs,
         dense_limit,
         weight_threshold,
     )

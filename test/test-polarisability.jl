@@ -1595,6 +1595,6 @@ end
         static_field=B,
         coupling,
     )
-    exact = exact_sideband(dt; sideband=0, ngrid=16)
+    exact = exact_sideband(dt; sideband=0, num_time_samples=16)
     @test exact.δ_res ≈ expected rtol = 2e-2
 end

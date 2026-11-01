@@ -3,17 +3,17 @@
 # order between the dressed Floquet modes.
 
 """
-    dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, nharm, ngrid;
+    dress_manifold(H0::Diagonal, H1::AbstractMatrix, Ω, harmonic_cutoff, num_time_samples;
                    min_overlap = 0.0) -> (ε, U)
 
 Computes the Floquet modes of one manifold driven by
 ``H(t) = H_0 + H_1 e^{iΩt} + H_1^† e^{−iΩt}``, truncating the Floquet
-Hamiltonian at `nharm` harmonics.
+Hamiltonian at `harmonic_cutoff` harmonics.
 
 For each bare level α, the returned mode is the Floquet eigenstate with maximum
 harmonic-0 weight on ``|α⟩`` (unambiguous for weak dressing); `ε[α]` is its
 quasienergy (in angular frequency units, like `H0`), and `U[:, it, α]` the
-periodic part ``u_α(t)`` sampled on `ngrid` uniform times over one drive period.
+periodic part ``u_α(t)`` sampled on `num_time_samples` uniform times over one drive period.
 
 A warning is emitted whenever that maximum weight falls below `min_overlap`
 (the identification of the dressed state is then ambiguous, e.g. for a
@@ -23,8 +23,8 @@ function dress_manifold(
     H0::Diagonal,
     H1::AbstractMatrix,
     Ω,
-    nharm,
-    ngrid;
+    harmonic_cutoff,
+    num_time_samples;
     min_overlap=0.0,
 )
     # Strip to a common inverse-time unit for the eigensolver.
@@ -33,14 +33,14 @@ function dress_manifold(
     Ω_common = ustrip(u"µs^-1", Ω)
 
     d = length(h0)
-    dim = (2 * nharm + 1) * d
+    dim = (2 * harmonic_cutoff + 1) * d
     F = zeros(ComplexF64, dim, dim)
-    for k in (-nharm):nharm
-        i0 = (k + nharm) * d
+    for k in (-harmonic_cutoff):harmonic_cutoff
+        i0 = (k + harmonic_cutoff) * d
         for α in 1:d
             F[i0+α, i0+α] = h0[α] + k * Ω_common
         end
-        if k < nharm
+        if k < harmonic_cutoff
             i1 = i0 + d   # row block k + 1, column block k: coefficient of e^{+iΩt}
             F[(i1+1):(i1+d), (i0+1):(i0+d)] .= h1
             F[(i0+1):(i0+d), (i1+1):(i1+d)] .= h1'
@@ -49,9 +49,9 @@ function dress_manifold(
     vals, vecs = eigen(Hermitian(F))
 
     ε = zeros(d)
-    U = zeros(ComplexF64, d, ngrid, d)
-    k0 = nharm * d
-    θs = 2π .* (0:(ngrid-1)) ./ ngrid
+    U = zeros(ComplexF64, d, num_time_samples, d)
+    k0 = harmonic_cutoff * d
+    θs = 2π .* (0:(num_time_samples-1)) ./ num_time_samples
     for α in 1:d
         idx = argmax(abs2.(vecs[k0+α, :]))
         overlap = abs2(vecs[k0+α, idx])
@@ -61,9 +61,9 @@ function dress_manifold(
                   "be unreliable." α overlap
         end
         ε[α] = vals[idx]
-        v = reshape(vecs[:, idx], d, 2 * nharm + 1)
-        for (it, θ) in enumerate(θs), k in (-nharm):nharm
-            U[:, it, α] .+= v[:, k+nharm+1] .* cis(k * θ)
+        v = reshape(vecs[:, idx], d, 2 * harmonic_cutoff + 1)
+        for (it, θ) in enumerate(θs), k in (-harmonic_cutoff):harmonic_cutoff
+            U[:, it, α] .+= v[:, k+harmonic_cutoff+1] .* cis(k * θ)
         end
     end
     ε .* u"µs^-1", U
@@ -100,27 +100,27 @@ Base.@kwdef struct DressedTransition{DT<:DrivenTransition,E<:Quantity}
 end
 
 """
-    dress(dt::DrivenTransition; nharm = 8, ngrid = 256)
+    dress(dt::DrivenTransition; harmonic_cutoff = 8, num_time_samples = 256)
 
 Dresses the two manifolds of the given model by its harmonic drives, returning a
 [`DressedTransition`](@ref).
 
-`nharm` is the Floquet harmonic truncation of the dressing; `ngrid` the number of
+`harmonic_cutoff` is the Floquet harmonic truncation of the dressing; `num_time_samples` the number of
 uniform time samples per drive period used for the Fourier analysis of the laser
 coupling in [`sideband_amplitude`](@ref).
 """
-function dress(dt::DrivenTransition; nharm::Int=8, ngrid::Int=256)
+function dress(dt::DrivenTransition; harmonic_cutoff::Int=8, num_time_samples::Int=256)
     ε_lower, u_lower = dress_manifold(
         manifold_blocks(dt, dt.lower_range)...,
         dt.drive_frequency,
-        nharm,
-        ngrid,
+        harmonic_cutoff,
+        num_time_samples,
     )
     ε_upper, u_upper = dress_manifold(
         manifold_blocks(dt, dt.upper_range)...,
         dt.drive_frequency,
-        nharm,
-        ngrid,
+        harmonic_cutoff,
+        num_time_samples,
     )
     DressedTransition(; dt, ε_lower, u_lower, ε_upper, u_upper)
 end
@@ -149,15 +149,16 @@ function sideband_amplitude(
     α_upper = dt.upper - first(dt.upper_range) + 1
     L = dt.coupling[dt.upper_range, dt.lower_range]
 
-    ngrid = size(d.u_lower, 2)
-    θs = 2π .* (0:(ngrid-1)) ./ ngrid
+    num_time_samples = size(d.u_lower, 2)
+    θs = 2π .* (0:(num_time_samples-1)) ./ num_time_samples
     phase_fn = phase_function(modulation, dt.drive_frequency)
     g = map(enumerate(θs)) do (it, θ)
         t = ustrip(u"s", θ / dt.drive_frequency)
         f = 0.5 * cis(-phase_fn(t))
         f * dot(view(d.u_upper, :, it, α_upper), L, view(d.u_lower, :, it, α_lower))
     end
-    gn(n) = sum(g[it] * cis(-n * θs[it]) for it in 1:ngrid) / ngrid
+    gn(n) =
+        sum(g[it] * cis(-n * θs[it]) for it in 1:num_time_samples) / num_time_samples
 
     a = gn(sideband)
     (
@@ -172,7 +173,7 @@ function sideband_amplitude(
 end
 
 """
-    sideband_rabi(dt::DrivenTransition; sideband, modulation = none, nharm = 8, ngrid = 256)
+    sideband_rabi(dt::DrivenTransition; sideband, modulation = none, harmonic_cutoff = 8, num_time_samples = 256)
 
 Convenience wrapper: dresses the transition and evaluates
 [`sideband_amplitude`](@ref).
@@ -181,10 +182,14 @@ function sideband_rabi(
     dt::DrivenTransition;
     sideband::Int,
     modulation=HarmonicPhaseModulation(),
-    nharm::Int=8,
-    ngrid::Int=256,
+    harmonic_cutoff::Int=8,
+    num_time_samples::Int=256,
 )
-    sideband_amplitude(dress(dt; nharm, ngrid); sideband, modulation)
+    sideband_amplitude(
+        dress(dt; harmonic_cutoff, num_time_samples);
+        sideband,
+        modulation,
+    )
 end
 
 export DressedTransition, dress, sideband_amplitude, sideband_rabi

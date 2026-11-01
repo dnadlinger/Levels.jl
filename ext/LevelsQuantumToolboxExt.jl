@@ -226,7 +226,7 @@ end
 QuantumToolbox.liouvillian(mm::MotionalModel) = liouvillian(mm.H, mm.c_ops)
 
 """
-    steadystate(model::LindbladModel; time_unit = u"µs", num_harmonics = 4, solver, kwargs...)
+    steadystate(model::LindbladModel; time_unit = u"µs", harmonic_cutoff = 4, solver, kwargs...)
     steadystate(mm::MotionalModel; solver, kwargs...)
 
 Returns the steady-state internal density matrix of the
@@ -235,7 +235,7 @@ internal ⊗ motional master equation of a
 [`Levels.OpticalBloch.MotionalModel`](@ref). A static model is solved directly
 (`QuantumToolbox.steadystate`); an internal model with beat-note harmonics at
 one frequency is solved for its periodic steady state with
-`steadystate_fourier` (`num_harmonics` harmonics of ρ, cf. its `n_max`), of
+`steadystate_fourier` (`harmonic_cutoff` harmonics of ρ, cf. its `n_max`), of
 which the period-averaged k = 0 component is returned. `solver` defaults to
 the direct sparse factorisation `SteadyStateLinearSolver(; alg = nothing)`;
 further keywords pass through.
@@ -243,7 +243,7 @@ further keywords pass through.
 function QuantumToolbox.steadystate(
     model::LindbladModel;
     time_unit::Unitful.Units=Unitful.µs,
-    num_harmonics::Int=4,
+    harmonic_cutoff::Int=4,
     solver=SteadyStateLinearSolver(; alg=nothing),
     kwargs...,
 )
@@ -269,7 +269,7 @@ function QuantumToolbox.steadystate(
         H_m,
         ustrip(time_unit^-1, w),
         c_ops;
-        n_max=num_harmonics,
+        n_max=harmonic_cutoff,
         solver,
         kwargs...,
     )
@@ -375,7 +375,7 @@ function OpticalBloch.motional_model(
     num_fock,
     lamb_dicke_order::Real=1,
     heating_rate=0.0u"s^-1",
-    nodes=nothing,
+    quadrature_order=nothing,
     time_unit::Unitful.Units=Unitful.µs,
 )
     require_static(model, "motional_model")
@@ -406,7 +406,9 @@ function OpticalBloch.motional_model(
             ),
         )
     end
-    num_nodes = isnothing(nodes) ? (isinf(order) ? 12 : Int(order) + 1) : Int(nodes)
+    num_nodes =
+        isnothing(quadrature_order) ? (isinf(order) ? 12 : Int(order) + 1) :
+        Int(quadrature_order)
     num_states = length(model.basis)
 
     # Sparse throughout: the tensor products (and hence the Liouvillian, of
@@ -468,7 +470,7 @@ function OpticalBloch.motional_model(
                 rank,
                 q,
                 num_modes == 1 ? directions[1] : directions;
-                nodes=num_nodes,
+                quadrature_order=num_nodes,
             )
             η0s = [
                 mc.recoil_lamb_dicke[findfirst(==(k), mc.recoil_indices)] for mc in mcs
@@ -637,9 +639,9 @@ function OpticalBloch.cooling_time(
     H::QuantumObject,
     c_ops;
     time_unit::Unitful.Units=Unitful.µs,
-    mode_sizes=nothing,
+    num_fock=nothing,
     mode=nothing,
-    eigvals::Int=12,
+    num_eigenpairs::Int=12,
     dense_limit::Int=2500,
     weight_threshold::Real=0.1,
 )
@@ -649,16 +651,16 @@ function OpticalBloch.cooling_time(
         e = eigen(Matrix(L.data))
         e.values, e.vectors
     else
-        r = eigsolve(L; sigma=0.0 + 0.0im, eigvals)
+        r = eigsolve(L; sigma=0.0 + 0.0im, eigvals=num_eigenpairs)
         r.values, r.vectors
     end
     # Phonon-number operator of the selected mode (or all modes) over the
     # motional factors (slot 1 is internal).
-    sizes = if isnothing(mode_sizes)
+    sizes = if isnothing(num_fock)
         d = H.dims
         collect(Int, d isa Tuple ? first(d) : d)[2:end]
     else
-        collect(Int, mode_sizes)
+        collect(Int, num_fock)
     end
     num_states = isqrt(dim) ÷ prod(sizes)
     N_op = phonon_number_operator(num_states, sizes, mode)
@@ -678,7 +680,7 @@ function OpticalBloch.cooling_time(
     throw(
         ErrorException(
             "No relaxation mode with phonon-number weight above the threshold " *
-            "found; increase eigvals or lower weight_threshold",
+            "found; increase num_eigenpairs or lower weight_threshold",
         ),
     )
 end
@@ -687,7 +689,7 @@ OpticalBloch.cooling_time(mm::MotionalModel; kwargs...) = OpticalBloch.cooling_t
     mm.H,
     mm.c_ops;
     time_unit=mm.time_unit,
-    mode_sizes=mm.num_fock,
+    num_fock=mm.num_fock,
     kwargs...,
 )
 
@@ -731,7 +733,7 @@ function OpticalBloch.cooling_metrics(
         τ = OpticalBloch.cooling_time(
             mm;
             mode=m,
-            eigvals=method.eigvals,
+            num_eigenpairs=method.num_eigenpairs,
             dense_limit=method.dense_limit,
             weight_threshold=method.weight_threshold,
         )
@@ -748,22 +750,24 @@ function OpticalBloch.cooling_metrics(
     time_unit::Unitful.Units=Unitful.µs,
 )
     num_modes = length(mcs)
-    nbar_ini =
-        method.nbar_ini isa Real ? fill(method.nbar_ini, num_modes) : method.nbar_ini
-    length(nbar_ini) == num_modes ||
-        throw(ArgumentError("nbar_ini must be one occupation or one per mode"))
-    num_fock = isnothing(method.num_fock) ? fock_truncation.(nbar_ini) : method.num_fock
+    initial_nbar =
+        method.initial_nbar isa Real ? fill(method.initial_nbar, num_modes) :
+        method.initial_nbar
+    length(initial_nbar) == num_modes ||
+        throw(ArgumentError("initial_nbar must be one occupation or one per mode"))
+    num_fock =
+        isnothing(method.num_fock) ? fock_truncation.(initial_nbar) : method.num_fock
     mm = OpticalBloch.motional_model(
         model,
         mcs;
         num_fock,
         lamb_dicke_order=method.lamb_dicke_order,
         heating_rate,
-        nodes=method.nodes,
+        quadrature_order=method.quadrature_order,
         time_unit,
     )
     solver = IntegratedTransientSolver(mm; bandwidth=method.bandwidth)
-    ρ0 = OpticalBloch.thermal_state(Matrix(ρ.data), mm.num_fock, nbar_ini)
+    ρ0 = OpticalBloch.thermal_state(Matrix(ρ.data), mm.num_fock, initial_nbar)
     map(1:num_modes) do m
         τ = integral_relaxation_time(solver, ρ0, m) * time_unit
         CoolingMetrics(method, steady_value(solver, m), τ, nothing, nothing, mm, solver)
