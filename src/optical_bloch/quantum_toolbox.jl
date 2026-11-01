@@ -417,6 +417,17 @@ times are in `time_unit`.
 """
 function cooling_metrics end
 
+Base.show(io::IO, model::MotionalModel) = print(
+    io,
+    "MotionalModel(",
+    model.num_states,
+    " internal states, num_fock=",
+    model.num_fock,
+    ", time_unit=",
+    model.time_unit,
+    ")",
+)
+
 export RecoilLabel, HeatingLabel, MotionalModel
 export populations, cooling_rates, motional_model, mean_phonon_number, cooling_time
 export CoolingMethod, AdiabaticElimination, IntegratedTransient, LiouvillianSpectrum

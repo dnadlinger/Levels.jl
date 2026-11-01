@@ -809,6 +809,19 @@ transitions(species::OneElectronSpecies) = sort!(
     by=p->(species.energies[p.second], species.energies[p.first]),
 )
 
+function Base.show(io::IO, species::OneElectronSpecies)
+    print(
+        io,
+        nameof(typeof(species)),
+        "(",
+        length(species.energies),
+        " levels, mass=",
+        species.mass,
+    )
+    species isa HyperfineOneElectronSpecies && print(io, ", I=", species.nuclear_spin)
+    print(io, ")")
+end
+
 export Species,
     OneElectronSpecies,
     NoHyperfineOneElectronSpecies,

@@ -604,6 +604,17 @@ function insensitive_field(
     sol.u * u"mT"
 end
 
+Base.show(io::IO, manifold::HyperfineManifold) = print(
+    io,
+    "HyperfineManifold(",
+    manifold.level,
+    ", B=",
+    manifold.field,
+    ", ",
+    length(manifold.basis),
+    " states)",
+)
+
 export HyperfineManifold,
     hyperfine_levels,
     hyperfine_shift,

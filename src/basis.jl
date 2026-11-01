@@ -178,4 +178,13 @@ Base.lastindex(basis::StateBasis) = length(basis.states)
 Base.in(state::StateSpec, basis::StateBasis{L}) where {L} =
     haskey(basis.indices, convert(StateSpec{L}, state))
 
+Base.show(io::IO, basis::StateBasis) = print(
+    io,
+    "StateBasis(",
+    length(basis),
+    " states; ",
+    join(string.(basis.levels), ", "),
+    ")",
+)
+
 export StateBasis, stateindex, staterange

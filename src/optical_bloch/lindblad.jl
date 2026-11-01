@@ -317,5 +317,18 @@ function level_projector(model::LindbladModel, level)
     P
 end
 
+Base.show(io::IO, model::LindbladModel) = print(
+    io,
+    "LindbladModel(",
+    length(model.basis),
+    " states, ",
+    length(model.couplings),
+    " beams, ",
+    length(model.jump_operators),
+    " jumps, ",
+    length(model.harmonics),
+    " beat harmonics)",
+)
+
 export DecayLabel, DephasingLabel, LindbladModel, lindblad_model
 export decay_operators, dephasing_operators, level_projector

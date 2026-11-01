@@ -1333,6 +1333,15 @@ function tensor_polarisability(species, level, frequency)
     α
 end
 
+Base.show(io::IO, coefficients::LightShiftCoefficients) = print(
+    io,
+    "LightShiftCoefficients(",
+    length(coefficients.basis),
+    " states, B=",
+    coefficients.field,
+    ")",
+)
+
 export LightShiftCoefficients,
     driven_light_shift,
     light_shift,
