@@ -7,83 +7,12 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
-- Initial release
-- `polarisability(species, state, frequency[, ε]; B)` for the electric-dipole
-  response of an individual state — per Δm channel, or contracted with a
-  polarisation — including the static limit. With `B`, light-shift
-  backgrounds are evaluated on the field eigenstates — hyperfine ``F`` mixing
-  included, Zeeman and known intermediate hyperfine splittings resolved in the
-  denominators — by the same at-field machinery as the near-resonant channels;
-  bare-frequency `light_shift` also accepts `B`
-- Level and state specifications print in spectroscopic notation
-  (`S_1/2 F=4`, `|D_5/2, m=3/2⟩`)
-- `StateBasis` for ordered Zeeman-state index bookkeeping, plus the generic
-  `state_pairs` transition enumeration between two levels
-- Zeeman structure: `lande_g` (LS coupling with reduced-mass correction, using
-  the new species `mass` field), `zeeman_shift`, `zeeman_sensitivity`, and
-  `zeeman_hamiltonian` for arbitrary field directions
-- Electric-quadrupole coupling geometry: `beam_vectors`, `quadrupole_geometry`,
-  `quadrupole_couplings`, and `rabi_normalised`
-- ac Stark (light) shifts of states and transitions: `light_shift`, with the
-  atomic structure hoisted into a reusable `LightShiftCoefficients`, plus the
-  `scalar_polarisability`/`vector_polarisability`/`tensor_polarisability`
-  decomposition; driven by the new species `polarisabilities` field, populated
-  for the ⁸⁸Sr⁺ S``_{1/2}`` and D``_{5/2}`` clock levels
-- Near-resonant electric-quadrupole light shifts — the shift a probed
-  quadrupole Zeeman component receives from the components sharing one of its
-  states, the "E2 ac Stark shift" of optical-clock evaluations:
-  `quadrupole_light_shift`, also folded into `light_shift` via the `n`/`B`
-  keyword arguments, with the per-channel geometry weights exposed as
-  `Levels.quadrupole_weights`
-- At-field transition amplitudes for hyperfine species: `transition_amplitude`
-  (zero-field ``F``-basis amplitudes, or exact at a static field — including
-  the Breit–Rabi-regime ``F`` mixing — via a trailing flux density or a
-  pre-solved `HyperfineManifold` pair) with a matching `rabi_frequency`
-  method, and the underlying `eigenbasis_transform` rotation matrix for whole
-  coupled-basis operators, which the hyperfine `DrivenTransition` now also
-  uses internally. The species-aware `Levels.clebsch_gordan` forms are
-  subsumed by `transition_amplitude` and removed; the two-argument form
-  remains as the bare fine-structure Clebsch–Gordan factor
-- `Levels.PeriodicDynamics` submodule for transitions under periodic driving
-  (trap rf): the `DrivenTransition` rotating-frame model with ac Zeeman drives
-  and laser phase modulation, a dressed-state Floquet engine
-  (`dress`/`sideband_amplitude`), and an exact monodromy-matrix engine
-  (`exact_sideband`/`stroboscopic_populations`) as nonperturbative cross-check
-- Variables counting items are named `num_…` throughout (`num_states`,
-  `num_fock`, …), never bare `n`, which is reserved for the Fock index.
-  Breaking: the `motional_model` truncation keyword is `num_fock` and the
-  `steadystate(model)` harmonics keyword `num_harmonics` (both were `n_max`)
-- Scheme-building conveniences: `intensity_for_rabi` (the intensity giving a
-  target Rabi frequency on one component), `RelativeFrequency(species, lower
-  => upper, detuning, B)` (a detuning stated from a Zeeman or hyperfine
-  component at field) and `peak_intensity`
-- `Levels.OpticalBloch` ingredients for laser cooling beyond the Lamb–Dicke
-  regime: `LindbladModel` keeps the per-beam `couplings`, `motional_coupling`
-  accepts `recoil_moment = :isotropic` and records the emission setting, and
-  `displacement_elements`, `emission_rule` (Gauss rules for the
-  emission-direction distributions of the multipole components) and
-  `fock_truncation` are exported
-- Solver-independent numerics on the assembled master equations:
-  `BandLiouvillian` (the generator restricted to motional coherences within a
-  bandwidth, with `band_vector`/`full_matrix`/`expectation_row`), the band
-  `cooling_curve`, `phonon_number_operator`/`thermal_populations`/
-  `thermal_state`, and the integrated-transient method
-  (`IntegratedTransientSolver`, `steady_state`, `steady_value`,
-  `integral_relaxation_time`): one strictly pivoted sparse factorisation for
-  the steady state and the integral relaxation time of any observable from
-  any initial state (Kulosa et al. 2023's τ-matrix method)
-- `motional_model` takes a `lamb_dicke_order` (a positive integer, or `Inf`
-  for the exact displacement operators, with the recoil kicks integrated over
-  the emission-direction distribution of each multipole component) and a
-  `heating_rate` bath, and returns a `MotionalModel` on which the phonon
-  observables (`mean_phonon_number`, `fock_populations`, `thermal_state`,
-  `cooling_time`, `cooling_curve`) and the QuantumToolbox `steadystate`/
-  `liouvillian` dispatch. Breaking: the phonon observables take the
-  `MotionalModel` instead of the model and couplings
-- `cooling_metrics(model, modes, method)` as the common front-end of the
-  cooling estimates — `AdiabaticElimination`, `IntegratedTransient`,
-  `LiouvillianSpectrum` — returning `CoolingMetrics` (steady-state occupation,
-  time constant, method-specific extras)
+- Initial release: unitful atomic level-structure calculations for
+  trapped-ion and laser-spectroscopy work (transition rates, Zeeman and hyperfine
+  structure, multipole couplings, polarisabilities and light shifts), with
+  ⁸⁸Sr⁺, ⁴⁰Ca⁺ and ⁴³Ca⁺ datasets; `Levels.PeriodicDynamics` for transitions
+  under periodic driving; `Levels.OpticalBloch` for multi-level optical Bloch
+  equations and laser cooling.
 
 <!-- Links -->
 
