@@ -62,3 +62,15 @@ end
     @test left.t ≈ right.t
     @test left.nbar ≈ right.nbar
 end
+
+@testitem "Omitted decay states require an explicit policy" tags=[:unit, :fast] begin
+    using Levels.OpticalBloch
+    using Unitful
+    basis = StateBasis(
+        vcat([StateSpec("S_1/2", -1//2)], collect(StateBasis("D_3/2", "P_1/2"))),
+    )
+    scheme = LaserScheme(basis, LaserBeam[]; B=0.5u"mT")
+    @test_throws ArgumentError lindblad_model(ca40, scheme)
+    dropped = lindblad_model(ca40, scheme; open_channels=:drop)
+    @test length(dropped.jump_operators)>0
+end

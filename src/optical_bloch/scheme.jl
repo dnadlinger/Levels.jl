@@ -41,7 +41,10 @@ function LaserBeam(
     direction;
     linewidth=0.0u"µs^-1",
 )
-    if dimension(intensity) != dimension(1.0u"W/m^2")
+    if dimension(intensity) != dimension(1.0u"W/m^2") ||
+       !isreal(intensity) ||
+       !isfinite(intensity) ||
+       intensity < zero(intensity)
         throw(
             ArgumentError(
                 "The beam intensity must be a power per area, got $intensity",

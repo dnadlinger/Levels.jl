@@ -69,6 +69,7 @@ using ..Levels:
     amplitude_evaluator,
     coupling_matrix,
     einstein_a,
+    lifetime,
     fine_structure,
     hyperfine_manifold,
     hyperfine_shift,

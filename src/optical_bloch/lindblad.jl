@@ -125,8 +125,7 @@ frame differences time-independent, at the price of the coherence-transfer
 terms between them, and is then required). An upper level with decay channels
 to levels missing from the basis raises an error naming them, unless
 `open_channels = :drop` discards those channels (the level then lives longer
-than its physical lifetime); a basis holding only part of a level's states
-likewise silently drops the channels into the missing states.
+than its physical lifetime); missing F levels or Zeeman states are treated by the same policy.
 
 **Laser linewidth.** A beam with non-zero `linewidth` ``γ`` (FWHM) adds the
 phase-diffusion operator ``\\sqrt{γ} \\sum_i n_{b,i} P_i`` with ``P_i`` the state
@@ -233,6 +232,25 @@ function lindblad_model(
                 end
                 push!(jump_operators, L)
                 push!(jump_labels, DecayLabel(lo, hi, q, nothing))
+            end
+        end
+    end
+
+    if open_channels == :error
+        for (i, state) in enumerate(basis)
+            lifetime_known = lifetime(species, state.level)
+            isnothing(lifetime_known) && continue
+            expected = 1 / lifetime_known
+            actual = sum(
+                sum(abs2, view(L, :, i)) for L in jump_operators;
+                init=zero(expected),
+            )
+            if actual < (1 - 1e-10) * expected
+                throw(
+                    ArgumentError(
+                        "Decay channels from $state leave the retained states; add the missing states or pass open_channels = :drop",
+                    ),
+                )
             end
         end
     end
