@@ -524,6 +524,48 @@ function intensity_for_rabi(
     uconvert(u"W/m^2", reference * abs2(uconvert(NoUnits, abs(Ω) / Ω_ref)))
 end
 
-export transition_amplitude, rabi_frequency, coupling_matrix, rabi_normalised
-export intensity_for_rabi
+"""
+    relative_couplings(species, basis, transition::Pair, ε, direction; B=nothing)
+
+Returns dimensionless complex E1 or E2 amplitudes in the upper-row/lower-column
+block. Normalises the geometry. With `B`, hyperfine amplitudes refer to field
+eigenstates; without it they refer to the coupled basis. A physical matrix
+can be obtained with [`rabi_normalised`](@ref).
+"""
+function relative_couplings(
+    species,
+    basis::StateBasis,
+    transition::Pair,
+    ε,
+    direction;
+    B=nothing,
+)
+    lo = level_list(species, transition.first)
+    hi = level_list(species, transition.second)
+    rank = multipole_rank(fine_structure(first(lo)) => fine_structure(first(hi)))
+    ε_scale = sqrt(sum(abs2, ε))
+    ε_scale > 0 || throw(ArgumentError("Polarisation must be non-zero"))
+    geometry = if rank == 1
+        dipole_geometry(ε / ε_scale)
+    else
+        scale = sqrt(sum(abs2, direction))
+        scale > 0 || throw(ArgumentError("Direction must be non-zero"))
+        quadrupole_geometry(ε / ε_scale, direction / scale)
+    end
+    amplitude = amplitude_evaluator(species, lo, hi, B)
+    C = zeros(ComplexF64, length(basis), length(basis))
+    for (i, lower) in enumerate(basis), (j, upper) in enumerate(basis)
+        lower.level in lo && upper.level in hi || continue
+        q = upper.m - lower.m
+        abs(q) <= rank || continue
+        C[j, i] = amplitude(lower, upper) * geometry[Int(q)+rank+1]
+    end
+    C
+end
+export transition_amplitude,
+    rabi_frequency,
+    coupling_matrix,
+    rabi_normalised,
+    intensity_for_rabi,
+    relative_couplings
 public clebsch_gordan, multipole_rank, hyperfine_reduction

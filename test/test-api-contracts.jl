@@ -74,3 +74,12 @@ end
     dropped = lindblad_model(ca40, scheme; open_channels=:drop)
     @test length(dropped.jump_operators)>0
 end
+
+@testitem "Relative couplings are normalised over the geometry" tags=[:unit, :fast] begin
+    using Unitful
+    direction, ε = beam_vectors(π / 2, π / 4)
+    basis = StateBasis("S_1/2", "P_1/2")
+    E1 = relative_couplings(ca40, basis, "S_1/2" => "P_1/2", ε, direction)
+    @test any(!iszero, E1)
+    @test E1 ≈ relative_couplings(ca40, basis, "S_1/2" => "P_1/2", 2ε, 3direction)
+end
