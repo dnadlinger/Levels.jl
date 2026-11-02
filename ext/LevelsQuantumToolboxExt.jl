@@ -32,6 +32,7 @@ using Levels.OpticalBloch:
     RecoilLabel,
     LiouvillianSpectrum,
     emission_rule,
+    expectation_row,
     fock_truncation,
     integral_relaxation_time,
     joint_displacement,
@@ -634,28 +635,6 @@ OpticalBloch.IntegratedTransientSolver(
     atol::Real=1e-9,
 ) = IntegratedTransientSolver(BandLiouvillian(model; time_unit), observables; atol)
 
-function OpticalBloch.cooling_time(
-    H::QuantumObject,
-    c_ops;
-    time_unit::Unitful.Units=Unitful.µs,
-    num_fock=nothing,
-    kwargs...,
-)
-    # Fock sizes of the layout (slot 1 of the dimensions is internal).
-    sizes = if isnothing(num_fock)
-        d = H.dims
-        collect(Int, d isa Tuple ? first(d) : d)[2:end]
-    else
-        collect(Int, num_fock)
-    end
-    num_states = size(H, 1) ÷ prod(sizes)
-    bl = BandLiouvillian(H.data, [c.data for c in c_ops], num_states, sizes; time_unit)
-    OpticalBloch.cooling_time(bl; kwargs...)
-end
-
-OpticalBloch.cooling_time(mm::MotionalModel; kwargs...) =
-    OpticalBloch.cooling_time(BandLiouvillian(mm); kwargs...)
-
 # --- Levels.OpticalBloch: the common cooling-metrics front-end -------------------
 
 function OpticalBloch.cooling_metrics(
@@ -713,7 +692,17 @@ function OpticalBloch.cooling_metrics(
     nbars = OpticalBloch.fock_populations(bl, modes.steady)
     map(eachindex(mcs)) do m
         nbar = sum((n - 1) * p for (n, p) in enumerate(nbars[m]))
-        τ = OpticalBloch.phonon_relaxation_time(bl, modes, m, method.weight_threshold)
+        # The slowest computed mode moving this mode's phonon number (the vectors
+        # have unit norm); the threshold passes over the coherence modes.
+        a = expectation_row(bl, phonon_number_operator(bl.num_states, bl.num_fock, m))
+        weights = [abs(transpose(a) * v) for v in eachcol(modes.vectors)]
+        threshold = method.weight_threshold * maximum(weights)
+        slowest = findfirst(>=(threshold), weights)
+        isnothing(slowest) && error(
+            "No relaxation mode with phonon-number weight above the threshold found; " *
+            "increase num_eigenpairs or lower weight_threshold",
+        )
+        τ = -1 / real(ustrip(time_unit^-1, modes.values[slowest])) * time_unit
         CoolingMetrics(method, nbar, τ, nothing, nothing, mm, nothing)
     end
 end

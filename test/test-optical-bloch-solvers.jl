@@ -195,12 +195,12 @@ end
                       populations(ρ, model, "P_1/2") rtol = 1e-3
                 # The slowest phonon-number relaxation is the rate-equation τ_c,
                 # not the twice slower coherence decay.
-                τ = cooling_time(full)
+                τ = cooling_metrics(model, mc, LiouvillianSpectrum(; num_fock)).τ_c
                 @test τ ≈ rates.τ_c rtol = 2e-2
-                @test cooling_time(full.H, full.c_ops) == τ
                 # The Krylov path (group-inverse iteration) reproduces the dense
                 # spectrum.
-                @test cooling_time(full; dense_limit=0) ≈ τ rtol = 1e-8
+                krylov = LiouvillianSpectrum(; num_fock, dense_limit=0)
+                @test cooling_metrics(model, mc, krylov).τ_c ≈ τ rtol = 1e-8
             end
         end
     end
@@ -235,7 +235,7 @@ end
     # instead, while the direct ⟨n⟩ (2.04) is truncation-limited. The internal
     # populations agree to ~10 %. (The relaxation time is not compared: at
     # n̄ ≈ 3 the slowest mode of a Fock space truncated at 8 is set by the
-    # truncation; the two-level item above pins cooling_time.)
+    # truncation; the two-level item above pins LiouvillianSpectrum.)
     ω_m = angular(1.1u"MHz")
     mode = MotionalMode(ω_m, [0, 0, 1.0])
     scheme = lambda_scheme(
@@ -260,7 +260,7 @@ end
     @test_throws ArgumentError mean_phonon_number(ρ_full, full; method=:thermal)
     @test populations(ptrace(ρ_full, 1), model, "P_1/2") ≈
           populations(ρ, model, "P_1/2") rtol = 0.15
-    @test cooling_time(full) > 1000u"µs"
+    @test cooling_metrics(model, mc, LiouvillianSpectrum(; num_fock=8)).τ_c > 1000u"µs"
     # Two modes in one full model: each recovers its own occupation (the
     # second, off-resonant mode is heated, i.e. its occupation is set by the
     # truncation and the rate model reports NaN).
@@ -626,14 +626,21 @@ end
         end
     end
     # The stationary state is the integrated-transient solver's (same
-    # factorisation); the Krylov path is deterministic; `cooling_time` picks a
-    # mode of this spectrum.
+    # factorisation); the Krylov path is deterministic; `LiouvillianSpectrum`
+    # picks a mode of this spectrum.
     @test full_matrix(bl, krylov.steady) ≈
           steady_density_matrix(IntegratedTransientSolver(mm)) atol = 1e-12
     @test relaxation_modes(bl; num_eigenpairs=8, dense_limit=0).values == krylov.values
-    τ = cooling_time(mm; num_eigenpairs=8, dense_limit=0)
+    heating_rate = 1.0u"ms^-1"
+    spectrum(; kwargs...) = cooling_metrics(
+        s.model,
+        s.mc,
+        LiouvillianSpectrum(; num_fock=12, dense_limit=0, kwargs...);
+        heating_rate,
+    )
+    τ = spectrum(; num_eigenpairs=8).τ_c
     @test any(λ -> τ == -1 / real(λ), krylov.values)
-    @test_throws ErrorException cooling_time(bl; dense_limit=0, weight_threshold=2.0)
+    @test_throws ErrorException spectrum(; weight_threshold=2.0)
     @test_throws ArgumentError relaxation_modes(bl; num_eigenpairs=0)
 end
 

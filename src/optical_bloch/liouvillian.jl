@@ -554,58 +554,8 @@ function relaxation_modes(
     (; values=values .* bl.time_unit^-1, vectors, steady)
 end
 
-"""
-    cooling_time(bl::BandLiouvillian; mode = nothing, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
-    cooling_time(mm::MotionalModel; kwargs...)                                 (extension)
-    cooling_time(H, c_ops; time_unit = u"µs", num_fock = nothing, kwargs...)   (extension)
-
-Returns the asymptotic phonon-number relaxation time as a unitful quantity:
-``-1/\\mathrm{Re}\\,λ`` of the slowest among the `num_eigenpairs` slowest
-relaxation modes ([`relaxation_modes`](@ref)) whose phonon-number weight
-``|\\mathrm{Tr}(\\hat N v)|/‖v‖`` is at least `weight_threshold` times the
-largest weight among them. `mode` selects one mode's phonon number; `nothing`
-uses the total. The threshold passes over coherence modes, which carry a
-phonon-number weight of order ``η^2`` only (the slowest of them decays at
-half the cooling rate). Increase `num_eigenpairs` and vary the threshold to
-check the selection; `dense_limit` is the Liouvillian dimension up to which
-dense diagonalisation is used. A negative result signals a growing mode of
-the truncated model.
-
-For a transient with several timescales this asymptotic time differs from the
-initial-state-dependent [`integral_relaxation_time`](@ref).
-
-The extension forms take a [`MotionalModel`](@ref) or QuantumToolbox
-operators over the internal ⊗ Fock layout (Fock dimensions inferred from
-`H.dims` unless `num_fock` is given).
-"""
-function cooling_time(
-    bl::BandLiouvillian;
-    mode=nothing,
-    num_eigenpairs::Integer=12,
-    dense_limit::Integer=2500,
-    weight_threshold::Real=0.1,
-)
-    modes = relaxation_modes(bl; num_eigenpairs, dense_limit)
-    phonon_relaxation_time(bl, modes, mode, weight_threshold)
-end
-
-# The slowest of the computed relaxation `modes` moving the phonon number of
-# `mode` (or the total) with at least `weight_threshold` of the largest weight.
-function phonon_relaxation_time(bl::BandLiouvillian, modes, mode, weight_threshold)
-    a = expectation_row(bl, phonon_number_operator(bl.num_states, bl.num_fock, mode))
-    weights = [abs(transpose(a) * v) for v in eachcol(modes.vectors)]   # unit-norm v
-    threshold = weight_threshold * maximum(weights)
-    for (λ, w) in zip(modes.values, weights)
-        w >= threshold && return -1 / real(ustrip(bl.time_unit^-1, λ)) * bl.time_unit
-    end
-    error(
-        "No relaxation mode with phonon-number weight above the threshold found; " *
-        "increase num_eigenpairs or lower weight_threshold",
-    )
-end
-
 export BandLiouvillian, band_vector, full_matrix, expectation_row, fock_populations
 export phonon_number_operator, thermal_populations, thermal_state, cooling_curve
 export IntegratedTransientSolver,
     steady_density_matrix, steady_value, integral_relaxation_time
-export relaxation_modes, cooling_time
+export relaxation_modes

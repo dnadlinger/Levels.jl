@@ -241,14 +241,25 @@ end
 """
     LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
 
-The full internal ⊗ Fock master equation ([`motional_model`](@ref) with
-`num_fock` states per mode, to the given `lamb_dicke_order`) solved for its
+Selects the full internal ⊗ Fock master equation ([`motional_model`](@ref) with
+`num_fock` states per mode, to the given `lamb_dicke_order`), solved for its
 stationary state and slowest eigenmodes from one trace-row factorisation
-([`relaxation_modes`](@ref)): the occupation from the former and, for the
-time constant, the slowest phonon-number-weighted mode ([`cooling_time`](@ref);
-the remaining keywords are its) — the asymptotic relaxation rate,
-state-independent like the adiabatic-elimination one but without its
-approximation.
+([`relaxation_modes`](@ref)). The occupation comes from the former. The time
+constant is the asymptotic phonon-number relaxation time
+``-1/\\mathrm{Re}\\,λ`` of the slowest among the `num_eigenpairs` slowest modes
+whose phonon-number weight ``|\\mathrm{Tr}(\\hat N_m v)|/‖v‖`` is at least
+`weight_threshold` times the largest weight among them; it is state-independent
+like the adiabatic-elimination one, but without its approximation.
+
+The threshold passes over coherence modes, which carry a phonon-number weight
+of order ``η^2`` only (the slowest of them decays at half the cooling rate).
+Increase `num_eigenpairs` and vary the threshold to check the selection; an
+error is raised if no mode qualifies. `dense_limit` is the Liouvillian dimension
+up to which dense diagonalisation is used. A negative time signals a growing
+mode of the truncated model.
+
+For a transient with several timescales this asymptotic time differs from the
+initial-state-dependent time of [`IntegratedTransient`](@ref).
 """
 struct LiouvillianSpectrum <: CoolingMethod
     num_fock::Union{Int,Vector{Int}}
