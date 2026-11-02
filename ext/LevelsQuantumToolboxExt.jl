@@ -364,34 +364,6 @@ function mode_heating_rates(heating_rate, num_modes)
     rates
 end
 
-function OpticalBloch.cooling_rates(
-    model::LindbladModel,
-    mcs::AbstractVector{<:MotionalCoupling};
-    ρ=steadystate(model),
-    heating_rate=0.0u"s^-1",
-    time_unit::Unitful.Units=Unitful.µs,
-)
-    require_static(model, "cooling_rates")
-    heating_rates = mode_heating_rates(heating_rate, length(mcs))
-    L = liouvillian(model; time_unit).data
-    ρm = Matrix(ρ.data)
-    map(zip(mcs, heating_rates)) do (mc, rate)
-        h = ustrip(time_unit^-1, rate)
-        A_plus, A_minus = mode_rates(L, ρm, mc, time_unit)
-        net = A_minus - A_plus
-        cooling = net > 0
-        (;
-            A_plus=A_plus * time_unit^-1,
-            A_minus=A_minus * time_unit^-1,
-            nbar=cooling ? (A_plus + h) / net : NaN,
-            τ_c=(cooling ? 1 / net : NaN) * time_unit,
-        )
-    end
-end
-
-OpticalBloch.cooling_rates(model::LindbladModel, mc::MotionalCoupling; kwargs...) =
-    only(OpticalBloch.cooling_rates(model, [mc]; kwargs...))
-
 # --- Levels.OpticalBloch: the full internal ⊗ motional model ----------------------
 
 function OpticalBloch.motional_model(
@@ -694,11 +666,25 @@ function OpticalBloch.cooling_metrics(
     ρ=steadystate(model),
     time_unit::Unitful.Units=Unitful.µs,
 )
-    rates = OpticalBloch.cooling_rates(model, mcs; ρ, heating_rate, time_unit)
-    [
-        CoolingMetrics(method, r.nbar, r.τ_c, r.A_plus, r.A_minus, nothing, nothing) for
-        r in rates
-    ]
+    require_static(model, "AdiabaticElimination")
+    heating_rates = mode_heating_rates(heating_rate, length(mcs))
+    L = liouvillian(model; time_unit).data
+    ρm = Matrix(ρ.data)
+    map(zip(mcs, heating_rates)) do (mc, rate)
+        h = ustrip(time_unit^-1, rate)
+        A_plus, A_minus = mode_rates(L, ρm, mc, time_unit)
+        net = A_minus - A_plus
+        cooling = net > 0
+        CoolingMetrics(
+            method,
+            cooling ? (A_plus + h) / net : NaN,
+            (cooling ? 1 / net : NaN) * time_unit,
+            A_plus * time_unit^-1,
+            A_minus * time_unit^-1,
+            nothing,
+            nothing,
+        )
+    end
 end
 
 function OpticalBloch.cooling_metrics(

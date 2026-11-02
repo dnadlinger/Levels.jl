@@ -152,7 +152,7 @@ end
         model = lindblad_model(two_level, scheme; open_channels=:drop)
         mc = motional_coupling(model, mode)
         ρ = steadystate(model)
-        rates = cooling_rates(model, mc; ρ)
+        rates = cooling_metrics(model, mc, AdiabaticElimination(); ρ)
         Ω = 2 * abs(model.hamiltonian[2, 1])
         η, η0, α =
             mc.projected_lamb_dicke[1], mc.recoil_lamb_dicke[1], mc.recoil_moments[1]
@@ -167,7 +167,13 @@ end
             @test rates.nbar ≈ A_plus / (A_minus - A_plus) rtol = 3e-2
             @test rates.τ_c ≈ 1 / (A_minus - A_plus) rtol = 3e-2
             # Background heating adds to the steady-state occupation.
-            heated = cooling_rates(model, mc; ρ, heating_rate=0.1 * rates.A_minus)
+            heated = cooling_metrics(
+                model,
+                mc,
+                AdiabaticElimination();
+                ρ,
+                heating_rate=0.1 * rates.A_minus,
+            )
             @test heated.nbar ≈
                   rates.nbar + 0.1 * rates.A_minus / (rates.A_minus - rates.A_plus) rtol =
                 1e-9
@@ -204,10 +210,13 @@ end
     model = lindblad_model(two_level, scheme; open_channels=:drop)
     modes = [mode, MotionalMode(angular(5.0u"MHz"), [1.0, 0, 1.0])]
     mcs = motional_coupling(model, modes)
-    many = cooling_rates(model, mcs)
+    many = cooling_metrics(model, mcs, AdiabaticElimination())
     @test length(many) == 2
-    @test many[1] == cooling_rates(model, mcs[1])
-    @test many[2].A_minus ≈ cooling_rates(model, mcs[2]).A_minus
+    single = cooling_metrics(model, mcs[1], AdiabaticElimination())
+    @test many[1].nbar == single.nbar && many[1].τ_c == single.τ_c
+    @test many[1].A_plus == single.A_plus && many[1].A_minus == single.A_minus
+    @test many[2].A_minus ≈
+          cooling_metrics(model, mcs[2], AdiabaticElimination()).A_minus
 end
 
 @testitem "Λ cooling: adiabatic elimination vs full model" tags=[:integration, :slow] setup=[
@@ -238,7 +247,7 @@ end
     model = lindblad_model(LAMBDA, scheme)
     mc = motional_coupling(model, mode)
     ρ = steadystate(model)
-    rates = cooling_rates(model, mc; ρ)
+    rates = cooling_metrics(model, mc, AdiabaticElimination(); ρ)
     @test rates.A_minus > rates.A_plus
     @test abs(mc.projected_lamb_dicke[2]) *
           2 *
@@ -260,7 +269,7 @@ end
     two = motional_model(model, mcs; num_fock=[6, 3])
     ρ_two = steadystate(two)
     nbars = mean_phonon_number(ρ_two, two; method=:thermal_ratio)
-    both = cooling_rates(model, mcs; ρ)
+    both = cooling_metrics(model, mcs, AdiabaticElimination(); ρ)
     @test length(nbars) == 2
     @test nbars[1] ≈ both[1].nbar rtol = 0.15
     @test isnan(both[2].nbar) && both[2].A_plus > both[2].A_minus
@@ -489,9 +498,6 @@ end
     @test ae.method == AdiabaticElimination() &&
           isnothing(ae.model) &&
           isnothing(ae.solver)
-    rates = cooling_rates(s.model, s.mc)
-    @test ae.nbar == rates.nbar && ae.τ_c == rates.τ_c
-    @test ae.A_plus == rates.A_plus && ae.A_minus == rates.A_minus
     # the low-intensity limit 7/48 (γ/ω)² of isotropic emission
     @test ae.nbar ≈ 7 / 48 * ustrip(NoUnits, γ / ω)^2 rtol = 0.02
     it = cooling_metrics(

@@ -70,51 +70,6 @@ fine-structure level covering all its hyperfine levels, cf.
 function populations end
 
 """
-    cooling_rates(model::LindbladModel, mc::MotionalCoupling; ρ = steadystate(model), heating_rate = 0, time_unit = u"µs")
-    cooling_rates(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}; ρ, heating_rate, time_unit)
-
-Returns `(; A_plus, A_minus, nbar, τ_c)` for one mode, or a vector of these
-for several modes, by adiabatically eliminating the internal dynamics.
-Requires the Lamb–Dicke regime and weak sideband coupling, with internal
-relaxation fast compared with the induced motional rates. The model must
-have no beat-note harmonics.
-
-```math
-A_± = 2 \\mathrm{Re} S(±ω_m) + D, \\qquad
-S(ω) = \\mathrm{Tr}\\left[H_\\mathrm{sb}(-\\mathcal L+iω)^{-1}
-    (H_\\mathrm{sb}ρ_∞)\\right]
-= \\int_0^∞ e^{-iωτ}⟨H_\\mathrm{sb}(τ)H_\\mathrm{sb}(0)⟩\\,dτ,
-```
-
-where ``\\mathcal L`` is the internal Liouvillian and ``ρ_∞`` its steady state.
-Spontaneous-emission recoil adds
-``D = ∑_k α_k η_{0,k}^2 \\mathrm{Tr}(L_k^†L_kρ_∞)``; see
-[`MotionalCoupling`](@ref), Cirac et al., Phys. Rev. A **46**, 2668 (1992),
-and Morigi, Phys. Rev. A **67**, 033402 (2003).
-
-With this Fourier sign, cooling samples ``S(-ω_m)``. In the weak-excitation
-two-level limit,
-``A_∓-D = η^2 Γ|Ω|^2/[Γ^2+4(δ±ω_m)^2]`` with laser-minus-atomic detuning
-``δ``: a red sideband at ``δ=-ω_m`` enhances ``A_-``.
-
-``A_+`` raises and ``A_-`` lowers the phonon number:
-
-```math
-\\dot{\\bar n} = A_+(\\bar n+1)-A_-\\bar n+\\dot n_\\mathrm{heat}, \\qquad
-\\bar n_∞ = \\frac{A_++\\dot n_\\mathrm{heat}}{A_--A_+}, \\qquad
-τ_c = \\frac{1}{A_--A_+}.
-```
-
-`nbar` and `τ_c` are `NaN` when ``A_- ≤ A_+``. Rates are unitful inverse
-`time_unit`, and `τ_c` is a unitful time. Several modes share the internal
-steady state and factorisation and are independent at this order.
-
-!!! note
-    Defined when QuantumToolbox.jl is loaded.
-"""
-function cooling_rates end
-
-"""
     motional_model(model::LindbladModel, mc::MotionalCoupling; num_fock, lamb_dicke_order = 1, heating_rate = 0, quadrature_order = nothing, time_unit = u"µs")
     motional_model(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}; num_fock, …) -> MotionalModel
 
@@ -198,11 +153,43 @@ abstract type CoolingMethod end
 """
     AdiabaticElimination()
 
-Selects the rate-equation treatment of [`cooling_rates`](@ref): steady-state
-occupation and an exponential time constant from rates of order ``η^2``.
-It requires the Lamb–Dicke and weak-sideband-coupling limits described there.
-Useful for parameter searches when those approximations hold; full-model
-methods resolve saturation and nonthermal motion beyond that regime.
+Selects the rate equations obtained by adiabatically eliminating the internal
+dynamics: steady-state occupation and an exponential time constant from rates
+of order ``η^2``. Useful for parameter searches when the approximations hold;
+full-model methods resolve saturation and nonthermal motion beyond that regime.
+Requires the Lamb–Dicke regime and weak sideband coupling, with internal
+relaxation fast compared with the induced motional rates. The model must
+have no beat-note harmonics.
+
+```math
+A_± = 2 \\mathrm{Re} S(±ω_m) + D, \\qquad
+S(ω) = \\mathrm{Tr}\\left[H_\\mathrm{sb}(-\\mathcal L+iω)^{-1}
+    (H_\\mathrm{sb}ρ_∞)\\right]
+= \\int_0^∞ e^{-iωτ}⟨H_\\mathrm{sb}(τ)H_\\mathrm{sb}(0)⟩\\,dτ,
+```
+
+where ``\\mathcal L`` is the internal Liouvillian and ``ρ_∞`` its steady state.
+Spontaneous-emission recoil adds
+``D = ∑_k α_k η_{0,k}^2 \\mathrm{Tr}(L_k^†L_kρ_∞)``; see
+[`MotionalCoupling`](@ref), Cirac et al., Phys. Rev. A **46**, 2668 (1992),
+and Morigi, Phys. Rev. A **67**, 033402 (2003).
+
+With this Fourier sign, cooling samples ``S(-ω_m)``. In the weak-excitation
+two-level limit,
+``A_∓-D = η^2 Γ|Ω|^2/[Γ^2+4(δ±ω_m)^2]`` with laser-minus-atomic detuning
+``δ``: a red sideband at ``δ=-ω_m`` enhances ``A_-``.
+
+``A_+`` raises and ``A_-`` lowers the phonon number:
+
+```math
+\\dot{\\bar n} = A_+(\\bar n+1)-A_-\\bar n+\\dot n_\\mathrm{heat}, \\qquad
+\\bar n_∞ = \\frac{A_++\\dot n_\\mathrm{heat}}{A_--A_+}, \\qquad
+τ_c = \\frac{1}{A_--A_+}.
+```
+
+The [`CoolingMetrics`](@ref) fields `nbar` and `τ_c` are `NaN` when
+``A_- ≤ A_+``. Several modes share the internal steady state and factorisation
+and are independent at this order.
 """
 struct AdiabaticElimination <: CoolingMethod end
 
@@ -340,7 +327,7 @@ end
 Returns the steady-state occupation and the cooling time constant of the
 mode(s) under the laser scheme of `model`, as a [`CoolingMetrics`](@ref) per
 mode, by the chosen [`CoolingMethod`](@ref): [`AdiabaticElimination`](@ref)
-(the rate equations of [`cooling_rates`](@ref)), [`IntegratedTransient`](@ref)
+(rate equations on the internal steady state), [`IntegratedTransient`](@ref)
 (full model, integral relaxation time from a thermal initial state) or
 [`LiouvillianSpectrum`](@ref) (full model, asymptotic relaxation rate).
 `heating_rate` (quanta per time) enters the rate equations as
@@ -367,6 +354,6 @@ Base.show(io::IO, model::MotionalModel) = print(
 )
 
 export RecoilLabel, HeatingLabel, MotionalModel
-export populations, cooling_rates, motional_model, mean_phonon_number
+export populations, motional_model, mean_phonon_number
 export CoolingMethod, AdiabaticElimination, IntegratedTransient, LiouvillianSpectrum
 export CoolingMetrics, cooling_metrics
