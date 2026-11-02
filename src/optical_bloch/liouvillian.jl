@@ -476,7 +476,7 @@ end
 """
     relaxation_modes(bl::BandLiouvillian; num_eigenpairs = 12, dense_limit = 2500) -> (; values, vectors, steady)
 
-Returns the `num_eigenpairs` slowest relaxation modes of the Liouvillian: its
+Returns the `num_eigenpairs` eigenmodes nearest the Liouvillian's origin: its
 nonzero eigenvalues ``λ`` of smallest magnitude, in order of increasing
 magnitude, as complex rates in inverse `time_unit` (``-\\mathrm{Re}\\,λ`` is
 the decay rate, ``\\mathrm{Im}\\,λ`` the oscillation frequency; a positive real
@@ -484,6 +484,8 @@ part marks a spurious growing mode of a truncated model), with the
 corresponding eigenvectors as unit-norm band-vector columns and the
 stationary state as a unit-trace band vector. The modes are traceless: they
 describe how an observable's deviation from its steady value decays.
+Ordering by ``|λ|`` need not order the decay rates ``-\\mathrm{Re}\\,λ`` when
+the modes oscillate.
 
 Generators of dimension up to `dense_limit` are diagonalised densely. Larger
 ones are treated by Krylov–Schur iteration (ArnoldiMethod.jl) on the group
@@ -494,9 +496,8 @@ Unlike shift-and-invert at zero, this excludes the stationary state exactly
 instead of letting its numerically singular image swamp the Krylov space,
 and it needs no shift on the scale of the unknown relaxation rate. The
 iteration starts from a fixed vector and is deterministic, converging the
-reciprocal rates to a relative residual of ``10^{-12}``; the error of each
-eigenvalue is that times its condition number, smallest for the slowest
-modes. A unique steady state is required.
+reciprocal rates to a relative residual of ``10^{-12}``. Eigenvalue errors
+can be amplified by their condition numbers. A unique steady state is required.
 """
 function relaxation_modes(
     bl::BandLiouvillian;

@@ -153,31 +153,31 @@ abstract type CoolingMethod end
 """
     AdiabaticElimination()
 
-Selects the rate equations obtained by adiabatically eliminating the internal
-dynamics: steady-state occupation and an exponential time constant from rates
-of order ``η^2``. Useful for parameter searches when the approximations hold;
-full-model methods resolve saturation and nonthermal motion beyond that regime.
-Requires the Lamb–Dicke regime and weak sideband coupling, with internal
-relaxation fast compared with the induced motional rates. The model must
-have no beat-note harmonics.
+Selects the order-``η^2`` rate equations for [`cooling_metrics`](@ref), obtained
+by adiabatically eliminating the internal dynamics. Requires Lamb–Dicke motion
+and weak sideband coupling, with internal relaxation fast compared with the
+induced motional rates. Saturated sidebands require a full motional model.
 
 ```math
 A_± = 2 \\mathrm{Re} S(±ω_m) + D, \\qquad
 S(ω) = \\mathrm{Tr}\\left[H_\\mathrm{sb}(-\\mathcal L+iω)^{-1}
-    (H_\\mathrm{sb}ρ_∞)\\right]
-= \\int_0^∞ e^{-iωτ}⟨H_\\mathrm{sb}(τ)H_\\mathrm{sb}(0)⟩\\,dτ,
+    (H_\\mathrm{sb}ρ_∞)\\right],
 ```
 
-where ``\\mathcal L`` is the internal Liouvillian and ``ρ_∞`` its steady state.
-Spontaneous-emission recoil adds
-``D = ∑_k α_k η_{0,k}^2 \\mathrm{Tr}(L_k^†L_kρ_∞)``; see
-[`MotionalCoupling`](@ref), Cirac et al., Phys. Rev. A **46**, 2668 (1992),
+where ``\\mathcal L`` is the internal Liouvillian, ``ρ_∞`` its steady state
+and ``H_\\mathrm{sb}`` the coefficient of ``a+a^†`` in the Hamiltonian (angular
+frequency units). Spontaneous-emission recoil adds the same diffusion term to
+both rates,
+``D = ∑_k α_k η_{0,k}^2 \\mathrm{Tr}(L_k^†L_kρ_∞)``,
+with the decay operators, recoil factors and emission moments of
+[`MotionalCoupling`](@ref). See Cirac et al., Phys. Rev. A **46**, 2668 (1992),
 and Morigi, Phys. Rev. A **67**, 033402 (2003).
 
-With this Fourier sign, cooling samples ``S(-ω_m)``. In the weak-excitation
-two-level limit,
-``A_∓-D = η^2 Γ|Ω|^2/[Γ^2+4(δ±ω_m)^2]`` with laser-minus-atomic detuning
-``δ``: a red sideband at ``δ=-ω_m`` enhances ``A_-``.
+The resolvent uses the ``e^{-iωt}`` Fourier convention, so cooling samples
+``S(-ω_m)``. In the weak-excitation two-level limit,
+``A_∓-D ≃ η^2 Γ|Ω|^2/[Γ^2+4(δ±ω_m)^2]`` for decay rate ``Γ``, Rabi frequency
+``Ω``, projected Lamb–Dicke factor ``η`` and laser-minus-atomic detuning ``δ``:
+a red sideband at ``δ=-ω_m`` enhances ``A_-``.
 
 ``A_+`` raises and ``A_-`` lowers the phonon number:
 
@@ -188,23 +188,32 @@ two-level limit,
 ```
 
 The [`CoolingMetrics`](@ref) fields `nbar` and `τ_c` are `NaN` when
-``A_- ≤ A_+``. Several modes share the internal steady state and factorisation
-and are independent at this order.
+``A_- ≤ A_+``. Several modes are treated independently, sharing the internal
+steady state and Liouvillian. The internal model must have no beat harmonics.
 """
 struct AdiabaticElimination <: CoolingMethod end
 
 """
     IntegratedTransient(; initial_nbar, num_fock = fock_truncation.(initial_nbar), lamb_dicke_order = Inf, bandwidth = 4, quadrature_order = nothing)
 
-Selects the integrated-transient solution of a [`motional_model`](@ref),
-restricted to motional coherences within `bandwidth` by
-[`BandLiouvillian`](@ref). Returns the steady occupation of this truncated
-model and the integral relaxation time from the internal steady state ⊗ a
-thermal state of `initial_nbar` (one value or one per mode).
+Selects the steady occupation and integral relaxation time of a
+[`motional_model`](@ref) for [`cooling_metrics`](@ref). The initial state is
+the internal steady state ⊗ a thermal state of `initial_nbar` (one value or
+one per mode). For each mode,
+
+```math
+τ_c = \\frac{∫_0^∞ [\\bar n(t)-\\bar n_∞]\\,dt}{\\bar n(0)-\\bar n_∞}.
+```
+
+This equals the exponential time constant for a single exponential; otherwise
+it measures the signed area of the normalised transient and depends on the
+initial state. It is undefined if ``\\bar n(0)=\\bar n_∞``.
 
 `num_fock` defaults to a thermal-tail tolerance of ``10^{-4}`` via
-[`fock_truncation`](@ref). `bandwidth = nothing` retains all coherences;
-`lamb_dicke_order` and `quadrature_order` pass to `motional_model`.
+[`fock_truncation`](@ref). [`BandLiouvillian`](@ref) retains only coherences
+within `bandwidth` in each mode; `nothing` retains all. `lamb_dicke_order` and
+`quadrature_order` pass to `motional_model`. Fock size, bandwidth and
+displacement order must resolve both the initial state and its relaxation.
 The result carries an [`IntegratedTransientSolver`](@ref) for relaxation
 times from other initial states without repeating the factorisation.
 """
@@ -239,27 +248,31 @@ function IntegratedTransient(;
 end
 
 """
-    LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
+    LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, bandwidth = nothing, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
 
-Selects the full internal ⊗ Fock master equation ([`motional_model`](@ref) with
-`num_fock` states per mode, to the given `lamb_dicke_order`), solved for its
-stationary state and slowest eigenmodes from one trace-row factorisation
-([`relaxation_modes`](@ref)). The occupation comes from the former. The time
-constant is the asymptotic phonon-number relaxation time
-``-1/\\mathrm{Re}\\,λ`` of the slowest among the `num_eigenpairs` slowest modes
-whose phonon-number weight ``|\\mathrm{Tr}(\\hat N_m v)|/‖v‖`` is at least
-`weight_threshold` times the largest weight among them; it is state-independent
-like the adiabatic-elimination one, but without its approximation.
+Selects the stationary occupation and a spectral relaxation time of a
+[`motional_model`](@ref) for [`cooling_metrics`](@ref). `num_fock` and
+`lamb_dicke_order` set the model's truncation; [`BandLiouvillian`](@ref)
+retains only coherences within `bandwidth` in each mode (`nothing` retains
+all). [`relaxation_modes`](@ref) supplies the `num_eigenpairs` nonzero
+eigenmodes nearest ``λ=0``, ordered by increasing ``|λ|``.
 
-The threshold passes over coherence modes, which carry a phonon-number weight
-of order ``η^2`` only (the slowest of them decays at half the cooling rate).
-Increase `num_eigenpairs` and vary the threshold to check the selection; an
-error is raised if no mode qualifies. `dense_limit` is the Liouvillian dimension
-up to which dense diagonalisation is used. A negative time signals a growing
-mode of the truncated model.
+For mode ``m``, the time is ``τ_c=-1/\\mathrm{Re}\\,λ`` of the first eigenmode
+whose phonon-number weight ``w_m(v)=|\\mathrm{Tr}(\\hat N_m v)|/‖v‖_\\mathrm{F}``
+is at least `weight_threshold` times the largest weight in the computed set.
+Here ``v`` is the reshaped eigenvector and ``‖⋅‖_\\mathrm{F}`` the Frobenius
+norm. The threshold suppresses motional coherences with little phonon-number
+weight; in the rate-equation limit these can decay at half the occupation rate.
 
-For a transient with several timescales this asymptotic time differs from the
-initial-state-dependent time of [`IntegratedTransient`](@ref).
+The selected time is independent of the initial state; an actual transient
+also depends on which modes that state excites. Thresholding can omit weak
+tails, and ordering by ``|λ|`` need not order decay rates. Convergence checks
+include `num_eigenpairs`, threshold, Fock size, bandwidth and displacement
+order.
+`dense_limit` sets the dense-diagonalisation cutoff of `relaxation_modes`.
+An error is raised if no mode qualifies; a negative time signals a growing mode.
+
+[`IntegratedTransient`](@ref) measures the area of a specified transient.
 """
 struct LiouvillianSpectrum <: CoolingMethod
     num_fock::Union{Int,Vector{Int}}
@@ -293,13 +306,14 @@ end
 The cooling performance of one mode as estimated by [`cooling_metrics`](@ref)
 with the given [`CoolingMethod`](@ref):
 
+  - `method`: the method and its parameters;
   - `nbar`: the steady-state mean phonon number (`NaN` where the
     adiabatic-elimination rates predict heating);
   - `τ_c`: the cooling time constant (unitful) — the exponential time constant
     ``1/(A_- - A_+)`` for `AdiabaticElimination` (`NaN` if heated), the
     integral relaxation time of the phonon number from the method's initial
-    state for `IntegratedTransient`, the slowest phonon-number relaxation for
-    `LiouvillianSpectrum`;
+    state for `IntegratedTransient`, and the selected spectral relaxation
+    time for `LiouvillianSpectrum`;
   - `A_plus`, `A_minus`: the rate coefficients (`AdiabaticElimination` only,
     `nothing` otherwise);
   - `model`: the [`MotionalModel`](@ref) built for the estimate (full-model
@@ -309,7 +323,8 @@ with the given [`CoolingMethod`](@ref):
     states.
 
 For several modes, `cooling_metrics` returns one `CoolingMetrics` per mode;
-the full-model methods then share one joint model and solver.
+the full-model methods share one joint model (and, for `IntegratedTransient`,
+one solver).
 """
 struct CoolingMetrics{M<:CoolingMethod,T,R,F,S}
     method::M
@@ -335,20 +350,25 @@ function Base.show(io::IO, m::CoolingMetrics)
 end
 
 """
-    cooling_metrics(model::LindbladModel, mc::MotionalCoupling, method::CoolingMethod; heating_rate = 0, ρ = steadystate(model), time_unit = u"µs") -> CoolingMetrics
+    cooling_metrics(model::LindbladModel, mc::MotionalCoupling, method::CoolingMethod; heating_rate = 0u"s^-1", ρ = …, time_unit = u"µs") -> CoolingMetrics
     cooling_metrics(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}, method; …) -> Vector{CoolingMetrics}
 
-Returns the steady-state occupation and the cooling time constant of the
-mode(s) under the laser scheme of `model`, as a [`CoolingMetrics`](@ref) per
-mode, by the chosen [`CoolingMethod`](@ref): [`AdiabaticElimination`](@ref)
-(rate equations on the internal steady state), [`IntegratedTransient`](@ref)
-(full model, integral relaxation time from a thermal initial state) or
-[`LiouvillianSpectrum`](@ref) (full model, asymptotic relaxation rate).
-`heating_rate` (quanta per time) enters the rate equations as
-``\\dot n_\\mathrm{heat}`` and the full models as a thermal bath (cf.
-[`motional_model`](@ref)); `ρ` is the internal steady state, reused by the rate
-equations and the internal factor of the full models' initial state. Rates and
-times are in `time_unit`.
+Returns the steady-state mean phonon number `nbar` and relaxation time `τ_c`
+for one mode, or one [`CoolingMetrics`](@ref) per mode for a vector of
+couplings. The chosen [`CoolingMethod`](@ref) defines the time:
+
+- [`AdiabaticElimination`](@ref): the exponential rate-equation time;
+- [`IntegratedTransient`](@ref): the integral time from a thermal initial state;
+- [`LiouvillianSpectrum`](@ref): a phonon-number-weighted spectral estimate.
+
+`heating_rate` is one rate (quanta per time) for all modes or one per mode. It
+adds ``\\dot n_\\mathrm{heat}`` to the rate equations, or equal raising and
+lowering bath terms to the full model (see [`motional_model`](@ref)). `ρ`
+defaults to `steadystate(model)` for `AdiabaticElimination` and
+`IntegratedTransient`: it supplies the internal state for the rates or the
+initial product state, respectively. `LiouvillianSpectrum` ignores `ρ`.
+Rates use inverse `time_unit` and times use `time_unit`. All methods require
+an internal model without beat harmonics.
 
 !!! note
     Defined in the `LevelsQuantumToolboxExt` package extension, i.e. only once
