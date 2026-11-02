@@ -24,6 +24,7 @@ units; see [Conventions and examples](@ref conventions).
 """
 module OpticalBloch
 
+using ArnoldiMethod: partialeigen, partialschur
 using LinearAlgebra
 using FastGaussQuadrature: gausslegendre
 using OrdinaryDiffEqVerner: Vern7

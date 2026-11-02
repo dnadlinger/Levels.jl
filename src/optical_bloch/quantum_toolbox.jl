@@ -186,31 +186,6 @@ for several) from its reduced populations ``p_n``, ``n=0,…,N-1``, where
 """
 function mean_phonon_number end
 
-"""
-    cooling_time(mm::MotionalModel; mode = nothing, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
-    cooling_time(H, c_ops; time_unit = u"µs", num_fock = nothing, kwargs...)
-
-Returns an asymptotic phonon-number relaxation time as a unitful quantity.
-`mode` selects one mode; `nothing` uses their total phonon number.
-The operator form infers Fock dimensions unless `num_fock` is supplied.
-
-After excluding the stationary state, selects the slowest computed
-Liouvillian eigenmode with phonon-number weight
-``|\\mathrm{Tr}(\\hat N v)|/‖v‖`` at least `weight_threshold` times the largest
-computed weight, and returns ``-1/\\mathrm{Re}(λ)`` for a decaying eigenvalue.
-The threshold suppresses coherence modes with little phonon-number weight.
-
-Liouvillians up to `dense_limit` are diagonalised densely. Larger ones use
-`num_eigenpairs` eigenpairs near zero from shift-inverted Arnoldi iteration;
-increase that count and vary the weight threshold to check mode selection.
-For a transient with several timescales this asymptotic time differs from the
-initial-state-dependent time of [`IntegratedTransientSolver`](@ref).
-
-!!! note
-    Defined when QuantumToolbox.jl is loaded.
-"""
-function cooling_time end
-
 # --- Common interface of the cooling solvers ----------------------------------------
 
 """
@@ -280,12 +255,13 @@ end
     LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
 
 The full internal ⊗ Fock master equation ([`motional_model`](@ref) with
-`num_fock` states per mode, to the given `lamb_dicke_order`) solved by
-QuantumToolbox's `steadystate` for the occupation and, for the time constant,
-by the spectrum of its Liouvillian ([`cooling_time`](@ref): the slowest
-phonon-number-weighted eigenmode; the remaining keywords are its) — the
-asymptotic relaxation rate, state-independent like the adiabatic-elimination
-one but without its approximation.
+`num_fock` states per mode, to the given `lamb_dicke_order`) solved for its
+stationary state and slowest eigenmodes from one trace-row factorisation
+([`relaxation_modes`](@ref)): the occupation from the former and, for the
+time constant, the slowest phonon-number-weighted mode ([`cooling_time`](@ref);
+the remaining keywords are its) — the asymptotic relaxation rate,
+state-independent like the adiabatic-elimination one but without its
+approximation.
 """
 struct LiouvillianSpectrum <: CoolingMethod
     num_fock::Union{Int,Vector{Int}}
@@ -391,6 +367,6 @@ Base.show(io::IO, model::MotionalModel) = print(
 )
 
 export RecoilLabel, HeatingLabel, MotionalModel
-export populations, cooling_rates, motional_model, mean_phonon_number, cooling_time
+export populations, cooling_rates, motional_model, mean_phonon_number
 export CoolingMethod, AdiabaticElimination, IntegratedTransient, LiouvillianSpectrum
 export CoolingMetrics, cooling_metrics

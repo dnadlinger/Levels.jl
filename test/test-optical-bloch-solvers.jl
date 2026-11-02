@@ -189,8 +189,12 @@ end
                       populations(ρ, model, "P_1/2") rtol = 1e-3
                 # The slowest phonon-number relaxation is the rate-equation τ_c,
                 # not the twice slower coherence decay.
-                @test cooling_time(full) ≈ rates.τ_c rtol = 2e-2
-                @test cooling_time(full.H, full.c_ops) == cooling_time(full)
+                τ = cooling_time(full)
+                @test τ ≈ rates.τ_c rtol = 2e-2
+                @test cooling_time(full.H, full.c_ops) == τ
+                # The Krylov path (group-inverse iteration) reproduces the dense
+                # spectrum.
+                @test cooling_time(full; dense_limit=0) ≈ τ rtol = 1e-8
             end
         end
     end
@@ -516,6 +520,11 @@ end
     @test sm.model isa MotionalModel && isnothing(sm.solver)
     @test sm.nbar ≈ ae.nbar rtol = 0.02
     @test sm.τ_c ≈ ae.τ_c rtol = 0.03
+    # Dense and Krylov spectra give the same metrics (one steady state).
+    sm_k =
+        cooling_metrics(s.model, s.mc, LiouvillianSpectrum(; num_fock=8, dense_limit=0))
+    @test sm_k.nbar == sm.nbar
+    @test sm_k.τ_c ≈ sm.τ_c rtol = 1e-8
     # Other initial states from the solver carried in the result.
     ρ0 = thermal_state(Matrix(steadystate(s.model).data), it.model.num_fock, 3.0)
     @test integral_relaxation_time(it.solver, ρ0) ≈ ae.τ_c rtol = 0.02
@@ -553,13 +562,13 @@ end
     many_it = cooling_metrics(
         s.model,
         mcs,
-        IntegratedTransient(; initial_nbar=[1.0, 0.5], num_fock=[12, 4]),
+        IntegratedTransient(; initial_nbar=[1.0, 0.5], num_fock=[6, 3]),
     )
     @test length(many_ae) == 2 && length(many_it) == 2
     @test many_ae[1].nbar == ae.nbar
     @test many_it[1].model === many_it[2].model &&
           many_it[1].solver === many_it[2].solver
-    @test many_it[1].model.num_fock == [12, 4]
+    @test many_it[1].model.num_fock == [6, 3]
     @test many_it[1].nbar ≈ ae.nbar rtol = 0.03
     @test many_it[1].τ_c ≈ ae.τ_c rtol = 0.03
     @test_throws ArgumentError cooling_metrics(
@@ -578,6 +587,48 @@ end
     @test integral_relaxation_time(solver, [0 0; 0 1.0]) ≈ 1 / (2π * 1.0u"MHz") rtol =
         1e-6
     @test steady_value(solver) ≈ 0 atol = 1e-9
+end
+
+@testitem "Relaxation modes: dense and Krylov paths agree" tags=[:integration] setup=[
+    OpticalBlochSetup,
+] begin
+    using QuantumToolbox: QuantumToolbox   # loads the extension
+    using LinearAlgebra: norm, opnorm
+
+    # Sideband cooling at saturation (Liouvillian dimension 24² = 576: dense
+    # by default, Krylov with `dense_limit = 0`).
+    ω = angular(1.0u"MHz")
+    γ = 2π * 100.0u"kHz"
+    s = sideband_toy(; γ, ω, η=0.1, Ω=angular(100.0u"kHz"), δ=(-ω))
+    mm = motional_model(s.model, s.mc; num_fock=12, heating_rate=1.0u"ms^-1")
+    bl = BandLiouvillian(mm)
+    dense = relaxation_modes(bl; num_eigenpairs=8)
+    krylov = relaxation_modes(bl; num_eigenpairs=8, dense_limit=0)
+    # The slowest modes are well conditioned (κ ≈ 1e2); along the ladder the
+    # eigenvalue condition numbers of this saturated toy grow to ≈ 1e6, which
+    # limits both solvers.
+    @test krylov.values[1:3] ≈ dense.values[1:3] rtol = 1e-8
+    @test krylov.values ≈ dense.values rtol = 1e-5
+    # Decaying modes by increasing rate, with unit-norm eigenvectors of L.
+    scale = sqrt(opnorm(bl.L, 1) * opnorm(bl.L, Inf))   # ≥ ‖L‖₂
+    for modes in (dense, krylov)
+        @test issorted(abs.(modes.values)) &&
+              all(λ -> real(λ) < 0u"µs^-1", modes.values)
+        for (λ, v) in zip(modes.values, eachcol(modes.vectors))
+            @test norm(v) ≈ 1
+            @test norm(bl.L * v - ustrip(u"µs^-1", λ) * v) < 1e-9 * scale
+        end
+    end
+    # The stationary state is the integrated-transient solver's (same
+    # factorisation); the Krylov path is deterministic; `cooling_time` picks a
+    # mode of this spectrum.
+    @test full_matrix(bl, krylov.steady) ≈
+          steady_density_matrix(IntegratedTransientSolver(mm)) atol = 1e-12
+    @test relaxation_modes(bl; num_eigenpairs=8, dense_limit=0).values == krylov.values
+    τ = cooling_time(mm; num_eigenpairs=8, dense_limit=0)
+    @test any(λ -> τ == -1 / real(λ), krylov.values)
+    @test_throws ErrorException cooling_time(bl; dense_limit=0, weight_threshold=2.0)
+    @test_throws ArgumentError relaxation_modes(bl; num_eigenpairs=0)
 end
 
 @testitem "Integrated transient on a long Fock ladder" tags=[:integration, :slow] setup=[

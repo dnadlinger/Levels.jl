@@ -1,7 +1,8 @@
 # Numerical methods on the assembled master equations, independent of any
 # solver package: the Liouvillian of an internal ⊗ Fock model restricted to a
-# band of motional coherences, its time evolution, thermal states, and the
-# integrated-transient solver for steady states and integral relaxation times.
+# band of motional coherences, its time evolution, thermal states, the
+# integrated-transient solver for steady states and integral relaxation times,
+# and the slowest relaxation modes (asymptotic cooling time).
 # Everything here works on plain (unit-stripped) matrices over the internal ⊗
 # Fock layout of `MotionalModel`: internal index slowest, one Fock ladder per
 # mode, last mode fastest — the `tensor` order of the solvers.
@@ -29,8 +30,9 @@ increase bandwidth and Fock sizes to check convergence.
 `L` stores the sparse generator. `entries` maps band indices to density-matrix
 indices `(r, c)`; `index` maps back, with zero outside the band.
 [`band_vector`](@ref) and [`full_matrix`](@ref) convert representations.
-[`cooling_curve`](@ref) propagates the equation and
-[`IntegratedTransientSolver`](@ref) finds steady states and relaxation times.
+[`cooling_curve`](@ref) propagates the equation,
+[`IntegratedTransientSolver`](@ref) finds steady states and integral
+relaxation times, and [`relaxation_modes`](@ref) the slowest eigenmodes.
 """
 struct BandLiouvillian{T<:Unitful.Units}
     L::SparseMatrixCSC{ComplexF64,Int}
@@ -287,6 +289,38 @@ function cooling_curve(
     (; t=collect(sol.t) .* bl.time_unit, nbar, fock=populations)
 end
 
+# The trace-row system of a band Liouvillian: `M` is `bl.L` with the population
+# row `row` (the first diagonal entry) replaced by the trace functional, `F` its
+# sparse LU with strict partial pivoting (the default threshold pivoting fails
+# silently once the steady state spans ~100 decades), `diagonal` the band
+# indices of the populations. The unit vector `e_row` on the right-hand side
+# gives the steady state. A traceless right-hand side `b` with `b[row] = 0`
+# gives the traceless solution of `L x = b`: as `L` preserves the trace, its
+# row `row` is minus the sum of the other population rows, so that equation
+# holds there too — `F` applies the group inverse of `L`.
+function trace_row_system(bl::BandLiouvillian)
+    num_entries = size(bl.L, 1)
+    d = full_dimension(bl)
+    diagonal = [bl.index[r, r] for r in 1:d]
+    row = diagonal[1]
+    M = copy(bl.L)
+    M[row, :] .= 0
+    dropzeros!(M)
+    M += sparse(fill(row, d), diagonal, ones(ComplexF64, d), num_entries, num_entries)
+    control = SparseArrays.UMFPACK.get_umfpack_control(ComplexF64, Int)
+    control[SparseArrays.UMFPACK.JL_UMFPACK_PIVOT_TOLERANCE] = 1.0
+    (; M, F=lu(M; control), row, diagonal)
+end
+
+# Removes the trace of the band vector `v` (populations at `diagonal`) in place.
+function remove_trace!(v::AbstractVector, diagonal)
+    t = sum(k -> v[k], diagonal) / length(diagonal)
+    for k in diagonal
+        v[k] -= t
+    end
+    v
+end
+
 """
     IntegratedTransientSolver(bl::BandLiouvillian, observables; atol = 1e-9)
     IntegratedTransientSolver(mm::MotionalModel; bandwidth = nothing, observables)   (extension)
@@ -328,19 +362,8 @@ end
 function IntegratedTransientSolver(bl::BandLiouvillian, observables; atol::Real=1e-9)
     obs = observables isa AbstractVector ? observables : [observables]
     isempty(obs) && throw(ArgumentError("At least one observable is required"))
-    num_entries = size(bl.L, 1)
-    d = full_dimension(bl)
-    diagonal = [bl.index[r, r] for r in 1:d]
-    row = diagonal[1]
-    # Replace row `row` by the trace functional.
-    M = copy(bl.L)
-    M[row, :] .= 0
-    dropzeros!(M)
-    M += sparse(fill(row, d), diagonal, ones(ComplexF64, d), num_entries, num_entries)
-    control = SparseArrays.UMFPACK.get_umfpack_control(ComplexF64, Int)
-    control[SparseArrays.UMFPACK.JL_UMFPACK_PIVOT_TOLERANCE] = 1.0
-    F = lu(M; control)
-    e = zeros(ComplexF64, num_entries)
+    (; M, F, row, diagonal) = trace_row_system(bl)
+    e = zeros(ComplexF64, size(M, 1))
     e[row] = 1
     steady = refined_solve(F, M, e)
     rows = [expectation_row(bl, A) for A in obs]
@@ -426,7 +449,163 @@ function integral_relaxation_time(
     ) * s.liouvillian.time_unit
 end
 
+# The group inverse of a band Liouvillian on its traceless subspace, applied
+# through the trace-row factorisation: `y = L⁺ x` solves `L y = P x`, `Tr y =
+# 0`, with `P` the projection removing the trace (which the Krylov vectors
+# only re-acquire through roundoff). Its eigenvalues are the reciprocals of
+# the nonzero eigenvalues of `L`, so the slowest relaxation modes dominate the
+# iteration, while the stationary state — whose shift-inverted image at zero
+# would swamp them — is excluded exactly.
+struct GroupInverse{F}
+    factorisation::F
+    row::Int
+    diagonal::Vector{Int}
+    buffer::Vector{ComplexF64}
+end
+
+Base.size(G::GroupInverse) = (length(G.buffer), length(G.buffer))
+Base.size(G::GroupInverse, i::Integer) = i <= 2 ? length(G.buffer) : 1
+Base.eltype(::GroupInverse) = ComplexF64
+
+function LinearAlgebra.mul!(y::AbstractVector, G::GroupInverse, x::AbstractVector)
+    b = remove_trace!(copyto!(G.buffer, x), G.diagonal)
+    b[G.row] = 0
+    ldiv!(y, G.factorisation, b)
+end
+
+"""
+    relaxation_modes(bl::BandLiouvillian; num_eigenpairs = 12, dense_limit = 2500) -> (; values, vectors, steady)
+
+Returns the `num_eigenpairs` slowest relaxation modes of the Liouvillian: its
+nonzero eigenvalues ``λ`` of smallest magnitude, in order of increasing
+magnitude, as complex rates in inverse `time_unit` (``-\\mathrm{Re}\\,λ`` is
+the decay rate, ``\\mathrm{Im}\\,λ`` the oscillation frequency; a positive real
+part marks a spurious growing mode of a truncated model), with the
+corresponding eigenvectors as unit-norm band-vector columns and the
+stationary state as a unit-trace band vector. The modes are traceless: they
+describe how an observable's deviation from its steady value decays.
+
+Generators of dimension up to `dense_limit` are diagonalised densely. Larger
+ones are treated by Krylov–Schur iteration (ArnoldiMethod.jl) on the group
+inverse of ``\\mathcal L`` — its inverse on the traceless subspace, applied
+through the trace-row factorisation of [`IntegratedTransientSolver`](@ref) —
+whose dominant eigenvalues are the reciprocals of the slowest nonzero rates.
+Unlike shift-and-invert at zero, this excludes the stationary state exactly
+instead of letting its numerically singular image swamp the Krylov space,
+and it needs no shift on the scale of the unknown relaxation rate. The
+iteration starts from a fixed vector and is deterministic, converging the
+reciprocal rates to a relative residual of ``10^{-12}``; the error of each
+eigenvalue is that times its condition number, smallest for the slowest
+modes. A unique steady state is required.
+"""
+function relaxation_modes(
+    bl::BandLiouvillian;
+    num_eigenpairs::Integer=12,
+    dense_limit::Integer=2500,
+)
+    num_entries = size(bl.L, 1)
+    1 <= num_eigenpairs <= num_entries - 1 || throw(
+        ArgumentError(
+            "num_eigenpairs must be between 1 and the Liouvillian dimension minus one",
+        ),
+    )
+    # The stationary state comes from the trace-row solve in either case (an
+    # eigenvector of the numerically zero eigenvalue is less accurate).
+    (; M, F, row, diagonal) = trace_row_system(bl)
+    e = zeros(ComplexF64, num_entries)
+    e[row] = 1
+    steady = refined_solve(F, M, e)
+    check_solution(M, steady, e)
+    if num_entries <= dense_limit
+        finalize(F)
+        eig = eigen(Matrix(bl.L))
+        order = sortperm(abs.(eig.values))
+        selected = order[2:(num_eigenpairs+1)]
+        values = eig.values[selected]
+        vectors = eig.vectors[:, selected]
+    else
+        G = GroupInverse(F, row, diagonal, zeros(ComplexF64, num_entries))
+        # A fixed, structureless starting vector (golden-angle phases) makes the
+        # iteration deterministic.
+        v1 = ComplexF64[
+            cis(2.399963229728653 * k) * (1 + 0.5 * cos(0.1 * k)) for k in 1:num_entries
+        ]
+        remove_trace!(v1, diagonal)
+        # Residual tolerance relative to the reciprocal rate; the eigenvalue
+        # error is that times the mode's condition number, which grows along
+        # the Fock ladder (the slowest modes are the best conditioned).
+        decomposition, history =
+            partialschur(G; v1, nev=num_eigenpairs, which=:LM, tol=1e-12)
+        finalize(F)
+        history.converged || error(
+            "The Krylov iteration for the slowest Liouvillian modes did not " *
+            "converge ($(history.nconverged) of $num_eigenpairs eigenpairs after " *
+            "$(history.mvproducts) products); reduce num_eigenpairs",
+        )
+        reciprocals, vectors = partialeigen(decomposition)
+        values = 1 ./ reciprocals
+        order = sortperm(abs.(values))
+        values = values[order]
+        vectors = vectors[:, order]
+    end
+    for v in eachcol(vectors)
+        v ./= norm(v)
+    end
+    (; values=values .* bl.time_unit^-1, vectors, steady)
+end
+
+"""
+    cooling_time(bl::BandLiouvillian; mode = nothing, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
+    cooling_time(mm::MotionalModel; kwargs...)                                 (extension)
+    cooling_time(H, c_ops; time_unit = u"µs", num_fock = nothing, kwargs...)   (extension)
+
+Returns the asymptotic phonon-number relaxation time as a unitful quantity:
+``-1/\\mathrm{Re}\\,λ`` of the slowest among the `num_eigenpairs` slowest
+relaxation modes ([`relaxation_modes`](@ref)) whose phonon-number weight
+``|\\mathrm{Tr}(\\hat N v)|/‖v‖`` is at least `weight_threshold` times the
+largest weight among them. `mode` selects one mode's phonon number; `nothing`
+uses the total. The threshold passes over coherence modes, which carry a
+phonon-number weight of order ``η^2`` only (the slowest of them decays at
+half the cooling rate). Increase `num_eigenpairs` and vary the threshold to
+check the selection; `dense_limit` is the Liouvillian dimension up to which
+dense diagonalisation is used. A negative result signals a growing mode of
+the truncated model.
+
+For a transient with several timescales this asymptotic time differs from the
+initial-state-dependent [`integral_relaxation_time`](@ref).
+
+The extension forms take a [`MotionalModel`](@ref) or QuantumToolbox
+operators over the internal ⊗ Fock layout (Fock dimensions inferred from
+`H.dims` unless `num_fock` is given).
+"""
+function cooling_time(
+    bl::BandLiouvillian;
+    mode=nothing,
+    num_eigenpairs::Integer=12,
+    dense_limit::Integer=2500,
+    weight_threshold::Real=0.1,
+)
+    modes = relaxation_modes(bl; num_eigenpairs, dense_limit)
+    phonon_relaxation_time(bl, modes, mode, weight_threshold)
+end
+
+# The slowest of the computed relaxation `modes` moving the phonon number of
+# `mode` (or the total) with at least `weight_threshold` of the largest weight.
+function phonon_relaxation_time(bl::BandLiouvillian, modes, mode, weight_threshold)
+    a = expectation_row(bl, phonon_number_operator(bl.num_states, bl.num_fock, mode))
+    weights = [abs(transpose(a) * v) for v in eachcol(modes.vectors)]   # unit-norm v
+    threshold = weight_threshold * maximum(weights)
+    for (λ, w) in zip(modes.values, weights)
+        w >= threshold && return -1 / real(ustrip(bl.time_unit^-1, λ)) * bl.time_unit
+    end
+    error(
+        "No relaxation mode with phonon-number weight above the threshold found; " *
+        "increase num_eigenpairs or lower weight_threshold",
+    )
+end
+
 export BandLiouvillian, band_vector, full_matrix, expectation_row, fock_populations
 export phonon_number_operator, thermal_populations, thermal_state, cooling_curve
 export IntegratedTransientSolver,
     steady_density_matrix, steady_value, integral_relaxation_time
+export relaxation_modes, cooling_time

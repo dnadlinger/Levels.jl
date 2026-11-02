@@ -12,7 +12,7 @@
 
 module LevelsQuantumToolboxExt
 
-using LinearAlgebra: Diagonal, I, diag, eigen, norm, tr
+using LinearAlgebra: Diagonal, I, diag, tr
 using Unitful
 using Levels: Levels, Eigenstructure, StateBasis, stateindex
 using Levels.PeriodicDynamics: PeriodicDynamics, DrivenTransition
@@ -37,6 +37,7 @@ using Levels.OpticalBloch:
     joint_displacement,
     level_projector,
     phonon_number_operator,
+    relaxation_modes,
     steady_value,
     thermal_populations,
     validate_lamb_dicke_order
@@ -47,7 +48,6 @@ using QuantumToolbox:
     QuantumObject,
     SteadyStateLinearSolver,
     destroy,
-    eigsolve,
     isket,
     ket2dm,
     liouvillian,
@@ -667,58 +667,22 @@ function OpticalBloch.cooling_time(
     c_ops;
     time_unit::Unitful.Units=Unitful.µs,
     num_fock=nothing,
-    mode=nothing,
-    num_eigenpairs::Int=12,
-    dense_limit::Int=2500,
-    weight_threshold::Real=0.1,
+    kwargs...,
 )
-    L = liouvillian(H, c_ops)
-    dim = size(L.data, 1)
-    values, vectors = if dim <= dense_limit
-        e = eigen(Matrix(L.data))
-        e.values, e.vectors
-    else
-        r = eigsolve(L; sigma=0.0 + 0.0im, eigvals=num_eigenpairs)
-        r.values, r.vectors
-    end
-    # Phonon-number operator of the selected mode (or all modes) over the
-    # motional factors (slot 1 is internal).
+    # Fock sizes of the layout (slot 1 of the dimensions is internal).
     sizes = if isnothing(num_fock)
         d = H.dims
         collect(Int, d isa Tuple ? first(d) : d)[2:end]
     else
         collect(Int, num_fock)
     end
-    num_states = isqrt(dim) ÷ prod(sizes)
-    N_op = phonon_number_operator(num_states, sizes, mode)
-    weights = [
-        abs(tr(N_op * vec2mat(vectors[:, i]))) / norm(vectors[:, i]) for
-        i in axes(vectors, 2)
-    ]
-    order = sortperm(abs.(real.(values)))
-    threshold = weight_threshold * maximum(weights)
-    # Skip the stationary state (zero rate); the first remaining mode that moves
-    # the phonon number appreciably is the slowest relaxation of ⟨n⟩ (coherence
-    # modes acquire a weight of order η² through the sideband coupling and are
-    # excluded by the relative threshold).
-    for i in order[2:end]
-        weights[i] >= threshold && return (1 / abs(real(values[i]))) * time_unit
-    end
-    throw(
-        ErrorException(
-            "No relaxation mode with phonon-number weight above the threshold " *
-            "found; increase num_eigenpairs or lower weight_threshold",
-        ),
-    )
+    num_states = size(H, 1) ÷ prod(sizes)
+    bl = BandLiouvillian(H.data, [c.data for c in c_ops], num_states, sizes; time_unit)
+    OpticalBloch.cooling_time(bl; kwargs...)
 end
 
-OpticalBloch.cooling_time(mm::MotionalModel; kwargs...) = OpticalBloch.cooling_time(
-    mm.H,
-    mm.c_ops;
-    time_unit=mm.time_unit,
-    num_fock=mm.num_fock,
-    kwargs...,
-)
+OpticalBloch.cooling_time(mm::MotionalModel; kwargs...) =
+    OpticalBloch.cooling_time(BandLiouvillian(mm); kwargs...)
 
 # --- Levels.OpticalBloch: the common cooling-metrics front-end -------------------
 
@@ -753,17 +717,17 @@ function OpticalBloch.cooling_metrics(
         heating_rate,
         time_unit,
     )
-    ρ_ss = steadystate(mm)
-    nbars = OpticalBloch.fock_populations(ρ_ss, mm)
+    # One factorisation serves the stationary state and the slow spectrum.
+    bl = BandLiouvillian(mm)
+    modes = relaxation_modes(
+        bl;
+        num_eigenpairs=method.num_eigenpairs,
+        dense_limit=method.dense_limit,
+    )
+    nbars = OpticalBloch.fock_populations(bl, modes.steady)
     map(eachindex(mcs)) do m
         nbar = sum((n - 1) * p for (n, p) in enumerate(nbars[m]))
-        τ = OpticalBloch.cooling_time(
-            mm;
-            mode=m,
-            num_eigenpairs=method.num_eigenpairs,
-            dense_limit=method.dense_limit,
-            weight_threshold=method.weight_threshold,
-        )
+        τ = OpticalBloch.phonon_relaxation_time(bl, modes, m, method.weight_threshold)
         CoolingMetrics(method, nbar, τ, nothing, nothing, mm, nothing)
     end
 end
