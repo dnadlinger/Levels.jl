@@ -534,7 +534,8 @@ end
     # A coherence band around the diagonal holds the slow mode.
     sm_b =
         cooling_metrics(s.model, s.mc, LiouvillianSpectrum(; num_fock=8, bandwidth=1))
-    @test sm_b.method.bandwidth == 1 && isnothing(sm.method.bandwidth)
+    @test sm_b.method.bandwidth == 1 && sm.method.bandwidth == 2
+    @test sm.method.dense_limit == 200
     @test sm_b.nbar ≈ sm.nbar rtol = 1e-3
     @test sm_b.τ_c ≈ sm.τ_c rtol = 1e-2
     # Other initial states from the solver carried in the result.
@@ -608,13 +609,13 @@ end
     using LinearAlgebra: norm, opnorm
 
     # Sideband cooling at saturation (Liouvillian dimension 24² = 576: dense
-    # by default, Krylov with `dense_limit = 0`).
+    # with `dense_limit = 1000`, Krylov by default or with `dense_limit = 0`).
     ω = angular(1.0u"MHz")
     γ = 2π * 100.0u"kHz"
     s = sideband_toy(; γ, ω, η=0.1, Ω=angular(100.0u"kHz"), δ=(-ω))
     mm = motional_model(s.model, s.mc; num_fock=12, heating_rate=1.0u"ms^-1")
     bl = BandLiouvillian(mm)
-    dense = relaxation_modes(bl; num_eigenpairs=8)
+    dense = relaxation_modes(bl; num_eigenpairs=8, dense_limit=1000)
     krylov = relaxation_modes(bl; num_eigenpairs=8, dense_limit=0)
     # The slowest modes are well conditioned (κ ≈ 1e2); along the ladder the
     # eigenvalue condition numbers of this saturated toy grow to ≈ 1e6, which
@@ -633,7 +634,7 @@ end
     end
     # The stationary state is the integrated-transient solver's (same
     # factorisation); the Krylov path is deterministic; `LiouvillianSpectrum`
-    # picks a mode of this spectrum.
+    # on the same (full-band) generator picks a mode of this spectrum.
     @test full_matrix(bl, krylov.steady) ≈
           steady_density_matrix(IntegratedTransientSolver(mm)) atol = 1e-12
     @test relaxation_modes(bl; num_eigenpairs=8, dense_limit=0).values == krylov.values
@@ -641,7 +642,7 @@ end
     spectrum(; kwargs...) = cooling_metrics(
         s.model,
         s.mc,
-        LiouvillianSpectrum(; num_fock=12, dense_limit=0, kwargs...);
+        LiouvillianSpectrum(; num_fock=12, bandwidth=nothing, dense_limit=0, kwargs...);
         heating_rate,
     )
     τ = spectrum(; num_eigenpairs=8).τ_c

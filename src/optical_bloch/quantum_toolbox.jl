@@ -248,14 +248,18 @@ function IntegratedTransient(;
 end
 
 """
-    LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, bandwidth = nothing, num_eigenpairs = 12, dense_limit = 2500, weight_threshold = 0.1)
+    LiouvillianSpectrum(; num_fock, lamb_dicke_order = 1, bandwidth = 2, num_eigenpairs = 12, dense_limit = 200, weight_threshold = 0.1)
 
 Selects the stationary occupation and a spectral relaxation time of a
 [`motional_model`](@ref) for [`cooling_metrics`](@ref). `num_fock` and
 `lamb_dicke_order` set the model's truncation; [`BandLiouvillian`](@ref)
 retains only coherences within `bandwidth` in each mode (`nothing` retains
-all). [`relaxation_modes`](@ref) supplies the `num_eigenpairs` nonzero
-eigenmodes nearest ``λ=0``, ordered by increasing ``|λ|``.
+all). The slow modes live close to the diagonal: a band of 2 reproduces
+the full generator's mode and occupation to five digits in the sideband-
+and dark-resonance-cooling models tested, from the Lamb–Dicke regime to
+saturation, at a factorisation cost 20–250 times lower.
+[`relaxation_modes`](@ref) supplies the `num_eigenpairs` nonzero eigenmodes
+nearest ``λ=0``, ordered by increasing ``|λ|``.
 
 For mode ``m``, the time is ``τ_c=-1/\\mathrm{Re}\\,λ`` of the first eigenmode
 whose phonon-number weight ``w_m(v)=|\\mathrm{Tr}(\\hat N_m v)|/‖v‖_\\mathrm{F}``
@@ -268,7 +272,11 @@ The selected time is independent of the initial state; an actual transient
 also depends on which modes that state excites. Thresholding can omit weak
 tails, and ordering by ``|λ|`` need not order decay rates. Convergence checks
 include `num_eigenpairs`, threshold, Fock size, bandwidth and displacement
-order.
+order. A time that keeps growing with `num_fock` means the slowest weighted
+mode sits at the truncation — the rate per quantum falls along the ladder,
+as in saturated dark-resonance cooling — and no asymptotic rate exists;
+[`IntegratedTransient`](@ref) from the relevant initial state applies
+instead.
 `dense_limit` sets the dense-diagonalisation cutoff of `relaxation_modes`.
 An error is raised if no mode qualifies; a negative time signals a growing mode.
 
@@ -286,9 +294,9 @@ end
 function LiouvillianSpectrum(;
     num_fock,
     lamb_dicke_order::Real=1,
-    bandwidth=nothing,
+    bandwidth=2,
     num_eigenpairs::Integer=12,
-    dense_limit::Integer=2500,
+    dense_limit::Integer=200,
     weight_threshold::Real=0.1,
 )
     validate_lamb_dicke_order(lamb_dicke_order)

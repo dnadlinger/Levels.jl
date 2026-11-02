@@ -474,7 +474,7 @@ function LinearAlgebra.mul!(y::AbstractVector, G::GroupInverse, x::AbstractVecto
 end
 
 """
-    relaxation_modes(bl::BandLiouvillian; num_eigenpairs = 12, dense_limit = 2500) -> (; values, vectors, steady)
+    relaxation_modes(bl::BandLiouvillian; num_eigenpairs = 12, dense_limit = 200) -> (; values, vectors, steady)
 
 Returns the `num_eigenpairs` eigenmodes nearest the Liouvillian's origin: its
 nonzero eigenvalues ``λ`` of smallest magnitude, in order of increasing
@@ -487,8 +487,9 @@ describe how an observable's deviation from its steady value decays.
 Ordering by ``|λ|`` need not order the decay rates ``-\\mathrm{Re}\\,λ`` when
 the modes oscillate.
 
-Generators of dimension up to `dense_limit` are diagonalised densely. Larger
-ones are treated by Krylov–Schur iteration (ArnoldiMethod.jl) on the group
+Generators of dimension up to `dense_limit` are diagonalised densely; the
+Krylov path below is faster beyond a few hundred. Larger ones are treated by
+Krylov–Schur iteration (ArnoldiMethod.jl) on the group
 inverse of ``\\mathcal L`` — its inverse on the traceless subspace, applied
 through the trace-row factorisation of [`IntegratedTransientSolver`](@ref) —
 whose dominant eigenvalues are the reciprocals of the slowest nonzero rates.
@@ -502,7 +503,7 @@ can be amplified by their condition numbers. A unique steady state is required.
 function relaxation_modes(
     bl::BandLiouvillian;
     num_eigenpairs::Integer=12,
-    dense_limit::Integer=2500,
+    dense_limit::Integer=200,
 )
     num_entries = size(bl.L, 1)
     1 <= num_eigenpairs <= num_entries - 1 || throw(
