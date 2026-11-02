@@ -14,7 +14,8 @@ harmonics.
 Lamb–Dicke factors, sideband couplings and recoil data. With QuantumToolbox
 loaded, [`motional_model`](@ref) builds the internal ⊗ Fock master equation
 and [`cooling_metrics`](@ref) compares rate-equation, integrated-transient and
-Liouvillian-spectrum estimates.
+Liouvillian-spectrum estimates. [`PhononRateEquation`](@ref) keeps the rate
+description valid for saturated sidebands, without a joint model.
 
 The solver-independent [`BandLiouvillian`](@ref) restricts motional
 coherences for numerical calculations. [`IntegratedTransientSolver`](@ref)
@@ -27,8 +28,9 @@ module OpticalBloch
 using ArnoldiMethod: partialeigen, partialschur
 using LinearAlgebra
 using FastGaussQuadrature: gausslegendre
+using Interpolations: linear_interpolation
 using OrdinaryDiffEqVerner: Vern7
-using SciMLBase: ODEProblem, solve, successful_retcode
+using SciMLBase: ContinuousCallback, ODEProblem, solve, successful_retcode, terminate!
 using SparseArrays:
     SparseArrays,
     SparseMatrixCSC,
@@ -75,5 +77,6 @@ include("lindblad.jl")
 include("motion.jl")
 include("liouvillian.jl")
 include("quantum_toolbox.jl")
+include("rate_equation.jl")
 
 end # module

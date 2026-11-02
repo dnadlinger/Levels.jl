@@ -298,19 +298,27 @@ end
 # gives the traceless solution of `L x = b`: as `L` preserves the trace, its
 # row `row` is minus the sum of the other population rows, so that equation
 # holds there too — `F` applies the group inverse of `L`.
-function trace_row_system(bl::BandLiouvillian)
-    num_entries = size(bl.L, 1)
-    d = full_dimension(bl)
-    diagonal = [bl.index[r, r] for r in 1:d]
-    row = diagonal[1]
-    M = copy(bl.L)
+function trace_row_system(L::SparseMatrixCSC, diagonal)
+    row = first(diagonal)
+    M = copy(L)
     M[row, :] .= 0
     dropzeros!(M)
-    M += sparse(fill(row, d), diagonal, ones(ComplexF64, d), num_entries, num_entries)
+    num_entries = size(L, 1)
+    num_populations = length(diagonal)
+    M += sparse(
+        fill(row, num_populations),
+        diagonal,
+        ones(ComplexF64, num_populations),
+        num_entries,
+        num_entries,
+    )
     control = SparseArrays.UMFPACK.get_umfpack_control(ComplexF64, Int)
     control[SparseArrays.UMFPACK.JL_UMFPACK_PIVOT_TOLERANCE] = 1.0
     (; M, F=lu(M; control), row, diagonal)
 end
+
+trace_row_system(bl::BandLiouvillian) =
+    trace_row_system(bl.L, [bl.index[r, r] for r in 1:full_dimension(bl)])
 
 # Removes the trace of the band vector `v` (populations at `diagonal`) in place.
 function remove_trace!(v::AbstractVector, diagonal)

@@ -336,5 +336,15 @@ Base.show(io::IO, model::LindbladModel) = print(
     " beat harmonics)",
 )
 
+function require_static(model::LindbladModel, what)
+    isempty(model.harmonics) || throw(
+        ArgumentError(
+            "$what requires a static model, but this one carries " *
+            "$(length(model.harmonics)) beat-note harmonic(s); only " *
+            "steadystate(model) handles those (via steadystate_fourier)",
+        ),
+    )
+end
+
 export DecayLabel, DephasingLabel, LindbladModel, lindblad_model
 export decay_operators, dephasing_operators, level_projector

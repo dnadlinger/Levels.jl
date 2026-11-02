@@ -238,6 +238,25 @@ end
 motional_coupling(model::LindbladModel, modes::AbstractVector; recoil_moment=:exact) =
     [motional_coupling(model, mode; recoil_moment) for mode in modes]
 
+function check_heating_rate(heating_rate)
+    (heating_rate isa Unitful.Frequency && heating_rate >= zero(heating_rate)) || throw(
+        ArgumentError(
+            "heating_rate must be a non-negative rate in quanta per time " *
+            "(e.g. 1000.0u\"s^-1\"), got $heating_rate",
+        ),
+    )
+end
+
+# One heating rate per mode, from a single rate or one per mode.
+function mode_heating_rates(heating_rate, num_modes)
+    rates =
+        heating_rate isa AbstractVector ? collect(heating_rate) :
+        fill(heating_rate, num_modes)
+    length(rates) == num_modes ||
+        throw(ArgumentError("heating_rate must be one rate or one per mode"))
+    foreach(check_heating_rate, rates)
+    rates
+end
 
 # --- Beyond first order in the Lamb–Dicke parameters ------------------------------
 
@@ -281,30 +300,25 @@ Lamb–Dicke model instead grows as ``η√n``.
 function displacement_elements(η::Real, num_fock::Integer; order::Real=Inf)
     validate_lamb_dicke_order(order)
     num_fock >= 1 || throw(ArgumentError("num_fock must be positive, got $num_fock"))
-    if isinf(order)
-        C = zeros(ComplexF64, num_fock, num_fock)
-        x = η^2
-        for d in 0:(num_fock-1)
-            # L_k^{(d)}(x) for k = 0 … num_fock − 1 − d (k = n<, n> = k + d)
-            L_prev, L = 0.0, 1.0
-            for k in 0:(num_fock-1-d)
-                if k == 1
-                    L_prev, L = L, 1 + d - x
-                elseif k > 1
-                    L_prev, L = L, ((2k - 1 + d - x) * L - (k - 1 + d) * L_prev) / k
-                end
-                # √(k!/(k+d)!) η^d, in logs to stay finite for large d
-                mag =
-                    d == 0 ? 1.0 :
-                    exp(d * log(abs(η)) - 0.5 * sum(log, (k+1):(k+d); init=0.0))
-                value = exp(-x / 2) * mag * L * (im * sign(η))^d
-                C[k+1+d, k+1] = value
-                C[k+1, k+d+1] = value
-            end
-        end
-        return C
+    isinf(order) || return Matrix(joint_displacement([η], [num_fock]; order))
+    elements = zeros(ComplexF64, num_fock, num_fock)
+    for n in 0:(num_fock-1), k in 0:n
+        elements[n+1, n-k+1] = elements[n-k+1, n+1] = displacement_element(η, n, k)
     end
-    Matrix(joint_displacement([η], [num_fock]; order))
+    elements
+end
+
+# The element ⟨n - k| D(η) |n⟩, by the upward recurrence of L_{n-k}^{(k)}(η²).
+function displacement_element(η::Real, n::Integer, k::Integer)
+    lower = n - k
+    previous, laguerre = 0.0, 1.0
+    for j in 1:lower
+        previous, laguerre =
+            laguerre, ((2j - 1 + k - η^2) * laguerre - (j - 1 + k) * previous) / j
+    end
+    # √(lower!/n!) |η|^k, in logs to stay finite for large k
+    scale = k == 0 ? 1.0 : exp(k * log(abs(η)) - sum(log, (lower+1):n) / 2)
+    exp(-η^2 / 2) * scale * laguerre * (im * sign(η))^k
 end
 
 """

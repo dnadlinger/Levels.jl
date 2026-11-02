@@ -12,7 +12,8 @@ Loading [QuantumToolbox.jl](https://qutip.org/QuantumToolbox.jl/) activates
 `LevelsQuantumToolboxExt`, which provides `steadystate(model)` and
 `liouvillian(model)` for internal and motional models, as well as
 [`motional_model`](@ref), [`populations`](@ref), [`mean_phonon_number`](@ref)
-and [`cooling_metrics`](@ref). See also
+and [`cooling_metrics`](@ref) (other than for [`SaturatedRates`](@ref), which
+needs no solver package). See also
 [QuantumToolbox integration](@ref reference-quantum-toolbox).
 
 ## Internal-state model
@@ -100,13 +101,14 @@ that time:
 | Method | Motional treatment | Meaning of `τ_c` |
 | :----- | :----------------- | :--------------- |
 | [`AdiabaticElimination`](@ref) | Independent rate equations | Exponential occupation relaxation |
+| [`SaturatedRates`](@ref) | Nearest-neighbour phonon rate equations with non-perturbative rates | Normalised transient area from a specified thermal initial state |
 | [`IntegratedTransient`](@ref) | Joint internal ⊗ Fock model, with optional coherence restriction | Normalised transient area from a specified thermal initial state |
 | [`LiouvillianSpectrum`](@ref) | Joint internal ⊗ Fock model, with optional coherence restriction | Time of a selected eigenmode with appreciable phonon-number weight |
 
 ### Estimator comparison
 
-Adiabatic elimination replaces the joint dynamics by a motional birth–death
-process with cooling and heating rates ``nA_-`` and ``(n+1)A_+``. Without
+Adiabatic elimination replaces the joint dynamics by nearest-neighbour phonon
+rate equations with cooling and heating rates ``nA_-`` and ``(n+1)A_+``. Without
 background heating, the mean occupation obeys
 
 ```math
@@ -138,6 +140,15 @@ dark state and slows the initial cooling (Sec. IV.B.2, Fig. 7). Their comparison
 of analytical rates, master-equation simulations and experiment illustrates
 the breakdown of the reduced theory (Sec. V.4, Fig. 13).
 
+[`SaturatedRates`](@ref) keeps a rate equation for the phonon populations, but
+evaluates its rates without expanding in the sideband coupling, including the
+Franck–Condon factors of [Morigi et al. (1999)](https://doi.org/10.1103/PhysRevA.59.3797)
+at all orders in ``η``. It reduces to adiabatic elimination as ``n → 0`` and
+reproduces the saturation of the cooling rate along the Fock ladder. It therefore
+gives the non-exponential shape of a hot transient, with full distributions and no
+closure for their moments, at the cost of a few internal-state solves per
+octave in ``n``. [`PhononRateEquation`](@ref) has the method and its limits.
+
 The two joint-model estimates describe different aspects of this relaxation.
 For a diagonalisable generator, a decaying occupation transient has the form
 
@@ -164,9 +175,15 @@ with positive weights.
 
 #### Choosing a method
 
-- Use [`AdiabaticElimination`](@ref) for parameter scans, then check promising
-  points with a joint model. Compare both occupation and time; agreement at
-  weak drive does not establish accuracy near a saturated optimum.
+- Use [`AdiabaticElimination`](@ref) for parameter scans of unsaturated cooling
+  (it is also accurate in Doppler cooling, where the rates per quantum hardly
+  vary along the occupied part of the ladder), then check promising points with
+  a joint model. Compare both occupation and time; agreement at weak drive does
+  not establish accuracy near a saturated optimum.
+- Use [`SaturatedRates`](@ref) as the objective for optimising cooling from a
+  hot state, or wherever ``ηΩ\sqrt{n}`` may reach the relevant internal
+  linewidth, with [`time_to_nbar`](@ref) for a target occupation. Verify the
+  result with a joint model; the rate equation assumes independent modes.
 - Use [`LiouvillianSpectrum`](@ref) for late-time occupation relaxation.
   Check the selected mode as `num_fock`, `num_eigenpairs` and
   `weight_threshold` change. If the time keeps increasing with Fock size, it
@@ -197,6 +214,14 @@ CoolingMethod
 
 ```@docs
 AdiabaticElimination
+```
+
+### Saturated rate equation
+
+```@docs
+SaturatedRates
+PhononRateEquation
+time_to_nbar
 ```
 
 ### Integrated transients

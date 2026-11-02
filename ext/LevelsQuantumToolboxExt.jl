@@ -37,8 +37,10 @@ using Levels.OpticalBloch:
     integral_relaxation_time,
     joint_displacement,
     level_projector,
+    mode_heating_rates,
     phonon_number_operator,
     relaxation_modes,
+    require_static,
     steady_value,
     thermal_populations,
     validate_lamb_dicke_order
@@ -222,16 +224,6 @@ hamiltonian_qobj(model::LindbladModel; time_unit) =
 jump_qobjs(model::LindbladModel; time_unit) =
     [QuantumObject(L, model.basis; time_unit) for L in model.jump_operators]
 
-function require_static(model::LindbladModel, what)
-    isempty(model.harmonics) || throw(
-        ArgumentError(
-            "$what requires a static model, but this one carries " *
-            "$(length(model.harmonics)) beat-note harmonic(s); only " *
-            "steadystate(model) handles those (via steadystate_fourier)",
-        ),
-    )
-end
-
 """
     liouvillian(model::LindbladModel; time_unit = u"µs")
     liouvillian(mm::MotionalModel)
@@ -343,26 +335,6 @@ function mode_rates(L, ρ, mc::MotionalCoupling, time_unit)
     A_plus = 2 * real(spectrum(ω_m)) + diffusion
     A_minus = 2 * real(spectrum(-ω_m)) + diffusion
     A_plus, A_minus
-end
-
-function check_heating_rate(heating_rate)
-    (heating_rate isa Unitful.Frequency && heating_rate >= zero(heating_rate)) || throw(
-        ArgumentError(
-            "heating_rate must be a non-negative rate in quanta per time " *
-            "(e.g. 1000.0u\"s^-1\"), got $heating_rate",
-        ),
-    )
-end
-
-# One heating rate per mode, from a single rate or one per mode.
-function mode_heating_rates(heating_rate, num_modes)
-    rates =
-        heating_rate isa AbstractVector ? collect(heating_rate) :
-        fill(heating_rate, num_modes)
-    length(rates) == num_modes ||
-        throw(ArgumentError("heating_rate must be one rate or one per mode"))
-    foreach(check_heating_rate, rates)
-    rates
 end
 
 # --- Levels.OpticalBloch: the full internal ⊗ motional model ----------------------
@@ -739,12 +711,5 @@ function OpticalBloch.cooling_metrics(
         CoolingMetrics(method, steady_value(solver, m), τ, nothing, nothing, mm, solver)
     end
 end
-
-OpticalBloch.cooling_metrics(
-    model::LindbladModel,
-    mc::MotionalCoupling,
-    method;
-    kwargs...,
-) = only(OpticalBloch.cooling_metrics(model, [mc], method; kwargs...))
 
 end # module

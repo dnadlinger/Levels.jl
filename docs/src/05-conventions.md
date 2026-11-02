@@ -178,8 +178,9 @@ perturbative.δ_res - dt.drive_frequency
 
 [`cooling_metrics`](@ref Levels.OpticalBloch.cooling_metrics) offers three
 relaxation observables. Adiabatic elimination gives a rate-equation exponential
-time constant; `IntegratedTransient` gives an integral relaxation time for a
-specified initial state; `LiouvillianSpectrum` gives an asymptotic relaxation
+time constant; `SaturatedRates` and `IntegratedTransient` give an integral
+relaxation time for a specified initial state, from a rate equation and a joint
+model respectively; `LiouvillianSpectrum` gives an asymptotic relaxation
 time. They coincide for a single exponential and can differ for a hot ion or a
 transient with several timescales. The [Optical Bloch reference](@ref
 reference-optical-bloch) describes their assumptions and numerical controls.

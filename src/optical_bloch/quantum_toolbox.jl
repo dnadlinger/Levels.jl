@@ -146,7 +146,8 @@ function mean_phonon_number end
 """
 A method for estimating the laser-cooling performance of a mode, dispatched on
 by [`cooling_metrics`](@ref): [`AdiabaticElimination`](@ref),
-[`IntegratedTransient`](@ref) or [`LiouvillianSpectrum`](@ref).
+[`SaturatedRates`](@ref), [`IntegratedTransient`](@ref) or
+[`LiouvillianSpectrum`](@ref).
 """
 abstract type CoolingMethod end
 
@@ -156,7 +157,8 @@ abstract type CoolingMethod end
 Selects the order-``η^2`` rate equations for [`cooling_metrics`](@ref), obtained
 by adiabatically eliminating the internal dynamics. Requires Lamb–Dicke motion
 and weak sideband coupling, with internal relaxation fast compared with the
-induced motional rates. Saturated sidebands require a full motional model.
+induced motional rates. For saturated sidebands, see [`SaturatedRates`](@ref)
+or a full motional model.
 
 ```math
 A_± = 2 \\mathrm{Re} S(±ω_m) + D, \\qquad
@@ -320,15 +322,15 @@ with the given [`CoolingMethod`](@ref):
   - `τ_c`: the cooling time constant (unitful) — the exponential time constant
     ``1/(A_- - A_+)`` for `AdiabaticElimination` (`NaN` if heated), the
     integral relaxation time of the phonon number from the method's initial
-    state for `IntegratedTransient`, and the selected spectral relaxation
-    time for `LiouvillianSpectrum`;
+    state for `SaturatedRates` and `IntegratedTransient`, and the selected
+    spectral relaxation time for `LiouvillianSpectrum`;
   - `A_plus`, `A_minus`: the rate coefficients (`AdiabaticElimination` only,
     `nothing` otherwise);
   - `model`: the [`MotionalModel`](@ref) built for the estimate (full-model
     methods only, `nothing` otherwise);
-  - `solver`: the [`IntegratedTransientSolver`](@ref) (`IntegratedTransient`
-    only, `nothing` otherwise), for relaxation times from other initial
-    states.
+  - `solver`: the [`IntegratedTransientSolver`](@ref) of `IntegratedTransient`
+    or the [`PhononRateEquation`](@ref) of `SaturatedRates` (`nothing`
+    otherwise), for relaxation times from other initial states.
 
 For several modes, `cooling_metrics` returns one `CoolingMetrics` per mode;
 the full-model methods share one joint model (and, for `IntegratedTransient`,
@@ -366,6 +368,7 @@ for one mode, or one [`CoolingMetrics`](@ref) per mode for a vector of
 couplings. The chosen [`CoolingMethod`](@ref) defines the time:
 
 - [`AdiabaticElimination`](@ref): the exponential rate-equation time;
+- [`SaturatedRates`](@ref): the integral time of a phonon-number rate equation;
 - [`IntegratedTransient`](@ref): the integral time from a thermal initial state;
 - [`LiouvillianSpectrum`](@ref): a phonon-number-weighted spectral estimate.
 
@@ -374,15 +377,24 @@ adds ``\\dot n_\\mathrm{heat}`` to the rate equations, or equal raising and
 lowering bath terms to the full model (see [`motional_model`](@ref)). `ρ`
 defaults to `steadystate(model)` for `AdiabaticElimination` and
 `IntegratedTransient`: it supplies the internal state for the rates or the
-initial product state, respectively. `LiouvillianSpectrum` ignores `ρ`.
+initial product state, respectively. `SaturatedRates` and
+`LiouvillianSpectrum` ignore `ρ`.
 Rates use inverse `time_unit` and times use `time_unit`. All methods require
 an internal model without beat harmonics.
 
 !!! note
-    Defined in the `LevelsQuantumToolboxExt` package extension, i.e. only once
+    All methods but `SaturatedRates` are defined in the
+    `LevelsQuantumToolboxExt` package extension, i.e. only once
     QuantumToolbox.jl is loaded.
 """
 function cooling_metrics end
+
+cooling_metrics(
+    model::LindbladModel,
+    mc::MotionalCoupling,
+    method::CoolingMethod;
+    kwargs...,
+) = only(cooling_metrics(model, [mc], method; kwargs...))
 
 Base.show(io::IO, model::MotionalModel) = print(
     io,
