@@ -21,7 +21,7 @@ place the field enters, and every model — light shifts, periodically driven
 transitions, optical Bloch equations — is built on it. The API accepts
 spectroscopic strings for levels and `StateSpec(level, m)` for magnetic
 substates. A transition is a `lower => upper` pair. Physical quantities use
-[Unitful.jl](https://painterqubits.github.io/Unitful.jl/stable/) units.
+[Unitful.jl](https://juliaphysics.github.io/Unitful.jl/) units.
 
 Start with [Conventions and examples](05-conventions.md), especially the distinction
 between angular frequencies and decay rates, then
