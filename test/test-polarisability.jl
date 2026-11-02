@@ -1647,3 +1647,34 @@ end
     )
     @test exact.δ_res ≈ expected rtol = 2e-2
 end
+
+@testitem "ba138 polarisabilities" tags = [:unit, :fast] begin
+    using Unitful
+
+    au(α) = uconvert(NoUnits, α / Levels.POLARISABILITY_AU)
+    static = 0.0u"rad/s"
+    differential(ν) = au(
+        scalar_polarisability(ba138, "D_5/2", 2π * ν * u"rad") -
+        scalar_polarisability(ba138, "S_1/2", 2π * ν * u"rad"),
+    )
+
+    # The anchors are reproduced exactly: S_1/2 [Snow2007], Δα₀(0) [Jayjong2026b], and
+    # the theory values of [Cserveny2025].
+    α_s = au(scalar_polarisability(ba138, "S_1/2", static))
+    @test α_s ≈ 123.88 atol = 1e-6
+    @test au(scalar_polarisability(ba138, "D_5/2", static)) - α_s ≈ -73.09 atol = 1e-6
+    @test au(scalar_polarisability(ba138, "D_3/2", static)) ≈ 49.5 atol = 1e-6
+    @test au(tensor_polarisability(ba138, "D_3/2", static)) ≈ -21.5 atol = 1e-6
+    @test au(tensor_polarisability(ba138, "D_5/2", static)) ≈ -28.7 atol = 1e-6
+
+    # At the clock frequency, against −78.51(42) (2σ) of Chanu et al. (2020), as quoted
+    # by [Arnold2020].
+    @test differential(170.126u"THz") ≈ -78.51 atol = 0.42
+
+    # Near the zero crossings [Jayjong2026a], Δα₀ is off by the error of lumping the
+    # ≈ 234 nm 4f channels statically (≈ 2 and 4 a.u., cf. the docstring). This bounds
+    # that error, and fails if the data drift; explicit 4f channels would shrink it.
+    @test abs(differential(459.1614u"THz")) < 2.5
+    @test abs(differential(623.60313u"THz")) < 4.5
+    @test differential(459.1614u"THz") < 0 < differential(460.0u"THz")
+end

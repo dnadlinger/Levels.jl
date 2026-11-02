@@ -468,4 +468,155 @@ const ca43 = HyperfineOneElectronSpecies(;
     polarisabilities=CA_POLARISABILITIES,
 )
 
-export sr88, ca40, ca43
+# --- Ba⁺ ---------------------------------------------------------------------
+
+"""
+¹³⁸Ba⁺ ion.
+
+The P decay rates are entered as the reduced dipole matrix elements of
+`[Jayjong2026b]`, an unrefereed preprint, whose ⟨P₁/₂‖r‖S₁/₂⟩ lies 1.8σ below the
+value `[Jayjong2026a]` infers from the static S₁/₂ polarisability. They are preferred
+over τ(P₃/₂) = 6.2615(72) ns of `[Zhang2020]`, which rests on the older
+⟨P₃/₂‖r‖S₁/₂⟩ of Woods et al. (2010), whose ratio to the P₁/₂ element disagrees with
+the direct measurement of `[Jayjong2026a]`.
+
+!!! warning
+    The 17 % M1 branch D₅/₂ → D₃/₂ is not represented: `multipole_rank` would take a
+    same-parity entry for E2, and so add wrong jump operators to any model holding
+    both D levels. `einstein_a(ba138, "S_1/2" => "D_5/2")` is the true E2 rate, for
+    correct 1762 nm couplings, so that `lifetime(ba138, "D_5/2")` returns ≈ 36.3 s
+    instead of the measured 30.14(40) s `[Zhang2020]`.
+
+The 4f levels are not included, as the sources give neither their energies nor
+dipoles. Their contribution to α(D₅/₂) is lumped into the static remainder, which is
+a good approximation only well below their ≈ 234 nm resonances: with the ≈ 15 a.u.
+ultraviolet term of `[Jayjong2026a]` (Eq. 1), the error is ≈ 0.2 a.u. at 1762 nm,
+≈ 2 a.u. at 653 nm and ≈ 4 a.u. at 481 nm, which limits the accuracy of the
+differential polarisability near its zero crossings.
+
+# References
+
+- `[Arnold2020]`: K. J. Arnold, R. Kaewuam, S. R. Chanu, T. R. Tan, Z. Zhang, and
+  M. D. Barrett, "Precision Measurements of the ¹³⁸Ba⁺ 6s ²S₁/₂–5d ²D₅/₂ Clock
+  Transition", Phys. Rev. Lett. **124**, 193001 (2020),
+  [doi:10.1103/PhysRevLett.124.193001](https://doi.org/10.1103/PhysRevLett.124.193001).
+- `[Whitford1994]`: B. G. Whitford, K. J. Siemsen, A. A. Madej, and J. D. Sankey,
+  "Absolute-frequency measurement of the narrow-linewidth 24-THz D–D transition of a
+  single laser-cooled barium ion", Opt. Lett. **19**, 356 (1994),
+  [doi:10.1364/OL.19.000356](https://doi.org/10.1364/OL.19.000356).
+- `[Imgram2019]`: P. Imgram, K. König, J. Krämer, T. Ratajczyk, R. A. Müller,
+  A. Surzhykov, and W. Nörtershäuser, "Collinear laser spectroscopy at ion-trap
+  accuracy: Transition frequencies and isotope shifts in the 6s ²S₁/₂ → 6p ²P₁/₂,₃/₂
+  transitions of Ba⁺", Phys. Rev. A **99**, 012511 (2019),
+  [doi:10.1103/PhysRevA.99.012511](https://doi.org/10.1103/PhysRevA.99.012511).
+- `[Jayjong2026a]`: N. Jayjong, M. D. K. Lee, K. J. Arnold, and M. D. Barrett, "Zero
+  crossings of the differential scalar polarizability of the Ba⁺ clock transition",
+  Phys. Rev. A **114**, 012804 (2026),
+  [doi:10.1103/wdgl-2vhf](https://doi.org/10.1103/wdgl-2vhf).
+- `[Jayjong2026b]`: N. Jayjong, M. D. K. Lee, K. J. Arnold, and M. D. Barrett,
+  "Measurement of the reduced dipole matrix element in Ba⁺",
+  [arXiv:2607.20920](https://arxiv.org/abs/2607.20920) (2026).
+- `[Zhang2020]`: Z. Zhang, K. J. Arnold, S. R. Chanu, R. Kaewuam, M. S. Safronova, and
+  M. D. Barrett, "Branching fractions for P₃/₂ decays in Ba⁺", Phys. Rev. A **101**,
+  062515 (2020),
+  [doi:10.1103/PhysRevA.101.062515](https://doi.org/10.1103/PhysRevA.101.062515).
+- `[Cserveny2025]`: R. B. Cserveny and B. M. Roberts, "Theoretical characterization of
+  the barium II and radium II ions", Phys. Rev. A **112**, 032816 (2025),
+  [doi:10.1103/1rtb-8ymc](https://doi.org/10.1103/1rtb-8ymc).
+- `[Marx1998]`: G. Marx, G. Tommaseo, and G. Werth, "Precise g_J- and g_I-factor
+  measurements of Ba⁺ isotopes", Eur. Phys. J. D **4**, 279 (1998),
+  [doi:10.1007/s100530050210](https://doi.org/10.1007/s100530050210).
+- `[Knoll1996]`: K. H. Knöll, G. Marx, K. Hübner, F. Schweikert, S. Stahl, Ch. Weber,
+  and G. Werth, "Experimental g_J factor in the metastable 5D₃/₂ level of Ba⁺", Phys.
+  Rev. A **54**, 1199 (1996),
+  [doi:10.1103/PhysRevA.54.1199](https://doi.org/10.1103/PhysRevA.54.1199).
+- `[Poulsen1976]`: O. Poulsen and P. S. Ramanujam, "Time-differential level-crossing
+  g-value measurements of the 6p ²P fine-structure levels in ¹³⁸Ba II using an
+  optical-induced orientation or alignment of a fast ionic beam", Phys. Rev. A **14**,
+  1463 (1976),
+  [doi:10.1103/PhysRevA.14.1463](https://doi.org/10.1103/PhysRevA.14.1463).
+- `[Snow2007]`: E. L. Snow and S. R. Lundeen, "Fine-structure measurements in high-L
+  n = 17 and 20 Rydberg states of barium", Phys. Rev. A **76**, 052505 (2007),
+  [doi:10.1103/PhysRevA.76.052505](https://doi.org/10.1103/PhysRevA.76.052505).
+- `[AME2020]`: M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi, "The
+  AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
+  C **45**, 030003 (2021),
+  [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
+- `[NIST-ASD]`: NIST Atomic Spectra Database,
+  [Ba I ionisation energy](https://physics.nist.gov/PhysRefData/ASD/ionEnergy.html).
+"""
+const ba138 = NoHyperfineOneElectronSpecies(;
+    # Mass of the actual ion: the neutral-atom mass 137.905247059(267) u [AME2020] less
+    # one electron, plus the Ba I first ionisation energy 42034.91(1) cm⁻¹ [NIST-ASD] as
+    # its mass-equivalent binding correction (5.6e-9 u, well below the mass uncertainty).
+    mass=uconvert(
+        u"u",
+        137.905247059u"u" - Unitful.me + σ_to_energy(42034.91 / u"cm") / u"c"^2,
+    ),
+    energies=Dict(
+        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+            "S_1/2" => 0u"J",
+            # 1762 nm clock transition, 170 126 432 449 333.31(39)(29) Hz [Arnold2020],
+            # less the 5d ²D_3/2–²D_5/2 interval 24 012 048 319(1) kHz [Whitford1994].
+            "D_3/2" => u"h" * (170_126_432_449_333.31u"Hz" - 24_012_048_319u"kHz"),
+            "D_5/2" => u"h" * 170_126_432_449_333.31u"Hz", # …(39)(29) [Arnold2020]
+            "P_1/2" => u"h" * 607_426_262.600u"MHz", # …(33)(126) 493 nm [Imgram2019]
+            "P_3/2" => u"h" * 658_116_486.035u"MHz", # …(24)(124) 455 nm [Imgram2019]
+        ]
+    ),
+    einstein_as=Dict(
+        convert(Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
+        (k, v) in [
+            # Measured ⟨P_1/2‖r‖S_1/2⟩; the others follow from it through the measured
+            # ratio to ⟨P_3/2‖r‖S_1/2⟩ [Jayjong2026a] and the branching fractions.
+            ("S_1/2" => "P_1/2") => ReducedDipole(3.3227DIPOLE_AU), # …(12) [Jayjong2026b]
+            ("D_3/2" => "P_1/2") => ReducedDipole(3.0390DIPOLE_AU), # …(12) [Jayjong2026b]
+            ("S_1/2" => "P_3/2") => ReducedDipole(4.6910DIPOLE_AU), # …(17) [Jayjong2026b]
+            ("D_5/2" => "P_3/2") => ReducedDipole(4.0934DIPOLE_AU), # …(17) [Jayjong2026b]
+            ("D_3/2" => "P_3/2") => ReducedDipole(1.32896DIPOLE_AU), # …(76) [Jayjong2026b]
+            # The E2 branch alone (see the docstring): the theory fraction 0.8302(9)
+            # [Cserveny2025] of the decay rate from the τ = 30.14(40) s of [Zhang2020].
+            ("S_1/2" => "D_5/2") => 0.8302 / 30.14u"s",
+            # Theory, five times more precise than the measured 79.8(4.6) s (Yu et al.
+            # 1997, as quoted by [Cserveny2025]), with which it is consistent at 0.6σ.
+            ("S_1/2" => "D_3/2") => 1 / 82.4u"s", # …(10) [Cserveny2025]
+        ]
+    ),
+    lande_g_overrides=Dict(
+        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+            "S_1/2" => 2.00249192, # …(3) [Marx1998]
+            "D_3/2" => 0.7993278, # …(3) [Knoll1996]
+            "D_5/2" => 1.20036739, # …(24) [Arnold2020]
+            "P_1/2" => 0.672, # …(6) [Poulsen1976]
+            "P_3/2" => 1.328, # …(8) [Poulsen1976]
+        ]
+    ),
+    polarisabilities=Dict(
+        convert(NoHyperfineNumberSpec, k) => v for (k, v) in [
+            # The channel dipoles derive from einstein_as above. The S_1/2 remainder
+            # comes out as 10.68 a.u., 0.38 a.u. above the sum of the core, core-valence
+            # and tail terms of [Jayjong2026a], which is the 1.8σ dipole difference
+            # noted in the docstring, absorbed by anchoring to the measured total.
+            "S_1/2" => ImplicitPolarisability(
+                ["P_1/2", "P_3/2"];
+                static_scalar=123.88POLARISABILITY_AU, # …(5) [Snow2007]
+            ),
+            # Theory only.
+            "D_3/2" => ImplicitPolarisability(
+                ["P_1/2", "P_3/2"];
+                static_scalar=49.5POLARISABILITY_AU, # …(17) [Cserveny2025]
+                static_tensor=-21.5POLARISABILITY_AU, # …(11) [Cserveny2025]
+            ),
+            # The static scalar total from the measured total of S_1/2 and differential
+            # Δα₀(0) = −73.09(12) a.u. [Jayjong2026b]; cf. the theory value 49.6(17)
+            # a.u. [Cserveny2025]. The 4f channels are lumped (see the docstring).
+            "D_5/2" => ImplicitPolarisability(
+                ["P_3/2"];
+                static_scalar=(123.88 - 73.09)POLARISABILITY_AU,
+                static_tensor=-28.7POLARISABILITY_AU, # …(14) [Cserveny2025]
+            ),
+        ]
+    ),
+)
+
+export sr88, ca40, ca43, ba138

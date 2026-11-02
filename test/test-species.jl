@@ -46,3 +46,41 @@ end
     @test interval("D_5/2", "P_3/2") ≈ 350_862_882.63u"MHz" atol = 0.3u"MHz"
     @test interval("S_1/2", "D_5/2") ≈ 411_042_129.77640026u"MHz" rtol = 1e-12
 end
+
+@testitem "ba138 data" tags = [:unit, :fast] begin
+    using Unitful
+
+    cyclic(pair) = uconvert(u"MHz", Levels.transition_frequency(ba138, pair) / 2π)
+
+    @test ba138.mass ≈ 137.9047u"u" rtol = 1e-6
+
+    # Level energies (clock [Arnold2020] + D fine structure [Whitford1994], 493 and
+    # 455 nm [Imgram2019]) against the independent direct measurements of [Dijck2015]
+    # and the line centre of [Jayjong2026b].
+    @test cyclic("D_3/2" => "P_1/2") ≈ 461_311_878.5u"MHz" atol = 0.2u"MHz"
+    @test cyclic("S_1/2" => "D_3/2") ≈ 146_114_384.0u"MHz" atol = 0.2u"MHz"
+    @test cyclic("S_1/2" => "P_1/2") ≈ 607_426_262.6455u"MHz" atol = 0.13u"MHz"
+
+    # The dipoles of [Jayjong2026b] reproduce the lifetimes it states (Eqs. 16–17)…
+    @test lifetime(ba138, "P_1/2") ≈ 7.8663u"ns" rtol = 7e-4
+    @test lifetime(ba138, "P_3/2") ≈ 6.2900u"ns" rtol = 7.5e-4
+    # … and the independently measured branching of [Zhang2020] (ratios p and q).
+    a(pair) = einstein_a(ba138, pair)
+    s, d3, d5 = a("S_1/2" => "P_3/2"), a("D_3/2" => "P_3/2"), a("D_5/2" => "P_3/2")
+    @test s / (s + d5) ≈ 0.763107 atol = 3 * 65e-6
+    @test d3 / (d3 + d5) ≈ 0.108527 atol = 3 * 77e-6
+    # P_1/2 → D_3/2 fraction, as adopted by [Jayjong2026b].
+    d1, s1 = a("D_3/2" => "P_1/2"), a("S_1/2" => "P_1/2")
+    @test d1 / (d1 + s1) ≈ 0.268167 atol = 3 * 47e-6
+
+    # The M1 branch of D_5/2 is deliberately not an entry, cf. the docstring: the E2
+    # rate is the physical one, and the lifetime longer than the measured 30.14(40) s.
+    @test length(keys(ba138.einstein_as)) == 7
+    @test lifetime(ba138, "D_5/2") ≈ 30.14u"s" / 0.8302 rtol = 1e-12
+    @test lifetime(ba138, "D_3/2") ≈ 82.4u"s" rtol = 1e-12
+
+    # Measured g-factors, including the field-independent ratio of [Knoll1996].
+    @test lande_g(ba138, "S_1/2") == 2.00249192
+    @test lande_g(ba138, "D_5/2") == 1.20036739
+    @test lande_g(ba138, "S_1/2") / lande_g(ba138, "D_3/2") ≈ 2.505220 atol = 3e-6
+end
