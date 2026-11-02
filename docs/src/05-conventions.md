@@ -176,12 +176,13 @@ perturbative.δ_res - dt.drive_frequency
 
 ## Cooling calculations
 
-[`cooling_metrics`](@ref Levels.OpticalBloch.cooling_metrics) offers three
+[`cooling_metrics`](@ref Levels.OpticalBloch.cooling_metrics) offers several
 relaxation observables. Adiabatic elimination gives a rate-equation exponential
 time constant; `SaturatedRates` and `IntegratedTransient` give an integral
 relaxation time for a specified initial state, from a rate equation and a joint
 model respectively; `LiouvillianSpectrum` gives an asymptotic relaxation
-time. They coincide for a single exponential and can differ for a hot ion or a
+time; `SemiclassicalRates` gives the local rate of classical motion at a given
+energy. They coincide for a single exponential and can differ for a hot ion or a
 transient with several timescales. The [Optical Bloch reference](@ref
 reference-optical-bloch) describes their assumptions and numerical controls.
 

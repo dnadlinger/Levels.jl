@@ -62,10 +62,11 @@ given mode of an ion of the species' mass: the signed **projected** value
 ``(\\vec{k} ⋅ \\vec{e}_m) \\sqrt{ħ / 2 M ω_m}`` by default, or with
 `projected = false` the **unprojected** ``|\\vec{k}| \\sqrt{ħ / 2 M ω_m}``, the
 conventional Lamb–Dicke parameter of the transition (cf.
-[`MotionalCoupling`](@ref) for which is which).
+[`MotionalCoupling`](@ref) for which is which). Both are multiplied by the
+mode's `participation`.
 """
 function lamb_dicke(species, mode::MotionalMode, wavevector; projected::Bool=true)
-    x0 = sqrt(u"ħ" / (2 * species.mass * mode.frequency))
+    x0 = mode.participation * sqrt(u"ħ" / (2 * species.mass * mode.frequency))
     k = projected ? sum(wavevector .* mode.direction) : sqrt(sum(abs2, wavevector))
     uconvert(NoUnits, k * x0)
 end

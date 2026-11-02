@@ -146,8 +146,8 @@ function mean_phonon_number end
 """
 A method for estimating the laser-cooling performance of a mode, dispatched on
 by [`cooling_metrics`](@ref): [`AdiabaticElimination`](@ref),
-[`SaturatedRates`](@ref), [`IntegratedTransient`](@ref) or
-[`LiouvillianSpectrum`](@ref).
+[`SaturatedRates`](@ref), [`SemiclassicalRates`](@ref),
+[`IntegratedTransient`](@ref) or [`LiouvillianSpectrum`](@ref).
 """
 abstract type CoolingMethod end
 
@@ -318,12 +318,14 @@ with the given [`CoolingMethod`](@ref):
 
   - `method`: the method and its parameters;
   - `nbar`: the steady-state mean phonon number (`NaN` where the
-    adiabatic-elimination rates predict heating);
+    adiabatic-elimination rates predict heating, and for `SemiclassicalRates`,
+    which has no steady state);
   - `τ_c`: the cooling time constant (unitful) — the exponential time constant
     ``1/(A_- - A_+)`` for `AdiabaticElimination` (`NaN` if heated), the
     integral relaxation time of the phonon number from the method's initial
-    state for `SaturatedRates` and `IntegratedTransient`, and the selected
-    spectral relaxation time for `LiouvillianSpectrum`;
+    state for `SaturatedRates` and `IntegratedTransient`, the selected
+    spectral relaxation time for `LiouvillianSpectrum`, and the local
+    ``1/W_\\mathrm{SC}`` at the given occupation for `SemiclassicalRates`;
   - `A_plus`, `A_minus`: the rate coefficients (`AdiabaticElimination` only,
     `nothing` otherwise);
   - `model`: the [`MotionalModel`](@ref) built for the estimate (full-model
@@ -369,6 +371,7 @@ couplings. The chosen [`CoolingMethod`](@ref) defines the time:
 
 - [`AdiabaticElimination`](@ref): the exponential rate-equation time;
 - [`SaturatedRates`](@ref): the integral time of a phonon-number rate equation;
+- [`SemiclassicalRates`](@ref): the local rate of classical motion at a given energy;
 - [`IntegratedTransient`](@ref): the integral time from a thermal initial state;
 - [`LiouvillianSpectrum`](@ref): a phonon-number-weighted spectral estimate.
 
@@ -377,13 +380,13 @@ adds ``\\dot n_\\mathrm{heat}`` to the rate equations, or equal raising and
 lowering bath terms to the full model (see [`motional_model`](@ref)). `ρ`
 defaults to `steadystate(model)` for `AdiabaticElimination` and
 `IntegratedTransient`: it supplies the internal state for the rates or the
-initial product state, respectively. `SaturatedRates` and
-`LiouvillianSpectrum` ignore `ρ`.
+initial product state, respectively. `SaturatedRates`, `SemiclassicalRates` and
+`LiouvillianSpectrum` ignore `ρ`; `SemiclassicalRates` refuses `heating_rate`.
 Rates use inverse `time_unit` and times use `time_unit`. All methods require
 an internal model without beat harmonics.
 
 !!! note
-    All methods but `SaturatedRates` are defined in the
+    All methods but `SaturatedRates` and `SemiclassicalRates` are defined in the
     `LevelsQuantumToolboxExt` package extension, i.e. only once
     QuantumToolbox.jl is loaded.
 """

@@ -16,6 +16,8 @@ loaded, [`motional_model`](@ref) builds the internal ⊗ Fock master equation
 and [`cooling_metrics`](@ref) compares rate-equation, integrated-transient and
 Liouvillian-spectrum estimates. [`PhononRateEquation`](@ref) keeps the rate
 description valid for saturated sidebands, without a joint model.
+[`semiclassical_cooling_rates`](@ref) gives the drift of hot modes, jointly for many
+modes, from classical motion.
 
 The solver-independent [`BandLiouvillian`](@ref) restricts motional
 coherences for numerical calculations. [`IntegratedTransientSolver`](@ref)
@@ -30,6 +32,7 @@ using LinearAlgebra
 using FastGaussQuadrature: gausslegendre
 using Interpolations: linear_interpolation
 using OrdinaryDiffEqVerner: Vern7
+using Random: AbstractRNG, default_rng, randexp
 using SciMLBase: ContinuousCallback, ODEProblem, solve, successful_retcode, terminate!
 using SparseArrays:
     SparseArrays,
@@ -78,5 +81,6 @@ include("motion.jl")
 include("liouvillian.jl")
 include("quantum_toolbox.jl")
 include("rate_equation.jl")
+include("semiclassical.jl")
 
 end # module

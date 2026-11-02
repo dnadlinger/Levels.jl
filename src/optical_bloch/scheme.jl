@@ -128,18 +128,30 @@ function LaserScheme(beams; frame_reference=nothing, frame_kind::Symbol=:levels)
 end
 
 """
-One motional mode of the trapped ion: its (angular) frequency and unit
-direction in the frame with the quantisation axis along ẑ.
+One motional mode of the trapped ion: its (angular) frequency, unit direction
+in the frame with the quantisation axis along ẑ, and `participation`.
 
-Constructed via `MotionalMode(frequency, direction)`; the direction is
-normalised.
+`participation` ``b`` is the magnitude of the modelled ion's component in the
+mass-weighted normal-mode vector of a crystal, so that its position along
+`direction` is ``b\\sqrt{ħ/2Mω}(a + a^†)`` with ``M`` the ion's own mass. It
+scales every Lamb–Dicke factor of the mode, beams and recoil alike; 1 is a
+single ion. A sign of the mode vector at this ion belongs in `direction`.
+
+Constructed via `MotionalMode(frequency, direction; participation = 1)`; the
+direction is normalised.
 """
 struct MotionalMode{F<:Quantity}
     frequency::F
     direction::SVector{3,Float64}
+    participation::Float64
 end
 
-function MotionalMode(frequency, direction)
+function MotionalMode(frequency, direction; participation::Real=1)
+    (isfinite(participation) && participation > 0) || throw(
+        ArgumentError(
+            "The mode participation must be positive and finite, got $participation",
+        ),
+    )
     if !(frequency isa Unitful.Frequency) || frequency <= zero(frequency)
         throw(
             ArgumentError(
@@ -152,7 +164,7 @@ function MotionalMode(frequency, direction)
         throw(ArgumentError("The mode direction must be a non-zero real 3-vector"))
     end
     d = SVector{3,Float64}(real.(direction))
-    MotionalMode(frequency, d ./ sqrt(sum(abs2, d)))
+    MotionalMode(frequency, d ./ sqrt(sum(abs2, d)), Float64(participation))
 end
 
 export LaserBeam, LaserScheme, MotionalMode

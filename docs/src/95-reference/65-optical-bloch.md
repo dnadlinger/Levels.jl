@@ -12,8 +12,8 @@ Loading [QuantumToolbox.jl](https://qutip.org/QuantumToolbox.jl/) activates
 `LevelsQuantumToolboxExt`, which provides `steadystate(model)` and
 `liouvillian(model)` for internal and motional models, as well as
 [`motional_model`](@ref), [`populations`](@ref), [`mean_phonon_number`](@ref)
-and [`cooling_metrics`](@ref) (other than for [`SaturatedRates`](@ref), which
-needs no solver package). See also
+and [`cooling_metrics`](@ref) (other than for [`SaturatedRates`](@ref) and
+[`SemiclassicalRates`](@ref), which need no solver package). See also
 [QuantumToolbox integration](@ref reference-quantum-toolbox).
 
 ## Internal-state model
@@ -102,6 +102,7 @@ that time:
 | :----- | :----------------- | :--------------- |
 | [`AdiabaticElimination`](@ref) | Independent rate equations | Exponential occupation relaxation |
 | [`SaturatedRates`](@ref) | Nearest-neighbour phonon rate equations with non-perturbative rates | Normalised transient area from a specified thermal initial state |
+| [`SemiclassicalRates`](@ref) | Classical coherent-state trajectories of all modes | Local ``1/W_\mathrm{SC}`` at a specified occupation |
 | [`IntegratedTransient`](@ref) | Joint internal ⊗ Fock model, with optional coherence restriction | Normalised transient area from a specified thermal initial state |
 | [`LiouvillianSpectrum`](@ref) | Joint internal ⊗ Fock model, with optional coherence restriction | Time of a selected eigenmode with appreciable phonon-number weight |
 
@@ -149,6 +150,16 @@ gives the non-exponential shape of a hot transient, with full distributions and 
 closure for their moments, at the cost of a few internal-state solves per
 octave in ``n``. [`PhononRateEquation`](@ref) has the method and its limits.
 
+[`semiclassical_cooling_rates`](@ref) goes further from the quantum motion: it replaces
+it by a classical trajectory at fixed energy and averages the laser power
+([Bartolotta et al. (2024)](https://arxiv.org/abs/2411.18818), "PACMAN"). This gives
+only the drift ``W_\mathrm{SC}(\vec n)``, without recoil, ``A_+`` or a steady
+occupation, but the rate of each mode then depends on the energy in all others, which
+the independent modes of the rate equations cannot capture, at a cost independent of
+the Fock ladder. The two meet for one mode: the net rate of a
+[`PhononRateEquation`](@ref) rung tends to the semiclassical drift as ``n`` grows,
+given a `bandwidth` of at least ``2 \max_b |η_b| \sqrt{n}`` harmonics.
+
 The two joint-model estimates describe different aspects of this relaxation.
 For a diagonalisable generator, a decaying occupation transient has the form
 
@@ -184,6 +195,9 @@ with positive weights.
   hot state, or wherever ``ηΩ\sqrt{n}`` may reach the relevant internal
   linewidth, with [`time_to_nbar`](@ref) for a target occupation. Verify the
   result with a joint model; the rate equation assumes independent modes.
+- Use [`semiclassical_cooling_rates`](@ref) and [`thermal_cooling_rates`](@ref) for
+  the competition between many hot modes (a Doppler-cooled crystal), or for a capture
+  range at occupations beyond a Fock ladder. It says nothing about the final occupation.
 - Use [`LiouvillianSpectrum`](@ref) for late-time occupation relaxation.
   Check the selected mode as `num_fock`, `num_eigenpairs` and
   `weight_threshold` change. If the time keeps increasing with Fock size, it
@@ -222,6 +236,17 @@ AdiabaticElimination
 SaturatedRates
 PhononRateEquation
 time_to_nbar
+```
+
+### Semiclassical rates
+
+```@docs
+SemiclassicalRates
+semiclassical_phonon_rates
+semiclassical_cooling_rates
+thermal_cooling_rates
+HarmonicBalance
+TimeAverage
 ```
 
 ### Integrated transients
