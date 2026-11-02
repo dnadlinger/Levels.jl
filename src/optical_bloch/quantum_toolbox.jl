@@ -264,6 +264,7 @@ initial-state-dependent time of [`IntegratedTransient`](@ref).
 struct LiouvillianSpectrum <: CoolingMethod
     num_fock::Union{Int,Vector{Int}}
     lamb_dicke_order::Float64
+    bandwidth::Union{Nothing,Int}
     num_eigenpairs::Int
     dense_limit::Int
     weight_threshold::Float64
@@ -272,6 +273,7 @@ end
 function LiouvillianSpectrum(;
     num_fock,
     lamb_dicke_order::Real=1,
+    bandwidth=nothing,
     num_eigenpairs::Integer=12,
     dense_limit::Integer=2500,
     weight_threshold::Real=0.1,
@@ -280,6 +282,7 @@ function LiouvillianSpectrum(;
     LiouvillianSpectrum(
         num_fock isa Integer ? Int(num_fock) : collect(Int, num_fock),
         Float64(lamb_dicke_order),
+        isnothing(bandwidth) ? nothing : Int(bandwidth),
         num_eigenpairs,
         dense_limit,
         weight_threshold,

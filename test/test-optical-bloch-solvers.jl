@@ -531,6 +531,12 @@ end
         cooling_metrics(s.model, s.mc, LiouvillianSpectrum(; num_fock=8, dense_limit=0))
     @test sm_k.nbar == sm.nbar
     @test sm_k.τ_c ≈ sm.τ_c rtol = 1e-8
+    # A coherence band around the diagonal holds the slow mode.
+    sm_b =
+        cooling_metrics(s.model, s.mc, LiouvillianSpectrum(; num_fock=8, bandwidth=1))
+    @test sm_b.method.bandwidth == 1 && isnothing(sm.method.bandwidth)
+    @test sm_b.nbar ≈ sm.nbar rtol = 1e-3
+    @test sm_b.τ_c ≈ sm.τ_c rtol = 1e-2
     # Other initial states from the solver carried in the result.
     ρ0 = thermal_state(Matrix(steadystate(s.model).data), it.model.num_fock, 3.0)
     @test integral_relaxation_time(it.solver, ρ0) ≈ ae.τ_c rtol = 0.02

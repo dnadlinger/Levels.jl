@@ -683,7 +683,7 @@ function OpticalBloch.cooling_metrics(
         time_unit,
     )
     # One factorisation serves the stationary state and the slow spectrum.
-    bl = BandLiouvillian(mm)
+    bl = BandLiouvillian(mm; bandwidth=method.bandwidth)
     modes = relaxation_modes(
         bl;
         num_eigenpairs=method.num_eigenpairs,
