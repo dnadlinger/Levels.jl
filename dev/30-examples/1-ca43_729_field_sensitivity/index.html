@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Field-insensitive 729 nm transitions of ⁴³Ca⁺ · Levels.jl</title><meta name="title" content="Field-insensitive 729 nm transitions of ⁴³Ca⁺ · Levels.jl"/><meta property="og:title" content="Field-insensitive 729 nm transitions of ⁴³Ca⁺ · Levels.jl"/><meta property="twitter:title" content="Field-insensitive 729 nm transitions of ⁴³Ca⁺ · Levels.jl"/><meta name="description" content="Documentation for Levels.jl."/><meta property="og:description" content="Documentation for Levels.jl."/><meta property="twitter:description" content="Documentation for Levels.jl."/><meta property="og:url" content="https://dnadlinger.github.io/Levels.jl/30-examples/1-ca43_729_field_sensitivity/"/><meta property="twitter:url" content="https://dnadlinger.github.io/Levels.jl/30-examples/1-ca43_729_field_sensitivity/"/><link rel="canonical" href="https://dnadlinger.github.io/Levels.jl/30-examples/1-ca43_729_field_sensitivity/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">Levels.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Levels</a></li><li><a class="tocitem" href="../../05-conventions/">Conventions and examples</a></li><li><a class="tocitem" href="../../06-bases/">Bases and representations</a></li><li><span class="tocitem">Examples</span><ul><li class="is-active"><a class="tocitem" href>Field-insensitive 729 nm transitions of ⁴³Ca⁺</a><ul class="internal"><li><a class="tocitem" href="#Sensitivity-across-the-field"><span>Sensitivity across the field</span></a></li><li><a class="tocitem" href="#Insensitive-points"><span>Insensitive points</span></a></li><li><a class="tocitem" href="#Second-order-field-dependence"><span>Second-order field dependence</span></a></li><li><a class="tocitem" href="#All-components-at-B_0"><span>All components at <span>$B_0$</span></span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../90-contributing/">Contributing guidelines</a></li><li><a class="tocitem" href="../../91-developer/">Developer docs</a></li><li><span class="tocitem">API reference</span><ul><li><a class="tocitem" href="../../95-reference/10-states/">Levels and states</a></li><li><a class="tocitem" href="../../95-reference/15-basis/">State bases</a></li><li><a class="tocitem" href="../../95-reference/20-species/">Species and transitions</a></li><li><a class="tocitem" href="../../95-reference/25-zeeman/">Zeeman structure</a></li><li><a class="tocitem" href="../../95-reference/26-structure/">Level structure in a static field</a></li><li><a class="tocitem" href="../../95-reference/27-hyperfine/">Hyperfine structure</a></li><li><a class="tocitem" href="../../95-reference/30-species-data/">Atomic data</a></li><li><a class="tocitem" href="../../95-reference/40-rates/">Rabi frequencies and coupling strengths</a></li><li><a class="tocitem" href="../../95-reference/45-multipole/">Angular momentum and multipole couplings</a></li><li><a class="tocitem" href="../../95-reference/46-laser/">Laser frequencies</a></li><li><a class="tocitem" href="../../95-reference/47-polarisability/">Light shifts and polarisabilities</a></li><li><a class="tocitem" href="../../95-reference/50-optics/">Optics utilities</a></li><li><a class="tocitem" href="../../95-reference/60-periodic-dynamics/">Periodic dynamics</a></li><li><a class="tocitem" href="../../95-reference/65-optical-bloch/">Optical Bloch equations</a></li><li><a class="tocitem" href="../../95-reference/70-quantum-toolbox/">QuantumToolbox integration</a></li><li><a class="tocitem" href="../../95-reference/99-index/">Index</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Field-insensitive 729 nm transitions of ⁴³Ca⁺</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Field-insensitive 729 nm transitions of ⁴³Ca⁺</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/dnadlinger/Levels.jl/blob/master/examples/ca43_729_field_sensitivity.jl#" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="example-ca43-729"><a class="docs-heading-anchor" href="#example-ca43-729">Field-insensitive 729 nm transitions of ⁴³Ca⁺</a><a id="example-ca43-729-1"></a><a class="docs-heading-anchor-permalink" href="#example-ca43-729" title="Permalink"></a></h1><p>The components of the 729 nm S<span>$_{1/2}$</span> ↔ D<span>$_{5/2}$</span> quadrupole transition of ⁴³Ca⁺ (nuclear spin <span>$I = 7/2$</span>) connect sublevels whose energies depend on the magnetic field in different ways. Where the field derivatives of the two states match, a component is insensitive to field fluctuations to first order. In this example, we find the two field-independent points of <span>$|S_{1/2}, F = 4, m_F = 4⟩ ↔ |D_{5/2}, F = 4, m_F = 3⟩$</span>, as discussed by <a href="https://doi.org/10.1103/PhysRevA.75.032506">Benhelm et al. (2007)</a>, and the second-order field dependence that remains there.</p><p>The lower state is stretched: it is the product state <span>$|m_J = 1/2, m_I = 7/2⟩$</span>, whose energy is linear in the field, with a slope of about <span>$μ_B/h = 14$</span> MHz/mT. The D<span>$_{5/2}$</span> hyperfine intervals are only 7 to 26 MHz (against 3.2 GHz in the ground state), so a few tenths of a millitesla are enough to enter the intermediate-field regime on the way to <span>$I$</span> and <span>$J$</span> becoming decoupled there. Thus, the field sensitivities of most upper eigenstates change drastically with fields in that range, and can cross that of the ground state.</p><h2 id="Sensitivity-across-the-field"><a class="docs-heading-anchor" href="#Sensitivity-across-the-field">Sensitivity across the field</a><a id="Sensitivity-across-the-field-1"></a><a class="docs-heading-anchor-permalink" href="#Sensitivity-across-the-field" title="Permalink"></a></h2><p>An <a href="../../95-reference/26-structure/#Levels.Eigenstructure"><code>Eigenstructure</code></a> solves the hyperfine and Zeeman Hamiltonian of whole manifolds at one static field, labelling each eigenstate by the zero-field <span>$(F, m_F)$</span> level it connects to adiabatically. <a href="../../95-reference/25-zeeman/#Levels.zeeman_sensitivity-Tuple{OneElectronSpecies, Pair{&lt;:StateSpec, &lt;:StateSpec}}"><code>zeeman_sensitivity</code></a> gives the exact field derivative of a transition&#39;s angular frequency from these eigenstates. From the stretched <span>$|S_{1/2}, F = 4, m_F = 4⟩$</span> state, there are 15 possible 729 nm quadrupole transitions (<span>$|Δm| ≤ 2$</span>) connecting it to D<span>$_{5/2}$</span> states with <span>$m_F&#39; = 2, …, 6$</span>:</p><pre><code class="language-julia hljs">using CairoMakie
+using Levels
+using PrettyTables
+using Unitful
+
+structure(B) = Eigenstructure(ca43, &quot;S_1/2&quot;, &quot;D_5/2&quot;; B)
+lower = StateSpec(&quot;S_1/2 F=4&quot;, 4)
+clock = lower =&gt; StateSpec(&quot;D_5/2 F=4&quot;, 3)
+uppers = [
+    StateSpec(level, m) for level in hyperfine_levels(ca43, &quot;D_5/2&quot;) for
+    m in 2:6 if m ≤ level.f
+]
+
+# Levels.jl works in angular frequencies; we give field derivatives to cyclic
+# frequencies.
+to_cyclic(x) = x / (2π * u&quot;rad&quot;)
+
+fields = range(0, 1; length=101) .* u&quot;mT&quot;
+slopes = stack(fields) do B
+    s = structure(B)
+    [ustrip(u&quot;MHz/mT&quot;, to_cyclic(zeeman_sensitivity(s, lower =&gt; u))) for u in uppers]
+end
+
+fig = Figure(; size=(600, 440))
+ax = Axis(fig[1, 1]; xlabel=&quot;B / mT&quot;, ylabel=&quot;df/dB / MHz mT⁻¹&quot;, yticks=-20:10:30)
+tightlimits!(ax, Left(), Right())
+hlines!(ax, 0; color=:black, linewidth=0.75)
+
+# Grey lines for other transitions.
+k = findfirst(==(clock.second), uppers)
+for i in eachindex(uppers)
+    i == k &amp;&amp; continue
+    label = i == 1 ? &quot;other components&quot; : nothing
+    lines!(ax, ustrip.(u&quot;mT&quot;, fields), slopes[i, :]; color=:grey70, label)
+end
+
+# Orange-red line for chosen &quot;clock&quot; transition.
+lines!(
+    ax,
+    ustrip.(u&quot;mT&quot;, fields),
+    slopes[k, :];
+    color=:orangered,
+    linewidth=2,
+    label=&quot;(F′, m′) = (4, 3)&quot;,
+)
+Legend(fig[2, 1], ax; orientation=:horizontal, framevisible=false)
+fig</code></pre><img src="3ed28579.png" alt="Example block output"/><p>The (6, 6) component connects two stretched states, so its sensitivity is constant; the others bend as the field breaks up the D<span>$_{5/2}$</span> hyperfine coupling. Several cross zero steeply, while (4, 3) only grazes zero, crossing it near 0.34 mT and again near 0.50 mT.</p><h2 id="Insensitive-points"><a class="docs-heading-anchor" href="#Insensitive-points">Insensitive points</a><a id="Insensitive-points-1"></a><a class="docs-heading-anchor-permalink" href="#Insensitive-points" title="Permalink"></a></h2><p>Given brackets read off the plot, <a href="../../95-reference/27-hyperfine/#Levels.insensitive_field-Tuple{HyperfineOneElectronSpecies, Pair, Tuple{Union{Unitful.Quantity{T, 𝐌 𝐈^-1 𝐓^-2, U}, Unitful.Level{L, S, Unitful.Quantity{T, 𝐌 𝐈^-1 𝐓^-2, U}} where {L, S}} where {T, U}, Union{Unitful.Quantity{T, 𝐌 𝐈^-1 𝐓^-2, U}, Unitful.Level{L, S, Unitful.Quantity{T, 𝐌 𝐈^-1 𝐓^-2, U}} where {L, S}} where {T, U}}}"><code>insensitive_field</code></a> refines both zeros by root finding on the exact <a href="../../95-reference/25-zeeman/#Levels.zeeman_sensitivity-Tuple{OneElectronSpecies, Pair{&lt;:StateSpec, &lt;:StateSpec}}"><code>zeeman_sensitivity</code></a>:</p><pre><code class="language-julia hljs">B₁ = insensitive_field(ca43, clock, (0.30u&quot;mT&quot;, 0.40u&quot;mT&quot;))
+B₀ = insensitive_field(ca43, clock, (0.45u&quot;mT&quot;, 0.55u&quot;mT&quot;))
+round.(u&quot;Gauss&quot;, (B₁, B₀); digits=4)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(3.3766 Gauss, 4.9583 Gauss)</code></pre><p>These are the 3.38 G and 4.96 G of Benhelm et al.; we pick the higher of the two for the rest of this example.</p><h2 id="Second-order-field-dependence"><a class="docs-heading-anchor" href="#Second-order-field-dependence">Second-order field dependence</a><a id="Second-order-field-dependence-1"></a><a class="docs-heading-anchor-permalink" href="#Second-order-field-dependence" title="Permalink"></a></h2><p>At these points the transition frequency <span>$f$</span> depends on the field only quadratically. Levels.jl does not have a built-in function for obtaining the quadratic sensitivity, but we can easily evaluate it ourselves using perturbation theory.</p><p>The static field enters the Hamiltonian as <span>$H(B) = H_\mathrm{hfs} + B M_z$</span>, with <span>$M_z$</span> the magnetic-moment operator along the quantisation axis, so a change of the field by <span>$δB$</span> is the perturbation <span>$δB\, M_z$</span>. Thus, second-order perturbation theory gives:</p><p class="math-container">\[\frac{d^2 E_k}{dB^2} = 2 \sum_{j \neq k} \frac{|\langle j | M_z | k \rangle|^2}{E_k - E_j}.\]</p><p>The diagonal elements <span>$\langle k | M_z | k \rangle$</span> are the first derivatives that <code>zeeman_sensitivity</code> takes the difference of. <a href="../../95-reference/26-structure/#Levels.zeeman_hamiltonian-Tuple{Eigenstructure, Any}"><code>zeeman_hamiltonian(s, b)</code></a> returns <span>$\vec b ⋅ \vec M$</span> in the field eigenbasis of the structure, indexed by <a href="../../95-reference/26-structure/#Levels.basis-Tuple{Eigenstructure}"><code>Levels.basis</code></a> like the energies from <a href="../../95-reference/26-structure/#Levels.offsets-Tuple{Eigenstructure}"><code>offsets</code></a>. <span>$M_z$</span> couples only states of equal <span>$m_F$</span> within a manifold, so we can skip the vanishing elements (which also avoids having to deal with energy crossings):</p><pre><code class="language-julia hljs">function curvature(structure, state)
+    M_z = zeeman_hamiltonian(structure, [0, 0, 1]u&quot;mT&quot;) / u&quot;mT&quot;
+    E = offsets(structure)
+    k = stateindex(Levels.basis(structure), state)
+    terms = (
+        2abs2(M_z[j, k]) / (E[k] - E[j]) for
+        j in eachindex(E) if j ≠ k &amp;&amp; !iszero(M_z[j, k])
+    )
+    sum(terms; init=0.0u&quot;rad/µs/mT^2&quot;)
+end
+curvature(structure(B₀), lower)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">0.0 rad μs^-1 mT^-2</code></pre><p>The stretched ground state has no partner of equal <span>$m_F$</span>, so its energy has no curvature, and that of the clock transition is that of its upper state alone. Taking into account the factor 1/2 in front of the second derivative in the quadratic <span>$(B - B_i)^2$</span> term of a Taylor series, it matches the second-order shift of ±16 kHz/G² given by Benhelm et al.:</p><pre><code class="language-julia hljs">diff_curvature(s, (lower, upper)) = curvature(s, upper) - curvature(s, lower)
+diff_quadratic_coeff(B) = to_cyclic(diff_curvature(structure(B), clock)) / 2
+round.(u&quot;kHz/Gauss^2&quot;, (diff_quadratic_coeff(B₁), diff_quadratic_coeff(B₀)); digits=2)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(-16.3 kHz Gauss^-2, 15.5 kHz Gauss^-2)</code></pre><p>Around these points, the corresponding parabolas are a good approximation of the exact <a href="../../95-reference/20-species/#Levels.transition_frequency-Tuple{OneElectronSpecies, Pair}"><code>transition_frequency</code></a> (for which we freshly diagonalise the Hamiltonian at every point):</p><pre><code class="language-julia hljs">f(B) = transition_frequency(structure(B), clock)
+Δf(B) = ustrip(u&quot;kHz&quot;, cyclic(f(B) - f(B₀)))
+
+near = range(0.25, 0.6; length=141) .* u&quot;mT&quot;
+fig = Figure(; size=(600, 400))
+ax = Axis(fig[1, 1]; xlabel=&quot;B / mT&quot;, ylabel=&quot;(f − f(B₀)) / kHz&quot;)
+lines!(ax, ustrip.(u&quot;mT&quot;, near), Δf.(near); color=:black, label=&quot;exact&quot;)
+for Bᵢ in (B₁, B₀)
+    δB = ustrip.(u&quot;mT&quot;, range(-0.07, 0.07; length=31) .* u&quot;mT&quot;)
+    lines!(
+        ax,
+        ustrip(u&quot;mT&quot;, Bᵢ) .+ δB,
+        Δf(Bᵢ) .+ ustrip(u&quot;kHz/mT^2&quot;, diff_quadratic_coeff(Bᵢ)) .* δB .^ 2;
+        color=:orangered,
+        linestyle=:dash,
+        label=&quot;second order&quot;,
+    )
+end
+tightlimits!(ax, Left(), Right())
+axislegend(ax; position=:ct, unique=true)
+fig</code></pre><img src="df36beb9.png" alt="Example block output"/><p>Between the two points, the transition moves by only 13 kHz, and its sensitivity stays below 0.13 MHz/mT, 1 % of that of the ground state.</p><h2 id="All-components-at-B_0"><a class="docs-heading-anchor" href="#All-components-at-B_0">All components at <span>$B_0$</span></a><a id="All-components-at-B_0-1"></a><a class="docs-heading-anchor-permalink" href="#All-components-at-B_0" title="Permalink"></a></h2><p>For comparison, the components from the stretched state at <span>$B_0$</span>, with <span>$Δf$</span> their offset from the clock transition:</p><pre><code class="language-julia hljs">s₀ = structure(B₀)
+table = stack(uppers; dims=1) do upper
+    pair = lower =&gt; upper
+    [
+        upper.level.f,
+        upper.m,
+        ustrip(u&quot;MHz&quot;, cyclic(transition_frequency(s₀, pair) - f(B₀))),
+        ustrip(u&quot;MHz/mT&quot;, to_cyclic(zeeman_sensitivity(s₀, pair))),
+        ustrip(u&quot;MHz/mT^2&quot;, to_cyclic(diff_curvature(s₀, pair))),
+    ]
+end
+pretty_table(
+    HTML,
+    table;
+    column_labels=[&quot;F′&quot;, &quot;m′&quot;, &quot;Δf / MHz&quot;, &quot;df/dB / MHz mT⁻¹&quot;, &quot;d²f/dB² / MHz mT⁻²&quot;],
+    formatters=[fmt__printf(&quot;%d&quot;, 1:2), fmt__printf(&quot;%.3f&quot;, 3:5)],
+)</code></pre><table>
+  <thead>
+    <tr class = "columnLabelRow">
+      <th style = "font-weight: bold; text-align: right;">F′</th>
+      <th style = "font-weight: bold; text-align: right;">m′</th>
+      <th style = "font-weight: bold; text-align: right;">Δf / MHz</th>
+      <th style = "font-weight: bold; text-align: right;">df/dB / MHz mT⁻¹</th>
+      <th style = "font-weight: bold; text-align: right;">d²f/dB² / MHz mT⁻²</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">2</td>
+      <td style = "text-align: right;">2</td>
+      <td style = "text-align: right;">24.956</td>
+      <td style = "text-align: right;">13.544</td>
+      <td style = "text-align: right;">28.763</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">3</td>
+      <td style = "text-align: right;">2</td>
+      <td style = "text-align: right;">9.550</td>
+      <td style = "text-align: right;">-7.244</td>
+      <td style = "text-align: right;">25.012</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">3</td>
+      <td style = "text-align: right;">3</td>
+      <td style = "text-align: right;">16.762</td>
+      <td style = "text-align: right;">12.773</td>
+      <td style = "text-align: right;">24.319</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">4</td>
+      <td style = "text-align: right;">2</td>
+      <td style = "text-align: right;">-4.900</td>
+      <td style = "text-align: right;">-14.801</td>
+      <td style = "text-align: right;">-15.240</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">4</td>
+      <td style = "text-align: right;">3</td>
+      <td style = "text-align: right;">0.000</td>
+      <td style = "text-align: right;">0.000</td>
+      <td style = "text-align: right;">3.100</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">4</td>
+      <td style = "text-align: right;">4</td>
+      <td style = "text-align: right;">5.449</td>
+      <td style = "text-align: right;">15.481</td>
+      <td style = "text-align: right;">13.977</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">5</td>
+      <td style = "text-align: right;">2</td>
+      <td style = "text-align: right;">-23.072</td>
+      <td style = "text-align: right;">-11.577</td>
+      <td style = "text-align: right;">-21.915</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">5</td>
+      <td style = "text-align: right;">3</td>
+      <td style = "text-align: right;">-19.114</td>
+      <td style = "text-align: right;">-1.848</td>
+      <td style = "text-align: right;">-13.456</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">5</td>
+      <td style = "text-align: right;">4</td>
+      <td style = "text-align: right;">-14.834</td>
+      <td style = "text-align: right;">9.102</td>
+      <td style = "text-align: right;">-3.843</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">5</td>
+      <td style = "text-align: right;">5</td>
+      <td style = "text-align: right;">-10.274</td>
+      <td style = "text-align: right;">20.927</td>
+      <td style = "text-align: right;">5.389</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">6</td>
+      <td style = "text-align: right;">2</td>
+      <td style = "text-align: right;">-47.480</td>
+      <td style = "text-align: right;">-8.011</td>
+      <td style = "text-align: right;">-16.619</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">6</td>
+      <td style = "text-align: right;">3</td>
+      <td style = "text-align: right;">-43.711</td>
+      <td style = "text-align: right;">0.210</td>
+      <td style = "text-align: right;">-13.963</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">6</td>
+      <td style = "text-align: right;">4</td>
+      <td style = "text-align: right;">-39.811</td>
+      <td style = "text-align: right;">8.973</td>
+      <td style = "text-align: right;">-10.134</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">6</td>
+      <td style = "text-align: right;">5</td>
+      <td style = "text-align: right;">-35.783</td>
+      <td style = "text-align: right;">18.246</td>
+      <td style = "text-align: right;">-5.389</td>
+    </tr>
+    <tr class = "dataRow">
+      <td style = "text-align: right;">6</td>
+      <td style = "text-align: right;">6</td>
+      <td style = "text-align: right;">-31.633</td>
+      <td style = "text-align: right;">27.988</td>
+      <td style = "text-align: right;">0.000</td>
+    </tr>
+  </tbody>
+</table>
+<p>Only the (6, 6) component, between two stretched states, has no curvature, but it is the most sensitive of all. The (6, 3) component is nearly insensitive at <span>$B_0$</span> too, as its sensitivity crosses zero near 0.51 mT, but its curvature is 4.5 times that of the clock transition.</p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../06-bases/">« Bases and representations</a><a class="docs-footer-nextpage" href="../../90-contributing/">Contributing guidelines »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 3 November 2026 21:46">Tuesday 3 November 2026</span>. Using Julia version 1.13.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
