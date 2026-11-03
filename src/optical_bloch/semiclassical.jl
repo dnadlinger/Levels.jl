@@ -36,7 +36,8 @@ state without motion, and over `num_phases` random sets of secular phases. This
 is the only engine for several oscillating modes, whose incommensurate frequencies
 have no common period. Both times and `num_phases` need convergence checks: the
 averaging time must far exceed the inverse of the smallest mode frequency
-difference. `window = :hann` weights the average by a Hann window, suppressing the
+difference, which the default only suits for differences above a few 100 kHz (angular
+frequency difference × time ≫ 2π), or the beat of two modes adds to their rates. `window = :hann` weights the average by a Hann window, suppressing the
 beats between modes much better than the `:rectangular` average of the original
 method at equal length.
 """
@@ -509,7 +510,9 @@ Returns the cooling rates ``W_{\\mathrm{th},μ} = -⟨R_μ⟩/\\bar n_μ`` of a 
 thermal states of the mean occupations `nbars` per mode (inverse `time_unit`), and the
 standard errors of this Monte Carlo estimate from `num_samples` draws of the coherent
 occupations, whose distribution is the Glauber–Sudarshan ``P`` function: independent
-exponentials of means `nbars` (Bartolotta et al., Eqs. (31)–(34)). `engine` defaults
+exponentials of means `nbars` (Bartolotta et al., Eqs. (31)–(34)). The estimate is the
+ratio of the sample means of ``R_μ`` and ``n_μ``, which removes the noise of the drawn
+occupations where ``R_μ ∝ n_μ``, with a bias of order 1/`num_samples`. `engine` defaults
 to [`HarmonicBalance`](@ref) for one mode and [`TimeAverage`](@ref) otherwise. Every
 random number is drawn from `rng` before the threaded evaluation, so results do not
 depend on the number of threads.
@@ -541,11 +544,16 @@ function thermal_cooling_rates(
             phonon_rates(p, view(samples, :, k), selected, rng)
     end
     per_sample = dropdims(sum(rates; dims=2); dims=2) ./ num_phases
-    means = vec(sum(per_sample; dims=2)) ./ num_samples
-    variances = vec(sum(abs2, per_sample .- means; dims=2)) ./ (num_samples - 1)
+    # The ratio of the sample means: R ∝ n at low energy, so that the noise of the drawn
+    # occupations themselves cancels, as it would not on dividing by the exact mean.
+    mean_occupations = vec(sum(samples; dims=2)) ./ num_samples
+    W = .-vec(sum(per_sample; dims=2)) ./ num_samples ./ mean_occupations
+    residuals = per_sample .+ W .* samples
+    variances = vec(sum(abs2, residuals; dims=2)) ./ (num_samples - 1)
     (;
-        rates=(.-means ./ nbars) .* time_unit^-1,
-        standard_errors=(sqrt.(variances ./ num_samples) ./ nbars) .* time_unit^-1,
+        rates=W .* time_unit^-1,
+        standard_errors=(sqrt.(variances ./ num_samples) ./ mean_occupations) .*
+                        time_unit^-1,
     )
 end
 

@@ -238,6 +238,12 @@ end
     σ = ustrip(u"µs^-1", only(sampled.standard_errors))
     @test abs(W - W_exact) < 4σ
     @test σ < 0.2 * abs(W_exact)
+    # The drawn occupations' noise cancels where the rate hardly varies: to well below
+    # the 1/√num_samples of dividing by the exact mean.
+    cold = thermal_cooling_rates(model, [mc], [0.01]; num_samples=100, rng=Xoshiro(2))
+    limit = only(semiclassical_cooling_rates(model, [mc], [1e-4]))
+    @test only(cold.rates) ≈ limit rtol = 0.02
+    @test only(cold.standard_errors) < 0.01 * abs(limit)
     # Reproducible given the generator.
     again = thermal_cooling_rates(model, [mc], [nbar]; num_samples=400, rng=Xoshiro(1))
     @test again.rates == sampled.rates
