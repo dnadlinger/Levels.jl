@@ -29,6 +29,13 @@ between angular frequencies and decay rates, then
 and the construction of operators by hand. The API reference documents the core
 calculations, `Levels.PeriodicDynamics` and `Levels.OpticalBloch`.
 
-Julia 1.12 or newer is required. Install with `using Pkg; Pkg.add("Levels")` once
-the package is registered; a development checkout can be loaded with
-`Pkg.develop(path="/path/to/Levels.jl")`.
+## Examples
+
+- [Field-insensitive 729 nm transitions of ⁴³Ca⁺](@ref example-ca43-729): field
+  sensitivity of the S₁/₂ ↔ D₅/₂ components, the first-order insensitive points of
+  one of them and the second-order shift that remains there.
+
+The pages are generated from the [Literate.jl](https://fredrikekre.github.io/Literate.jl)
+scripts in `examples/`, which you can also run yourself in the `docs` environment, e.g.
+`julia --project=docs examples/ca43_729_field_sensitivity.jl`. You can also convert them
+to Jupyter notebooks if you prefer (see Literate.jl documentation).

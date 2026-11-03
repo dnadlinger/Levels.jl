@@ -1,11 +1,24 @@
 using Levels
+using CairoMakie
 using Documenter
+using Literate
 
 DocMeta.setdocmeta!(Levels, :DocTestSetup, :(using Levels); recursive=true)
 
+# The scripts in examples/ are rendered to (gitignored) pages here, in this order.
+const examples_dir = joinpath(@__DIR__, "src", "30-examples")
+rm(examples_dir; force=true, recursive=true)
+for (i, name) in enumerate(("ca43_729_field_sensitivity",))
+    source = joinpath(@__DIR__, "..", "examples", "$name.jl")
+    Literate.markdown(source, examples_dir; name="$i-$name")
+end
+CairoMakie.activate!(; px_per_unit=2)
+# Documenter tries text/html first, which is over its size threshold for these figures.
+CairoMakie.disable_mime!("text/html", "svg", "pdf")
+
 # Add titles of sections and overrides page titles
 const titles = Dict(
-    # "10-tutorials" => "Tutorials", # example folder title
+    "30-examples" => "Examples",
     "91-developer.md" => "Developer docs",
     "95-reference" => "API reference",
 )

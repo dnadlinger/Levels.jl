@@ -85,11 +85,12 @@ Build once, or run a live preview:
 
 ```bash
 julia --project=docs docs/make.jl
-julia --project=docs -e 'using LiveServer; servedocs()'
+julia --project=docs docs/serve.jl
 ```
 
 The workspace already points at the local package; no separate `Pkg.develop`
-step is needed. Repository scaffolding comes from BestieTemplate/Copier;
+step is needed. The pages under "Examples" are rendered from the Literate.jl
+scripts in `examples/`. Repository scaffolding comes from BestieTemplate/Copier;
 `copier update` may overwrite changes to generated files.
 
 ## Releases
