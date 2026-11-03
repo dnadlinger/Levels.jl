@@ -2,17 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog],
-and this project adheres to [Semantic Versioning].
+The format is based on [Keep a Changelog], and this project adheres to [Semantic
+Versioning].
 
 ## [Unreleased]
 
-- Initial release: unitful atomic level-structure calculations for
-  trapped-ion and laser-spectroscopy work (transition rates, Zeeman and hyperfine
-  structure, multipole couplings, polarisabilities and light shifts), with
-  ⁸⁸Sr⁺, ⁴⁰Ca⁺, ⁴³Ca⁺ and ¹³⁸Ba⁺ datasets; `Levels.PeriodicDynamics` for transitions
-  under periodic driving; `Levels.OpticalBloch` for multi-level optical Bloch
-  equations and laser cooling.
+- Initial release: unitful atomic level-structure calculations for trapped-ion and
+  laser-spectroscopy work (transition rates, Zeeman and hyperfine structure, multipole
+  couplings, polarisabilities and light shifts), with ⁸⁸Sr⁺, ⁴⁰Ca⁺, ⁴³Ca⁺ and ¹³⁸Ba⁺
+  datasets; `Levels.PeriodicDynamics` for transitions under periodic driving;
+  `Levels.OpticalBloch` for multi-level optical Bloch equations and laser cooling.
 
 <!-- Links -->
 

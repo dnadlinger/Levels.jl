@@ -4,7 +4,8 @@
     "start_indented": false
   },
   "MD013": {
-    "line_length": 1000,
+    "code_blocks": false,
+    "line_length": 88,
     "tables": false
   },
   "MD024": {

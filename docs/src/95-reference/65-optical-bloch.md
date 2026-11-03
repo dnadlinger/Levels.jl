@@ -9,12 +9,11 @@ Levels.OpticalBloch
 ```
 
 Loading [QuantumToolbox.jl](https://qutip.org/QuantumToolbox.jl/) activates
-`LevelsQuantumToolboxExt`, which provides `steadystate(model)` and
-`liouvillian(model)` for internal and motional models, as well as
-[`motional_model`](@ref), [`populations`](@ref), [`mean_phonon_number`](@ref)
-and [`cooling_metrics`](@ref) (other than for [`SaturatedRates`](@ref) and
-[`SemiclassicalRates`](@ref), which need no solver package). See also
-[QuantumToolbox integration](@ref reference-quantum-toolbox).
+`LevelsQuantumToolboxExt`, which provides `steadystate(model)` and `liouvillian(model)`
+for internal and motional models, as well as [`motional_model`](@ref),
+[`populations`](@ref), [`mean_phonon_number`](@ref) and [`cooling_metrics`](@ref) (other
+than for [`SaturatedRates`](@ref) and [`SemiclassicalRates`](@ref), which need no solver
+package). See also [QuantumToolbox integration](@ref reference-quantum-toolbox).
 
 ## Internal-state model
 
@@ -53,8 +52,8 @@ recoil_moment
 
 ### Joint internal and motional model
 
-The joint model and all three cooling methods require an internal model
-without beat harmonics.
+The joint model and all three cooling methods require an internal model without beat
+harmonics.
 
 ```@docs
 motional_model
@@ -65,11 +64,11 @@ HeatingLabel
 
 ## States and observables
 
-`steadystate(model)` returns the internal or joint density matrix (the
-period average for an internal model with a single beat frequency).
-[`populations`](@ref) takes an internal state, obtained from a joint state
-with `QuantumToolbox.ptrace(ρ, 1)`. [`mean_phonon_number`](@ref) and
-[`fock_populations`](@ref) take the joint state directly.
+`steadystate(model)` returns the internal or joint density matrix (the period average
+for an internal model with a single beat frequency). [`populations`](@ref) takes an
+internal state, obtained from a joint state with `QuantumToolbox.ptrace(ρ, 1)`.
+[`mean_phonon_number`](@ref) and [`fock_populations`](@ref) take the joint state
+directly.
 
 ```@docs
 populations
@@ -81,10 +80,10 @@ phonon_number_operator
 
 ### Thermal initial states
 
-The thermal helpers truncate and renormalise a geometric distribution.
-Their `nbar` parameter is the mean of the untruncated distribution; its
-truncated direct expectation can be smaller. [`fock_truncation`](@ref)
-chooses a ladder size from the discarded thermal tail.
+The thermal helpers truncate and renormalise a geometric distribution. Their `nbar`
+parameter is the mean of the untruncated distribution; its truncated direct expectation
+can be smaller. [`fock_truncation`](@ref) chooses a ladder size from the discarded
+thermal tail.
 
 ```@docs
 thermal_populations
@@ -94,9 +93,8 @@ fock_truncation
 
 ## Cooling estimates and dynamics
 
-[`cooling_metrics`](@ref) is the common entry point for the steady occupation
-and a relaxation time per mode. The methods attach different meanings to
-that time:
+[`cooling_metrics`](@ref) is the common entry point for the steady occupation and a
+relaxation time per mode. The methods attach different meanings to that time:
 
 | Method | Motional treatment | Meaning of `τ_c` |
 | :----- | :----------------- | :--------------- |
@@ -108,9 +106,9 @@ that time:
 
 ### Estimator comparison
 
-Adiabatic elimination replaces the joint dynamics by nearest-neighbour phonon
-rate equations with cooling and heating rates ``nA_-`` and ``(n+1)A_+``. Without
-background heating, the mean occupation obeys
+Adiabatic elimination replaces the joint dynamics by nearest-neighbour phonon rate
+equations with cooling and heating rates ``nA_-`` and ``(n+1)A_+``. Without background
+heating, the mean occupation obeys
 
 ```math
 \dot{\bar n} = -W(\bar n - \bar n_∞), \qquad
@@ -119,61 +117,59 @@ W = A_- - A_+, \qquad
 ```
 
 so all three methods give the time constant ``1/W`` in this regime
-([Eschner et al. (2003)](https://doi.org/10.1364/JOSAB.20.001003),
-Eqs. (6)–(8)).
+([Eschner et al. (2003)](https://doi.org/10.1364/JOSAB.20.001003), Eqs. (6)–(8)).
 
-The reduction requires Lamb–Dicke confinement and internal relaxation much
-faster than motional evolution. The sideband coupling must remain weak enough
-to avoid saturating the internal resonance it addresses. In EIT cooling, the
-narrow dressed-state linewidth can set this scale, so ``ηΩ/ω_m`` alone is not a
-general validity test ([Morigi (2003)](https://doi.org/10.1103/PhysRevA.67.033402),
-discussion after Eq. (33) and comparison with quantum Monte Carlo in Fig. 3).
-Sideband matrix elements grow as ``\sqrt{n}``, making the initial occupation
-relevant to validity. The Lamb–Dicke expansion and adiabatic elimination are
-separate approximations: a first-order joint model (`lamb_dicke_order = 1`)
-still retains coherent, saturated sideband dynamics.
+The reduction requires Lamb–Dicke confinement and internal relaxation much faster than
+motional evolution. The sideband coupling must remain weak enough to avoid saturating
+the internal resonance it addresses. In EIT cooling, the narrow dressed-state linewidth
+can set this scale, so ``ηΩ/ω_m`` alone is not a general validity test
+([Morigi (2003)](https://doi.org/10.1103/PhysRevA.67.033402), discussion after Eq. (33)
+and comparison with quantum Monte Carlo in Fig. 3). Sideband matrix elements grow as
+``\sqrt{n}``, making the initial occupation relevant to validity. The Lamb–Dicke
+expansion and adiabatic elimination are separate approximations: a first-order joint
+model (`lamb_dicke_order = 1`) still retains coherent, saturated sideband dynamics.
 
-Outside the rate-equation regime, cooling can be non-exponential and the
-motional state need not remain thermal.
-[Scharnhorst et al. (2018)](https://doi.org/10.1103/PhysRevA.98.023424)
-demonstrate this for EIT cooling: strong spin–motion coupling disrupts the
-dark state and slows the initial cooling (Sec. IV.B.2, Fig. 7). Their comparison
-of analytical rates, master-equation simulations and experiment illustrates
-the breakdown of the reduced theory (Sec. V.4, Fig. 13).
+Outside the rate-equation regime, cooling can be non-exponential and the motional state
+need not remain thermal.
+[Scharnhorst et al. (2018)](https://doi.org/10.1103/PhysRevA.98.023424) demonstrate this
+for EIT cooling: strong spin–motion coupling disrupts the dark state and slows the
+initial cooling (Sec. IV.B.2, Fig. 7). Their comparison of analytical rates,
+master-equation simulations and experiment illustrates the breakdown of the reduced
+theory (Sec. V.4, Fig. 13).
 
-[`SaturatedRates`](@ref) keeps a rate equation for the phonon populations, but
-evaluates its rates without expanding in the sideband coupling, including the
-Franck–Condon factors of [Morigi et al. (1999)](https://doi.org/10.1103/PhysRevA.59.3797)
-at all orders in ``η``. It recovers adiabatic elimination for weak sideband
-coupling and models saturation through a frozen-coefficient ladder calculation.
-It propagates a full phonon distribution without a closure for its moments, at
-the cost of a few internal-state solves per octave in ``n``. The local rates
-match the ladder's drift and diffusion unless an empirical Fock-window closure
-or positivity clipping replaces the diffusion. Recoil includes the correlation
-between emission rate and motional phase. Neither local matching nor harmonic
-convergence guarantees the accuracy of the full distribution, mean trajectory
-or steady occupation; the cold and hot benchmarks cover selected regimes.
+[`SaturatedRates`](@ref) keeps a rate equation for the phonon populations, but evaluates
+its rates without expanding in the sideband coupling, including the Franck–Condon
+factors of [Morigi et al. (1999)](https://doi.org/10.1103/PhysRevA.59.3797) at all
+orders in ``η``. It recovers adiabatic elimination for weak sideband coupling and models
+saturation through a frozen-coefficient ladder calculation. It propagates a full phonon
+distribution without a closure for its moments, at the cost of a few internal-state
+solves per octave in ``n``. The local rates match the ladder's drift and diffusion
+unless an empirical Fock-window closure or positivity clipping replaces the diffusion.
+Recoil includes the correlation between emission rate and motional phase. Neither local
+matching nor harmonic convergence guarantees the accuracy of the full distribution, mean
+trajectory or steady occupation; the cold and hot benchmarks cover selected regimes.
 [`PhononRateEquation`](@ref) describes the approximations and their limits.
 
-The equation's `diagnostics` records each solved node before interpolation and
-added external heating. For example, `filter(d -> d.source == :window || d.clipped,
-r.diagnostics)` selects nodes whose window closure or positivity floor may
-change the calculated diffusion. Each [`Levels.OpticalBloch.RungRateDiagnostics`](@ref)
-also contains the raw cumulants, selected total rate and the status of any
-attempted window ratio, including rejected ratios.
+The equation's `diagnostics` records each solved node before interpolation and added
+external heating. For example,
+`filter(d -> d.source == :window || d.clipped, r.diagnostics)` selects nodes whose
+window closure or positivity floor may change the calculated diffusion. Each
+[`Levels.OpticalBloch.RungRateDiagnostics`](@ref) also contains the raw cumulants,
+selected total rate and the status of any attempted window ratio, including rejected
+ratios.
 
 [`semiclassical_cooling_rates`](@ref) goes further from the quantum motion: it replaces
 it by a classical trajectory at fixed energy and averages the laser power
 ([Bartolotta et al. (2024)](https://arxiv.org/abs/2411.18818), "PACMAN"). This gives
 only the drift ``W_\mathrm{SC}(\vec n)``, without recoil, ``A_+`` or a steady
 occupation, but the rate of each mode then depends on the energy in all others, which
-the independent modes of the rate equations cannot capture, at a cost independent of
-the Fock ladder. The two meet for one mode: the net rate of a
-[`PhononRateEquation`](@ref) rung tends to the semiclassical drift as ``n`` grows,
-given a `bandwidth` of at least ``2 \max_b |η_b| \sqrt{n}`` harmonics.
+the independent modes of the rate equations cannot capture, at a cost independent of the
+Fock ladder. The two meet for one mode: the net rate of a [`PhononRateEquation`](@ref)
+rung tends to the semiclassical drift as ``n`` grows, given a `bandwidth` of at least
+``2 \max_b |η_b| \sqrt{n}`` harmonics.
 
-The two joint-model estimates describe different aspects of this relaxation.
-For a diagonalisable generator, a decaying occupation transient has the form
+The two joint-model estimates describe different aspects of this relaxation. For a
+diagonalisable generator, a decaying occupation transient has the form
 
 ```math
 \bar n(t) - \bar n_∞ = ∑_j a_j e^{λ_j t}, \qquad
@@ -182,53 +178,48 @@ For a diagonalisable generator, a decaying occupation transient has the form
     = -\frac{∑_j a_j/λ_j}{∑_j a_j},
 ```
 
-where the sum runs over decaying modes and the coefficients ``a_j`` depend on
-both the initial state and the phonon-number operator.
-[`IntegratedTransient`](@ref) returns ``τ_\mathrm{int}``, an effective cooling
-time for that preparation. This avoids choosing a fit window for an
-exponential, but retains the dependence on initial occupation
-([Kulosa et al. (2023)](https://doi.org/10.1088/1367-2630/acd13b),
-Eqs. (10)–(14), Fig. 2(c) and Fig. C1). [`LiouvillianSpectrum`](@ref) returns
-``-1/\mathrm{Re}\,λ`` for a selected mode with appreciable phonon-number
-weight. The selection is independent of the preparation; the mode's
-contribution to an actual transient is not. A weak tail can set the late-time
-exponent while contributing little to the integral. Since the ``a_j`` can be
-negative or complex, the integral is not generally an average of modal times
-with positive weights.
+where the sum runs over decaying modes and the coefficients ``a_j`` depend on both the
+initial state and the phonon-number operator. [`IntegratedTransient`](@ref) returns
+``τ_\mathrm{int}``, an effective cooling time for that preparation. This avoids choosing
+a fit window for an exponential, but retains the dependence on initial occupation
+([Kulosa et al. (2023)](https://doi.org/10.1088/1367-2630/acd13b), Eqs. (10)–(14), Fig.
+2(c) and Fig. C1). [`LiouvillianSpectrum`](@ref) returns ``-1/\mathrm{Re}\,λ`` for a
+selected mode with appreciable phonon-number weight. The selection is independent of the
+preparation; the mode's contribution to an actual transient is not. A weak tail can set
+the late-time exponent while contributing little to the integral. Since the ``a_j`` can
+be negative or complex, the integral is not generally an average of modal times with
+positive weights.
 
 #### Choosing a method
 
-- Use [`AdiabaticElimination`](@ref) for parameter scans of unsaturated cooling
-  (it is also accurate in Doppler cooling, where the rates per quantum hardly
-  vary along the occupied part of the ladder), then check promising points with
-  a joint model. Compare both occupation and time; agreement at weak drive does
-  not establish accuracy near a saturated optimum.
-- Use [`SaturatedRates`](@ref) as the objective for optimising cooling from a
-  hot state, or wherever ``ηΩ\sqrt{n}`` may reach the relevant internal
-  linewidth, with [`time_to_nbar`](@ref) for a target occupation. Verify the
-  result with a joint model; the rate equation assumes independent modes.
-- Use [`semiclassical_cooling_rates`](@ref) and [`thermal_cooling_rates`](@ref) for
-  the competition between many hot modes (a Doppler-cooled crystal), or for a capture
-  range at occupations beyond a Fock ladder. It says nothing about the final occupation.
-- Use [`LiouvillianSpectrum`](@ref) for late-time occupation relaxation.
-  Check the selected mode as `num_fock`, `num_eigenpairs` and
-  `weight_threshold` change. If the time keeps increasing with Fock size, it
-  has not converged; evaluate cooling from the relevant preparation with
-  [`IntegratedTransient`](@ref) or [`cooling_curve`](@ref).
-- Use [`IntegratedTransient`](@ref) for an effective cooling time from a
-  specified initial occupation, especially a hot state. Set `initial_nbar`
-  to that preparation and allow [`fock_truncation`](@ref) to size the ladder.
-  Use [`cooling_curve`](@ref) to verify the time to reach a target occupation
-  number or the shape of the transient.
+- Use [`AdiabaticElimination`](@ref) for parameter scans of unsaturated cooling (it is
+  also accurate in Doppler cooling, where the rates per quantum hardly vary along the
+  occupied part of the ladder), then check promising points with a joint model. Compare
+  both occupation and time; agreement at weak drive does not establish accuracy near a
+  saturated optimum.
+- Use [`SaturatedRates`](@ref) as the objective for optimising cooling from a hot state,
+  or wherever ``ηΩ\sqrt{n}`` may reach the relevant internal linewidth, with
+  [`time_to_nbar`](@ref) for a target occupation. Verify the result with a joint model;
+  the rate equation assumes independent modes.
+- Use [`semiclassical_cooling_rates`](@ref) and [`thermal_cooling_rates`](@ref) for the
+  competition between many hot modes (a Doppler-cooled crystal), or for a capture range
+  at occupations beyond a Fock ladder. It says nothing about the final occupation.
+- Use [`LiouvillianSpectrum`](@ref) for late-time occupation relaxation. Check the
+  selected mode as `num_fock`, `num_eigenpairs` and `weight_threshold` change. If the
+  time keeps increasing with Fock size, it has not converged; evaluate cooling from the
+  relevant preparation with [`IntegratedTransient`](@ref) or [`cooling_curve`](@ref).
+- Use [`IntegratedTransient`](@ref) for an effective cooling time from a specified
+  initial occupation, especially a hot state. Set `initial_nbar` to that preparation and
+  allow [`fock_truncation`](@ref) to size the ladder. Use [`cooling_curve`](@ref) to
+  verify the time to reach a target occupation number or the shape of the transient.
 
-For either joint method, check convergence in Fock size, coherence bandwidth
-and Lamb–Dicke order. A narrow `bandwidth` can greatly reduce memory and
-factorisation cost; increase it until the observables stabilise. For a hot
-state, use [`cooling_curve`](@ref) with `fock = true` to inspect the upper tail
-during cooling. A first-order model can make a large ladder affordable, but
-its accuracy must be checked over the occupied states.
-When comparing the spectral and integral times, use the same model settings:
-their defaults differ in both `lamb_dicke_order` and `bandwidth`.
+For either joint method, check convergence in Fock size, coherence bandwidth and
+Lamb–Dicke order. A narrow `bandwidth` can greatly reduce memory and factorisation cost;
+increase it until the observables stabilise. For a hot state, use
+[`cooling_curve`](@ref) with `fock = true` to inspect the upper tail during cooling. A
+first-order model can make a large ladder affordable, but its accuracy must be checked
+over the occupied states. When comparing the spectral and integral times, use the same
+model settings: their defaults differ in both `lamb_dicke_order` and `bandwidth`.
 
 ```@docs
 cooling_metrics
@@ -284,9 +275,9 @@ cooling_curve
 ## [Numerical methods](@id optical-bloch-numerical-methods)
 
 The plain-matrix forms work without QuantumToolbox. Hamiltonians use inverse
-`time_unit`, jumps inverse square-root `time_unit`. The tensor order is
-internal states first, last Fock mode fastest. Model-based constructors
-require the extension and supply the layout and units.
+`time_unit`, jumps inverse square-root `time_unit`. The tensor order is internal states
+first, last Fock mode fastest. Model-based constructors require the extension and supply
+the layout and units.
 
 ### Displacements and emission quadrature
 
@@ -307,8 +298,8 @@ expectation_row
 
 ### Steady states and transient integrals
 
-[`IntegratedTransientSolver`](@ref) supports arbitrary observables and
-initial states, including internal-state problems without Fock factors.
+[`IntegratedTransientSolver`](@ref) supports arbitrary observables and initial states,
+including internal-state problems without Fock factors.
 
 ```@docs
 IntegratedTransientSolver

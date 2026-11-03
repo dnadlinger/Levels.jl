@@ -8,8 +8,8 @@
 [![Docs workflow Status](https://github.com/dnadlinger/Levels.jl/actions/workflows/Docs.yml/badge.svg?branch=master)](https://github.com/dnadlinger/Levels.jl/actions/workflows/Docs.yml?query=branch%3Amaster)
 
 Levels.jl provides unitful atomic-structure and laser-dynamics calculations for
-trapped-ion spectroscopy, with data for ⁸⁸Sr⁺, ⁴⁰Ca⁺ and ⁴³Ca⁺. It requires Julia
-1.12 or newer.
+trapped-ion spectroscopy, with data for ⁸⁸Sr⁺, ⁴⁰Ca⁺ and ⁴³Ca⁺. It requires Julia 1.12
+or newer.
 
 ```julia
 using Levels, Unitful
@@ -18,17 +18,18 @@ clock = StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -1//2)
 cyclic(transition_frequency(s, clock))
 ```
 
-An `Eigenstructure` is the atom — a species, a basis of states and the static
-magnetic field, solved once — on which every calculation is built. See the
-[conventions and examples](docs/src/05-conventions.md) for angular
-frequencies, decay rates and transition pairs, and
-[bases and representations](docs/src/06-bases.md) for the matrices behind the
-structure and manual operator construction.
+An `Eigenstructure` is the atom — a species, a basis of states and the static magnetic
+field, solved once — on which every calculation is built. See the
+[conventions](docs/src/05-conventions.md) for units, states, basis transformations and
+manual operator construction.
 
 ## How to Cite
 
-If you use Levels.jl in your work, please cite using the reference given in [CITATION.cff](https://github.com/dnadlinger/Levels.jl/blob/master/CITATION.cff).
+If you use Levels.jl in your work, please cite using the reference given in
+[CITATION.cff](https://github.com/dnadlinger/Levels.jl/blob/master/CITATION.cff).
 
 ## Contributing
 
-If you want to make contributions of any kind, please first take a look into our [contributing guide directly on GitHub](docs/src/90-contributing.md) or the [contributing page on the website](https://dnadlinger.github.io/Levels.jl/dev/90-contributing/)
+If you want to make contributions of any kind, please first take a look into our
+[contributing guide directly on GitHub](docs/src/90-contributing.md) or the
+[contributing page on the website](https://dnadlinger.github.io/Levels.jl/dev/90-contributing/)
