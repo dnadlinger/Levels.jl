@@ -8,8 +8,8 @@
 [![Docs workflow Status](https://github.com/dnadlinger/Levels.jl/actions/workflows/Docs.yml/badge.svg?branch=master)](https://github.com/dnadlinger/Levels.jl/actions/workflows/Docs.yml?query=branch%3Amaster)
 
 Levels.jl provides unitful atomic-structure and laser-dynamics calculations for
-trapped-ion spectroscopy, with data for ⁸⁸Sr⁺, ⁴⁰Ca⁺ and ⁴³Ca⁺. It requires Julia 1.12
-or newer.
+trapped-ion spectroscopy, with data for ⁴⁰Ca⁺, ⁴³Ca⁺, ⁸⁸Sr⁺, and ¹³⁸Ba⁺. It requires
+Julia 1.12 or newer.
 
 ```julia
 using Levels, Unitful
