@@ -148,7 +148,9 @@ at all orders in ``η``. It reduces to adiabatic elimination as ``n → 0`` and
 reproduces the saturation of the cooling rate along the Fock ladder. It therefore
 gives the non-exponential shape of a hot transient, with full distributions and no
 closure for their moments, at the cost of a few internal-state solves per
-octave in ``n``. [`PhononRateEquation`](@ref) has the method and its limits.
+octave in ``n``. For a hot ion its steps are the drift and diffusion of the
+phonon number, so that the spread of the distribution follows the full model to
+a few percent. [`PhononRateEquation`](@ref) has the method and its limits.
 
 [`semiclassical_cooling_rates`](@ref) goes further from the quantum motion: it replaces
 it by a classical trajectory at fixed energy and averages the laser power

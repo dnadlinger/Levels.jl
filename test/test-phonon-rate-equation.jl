@@ -19,6 +19,8 @@ end
 ] setup=[OpticalBlochSetup] begin
     using QuantumToolbox: QuantumToolbox
 
+    using Levels.OpticalBloch: RungLadder, ladder_cumulants
+
     ω = angular(0.6u"MHz")
     s = sideband_toy(; γ=2π * 50.0u"kHz", ω, η=0.02, Ω=angular(20.0u"kHz"), δ=(-ω))
     ae = cooling_metrics(s.model, s.mc, AdiabaticElimination())
@@ -29,6 +31,19 @@ end
         @test r.raising_rates[1] ≈ ae.A_plus rtol = 5e-3
         @test steady_value(r) ≈ ae.nbar rtol = 5e-3
         @test integral_relaxation_time(r, 1.0) ≈ ae.τ_c rtol = 5e-3
+        # The ladder's current and diffusion are those of Poissonian steps n A₊, n A₋.
+        ladder = RungLadder(
+            s.model,
+            s.mc;
+            lamb_dicke_order=order,
+            bandwidth=2,
+            time_unit=u"µs",
+        )
+        for n in (1, 5)
+            c = ladder_cumulants(ladder, n)
+            @test c.net_rate * u"µs^-1" ≈ n * (ae.A_plus - ae.A_minus) rtol = 5e-3
+            @test c.diffusion * u"µs^-1" ≈ n * (ae.A_plus + ae.A_minus) rtol = 5e-3
+        end
     end
 
     # The ratio departs from A₊/A₋ along the ladder at order η⁴, in the full model too.
@@ -146,6 +161,70 @@ end
     ρ_internal = Matrix(steadystate(s.model).data)
     exact = cooling_curve(full, thermal_state(ρ_internal, num_fock, 5.0), ts)
     @test maximum(abs, nbar .- vec(exact.nbar)) < 0.15
+end
+
+@testitem "Phonon rate equation: the spread of a hot state follows the full model" tags=[
+    :integration,
+    :slow,
+] setup=[OpticalBlochSetup] begin
+    using QuantumToolbox: steadystate
+    using Levels.OpticalBloch: motional_model
+
+    # Beyond a sideband reach of one (n > 6 here), the total rate of a rung is the
+    # ladder's diffusion. From a Fock state, the mean and the variance of the
+    # populations then follow the full model, where the window's ratio would
+    # overstate the variance by 20 %.
+    ω = angular(0.6u"MHz")
+    s = sideband_toy(; γ=2π * 50.0u"kHz", ω, η=0.2, Ω=angular(200.0u"kHz"), δ=(-ω))
+    num_fock = 70
+    r = PhononRateEquation(s.model, s.mc; num_fock, bandwidth=6, node_ratio=1.25)
+    moments(p) = (
+        nbar=sum((0:(num_fock-1)) .* p);
+        (nbar, sum((0:(num_fock-1)) .^ 2 .* p) - nbar^2)
+    )
+    start = zeros(num_fock)
+    start[41] = 1
+    ts = [0.0, 63.0, 126.0, 190.0]
+    curve = cooling_curve(r, start, ts; fock=true)
+    bl = BandLiouvillian(
+        motional_model(s.model, s.mc; num_fock, lamb_dicke_order=Inf);
+        bandwidth=6,
+    )
+    ρ_internal = Matrix(steadystate(s.model).data)
+    exact = cooling_curve(bl, kron(ρ_internal, Diagonal(start)), ts; fock=true)
+    for j in 2:4
+        nbar, variance = moments(curve.fock[1][:, j])
+        nbar_exact, variance_exact = moments(exact.fock[1][:, j])
+        @test nbar ≈ nbar_exact rtol = 0.03
+        @test variance ≈ variance_exact rtol = 0.08
+    end
+end
+
+@testitem "Phonon rate equation: hot rungs are smooth and interpolate" tags=[
+    :integration,
+] setup=[OpticalBlochSetup] begin
+    # A Doppler-cooled Λ system up to n = 1000 (reach 2|η|√n ≈ 10): the net rates tend to
+    # the semiclassical drift, the total per quantum has no spikes along the ladder, and
+    # the default node spacing interpolates both to a few percent.
+    model = lambda_model(angular(-20.0u"MHz"), angular(-5.0u"MHz"))
+    mode = MotionalMode(angular(1.2u"MHz"), [1.0, 0.0, 1.0])
+    mc = motional_coupling(model, mode)
+    resolved =
+        PhononRateEquation(model, mc; num_fock=1001, bandwidth=20, node_ratio=1.05)
+    coarse = PhononRateEquation(model, mc; num_fock=1001, bandwidth=20)
+    net(r) = r.raising_rates .- r.lowering_rates
+    total(r) = r.raising_rates .+ r.lowering_rates
+    hot = 100:1000
+    semiclassical =
+        only.(semiclassical_phonon_rates(model, [mc], [n - 0.5]) for n in (100, 1000))
+    @test net(resolved)[100] ≈ semiclassical[1] rtol = 0.02
+    @test net(resolved)[1000] ≈ semiclassical[2] rtol = 0.02
+    @test maximum(abs.(net(coarse)[hot] ./ net(resolved)[hot] .- 1)) < 0.05
+    @test maximum(abs.(total(coarse)[hot] ./ total(resolved)[hot] .- 1)) < 0.05
+    per_quantum = total(resolved) ./ (1:1000)
+    @test maximum(per_quantum[2:end] ./ per_quantum[1:(end-1)]) < 1.1
+    @test minimum(per_quantum[2:end] ./ per_quantum[1:(end-1)]) > 0.9
+    @test all(total(resolved) .> abs.(net(resolved)))
 end
 
 @testitem "Phonon rate equation: dark Fock states" tags=[:integration] setup=[

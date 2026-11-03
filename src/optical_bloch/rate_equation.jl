@@ -65,17 +65,21 @@ Fock-resolved rate equations are the low-saturation result of Morigi et al.,
 Phys. Rev. A **59**, 3797 (1999), Eq. (15), and saturated sideband transfer in
 a two-state model that of Phatak et al., Phys. Rev. A **110**, 043116 (2024),
 Eqs. (66)–(68). Here, each rung is solved for arbitrary internal structure and
-drive, by combining two calculations:
-
-- The net rate ``Γ^↑_n - Γ^↓_n`` follows from the steady state of a ladder with
-  the couplings of rung ``n`` on every rung. It is the power absorbed from an
-  oscillation of amplitude ``∝\\sqrt{n}``, i.e. a Floquet problem with
-  `bandwidth` harmonics. The bare population of a Fock state would not do: on
-  a saturated sideband, it is coherently shared with its neighbour.
-- The ratio ``Γ^↑_n/Γ^↓_n`` follows from the steady state of the closed
-  internal ⊗ Fock system of the states ``n-2 … n+1``, with coherences within
-  `bandwidth`. The ladder cannot supply it from its diffusion, as saturated
-  steps are sub-Poissonian.
+drive, from the steady state of a ladder with the couplings of rung ``n`` on
+every rung: a Floquet problem with `bandwidth` harmonics, equivalent to the
+power absorbed from an oscillation of amplitude ``∝\\sqrt{n}``. The bare
+population of a Fock state would not do: on a saturated sideband, it is
+coherently shared with its neighbour. The net rate ``Γ^↑_n - Γ^↓_n`` is the
+mean phonon-number current of the ladder, and the total ``Γ^↑_n + Γ^↓_n`` its
+phonon-number diffusion: the second cumulant of its counting statistics, with
+the recoil of the emissions. Where the steps are directional (``Γ^↑_n/Γ^↓_n ≲
+0.8``, as they are where a cold steady occupation is decided) and the sideband
+reach ``2|η|\\sqrt{n}`` stays below one, the ratio ``Γ^↑_n/Γ^↓_n`` follows
+instead from the steady state of the closed internal ⊗ Fock system of the
+states ``n-2 … n+1``, which gives it directly rather than as the small
+difference of two rates; so it does wherever the ladder's steps are
+sub-Poissonian (a diffusion below the net rate, on a saturated sideband),
+which nearest-neighbour steps cannot be.
 
 For weak sidebands, the rates are ``Γ^↓_n = nA_-`` and ``Γ^↑_n = nA_+``.
 `lamb_dicke_order = Inf` uses the full
@@ -84,15 +88,20 @@ carrier averaged over the rung) and the emission rule of [`emission_rule`](@ref)
 in the recoil; `1` follows the first-order [`motional_model`](@ref) and also
 accepts a constant `recoil_moment`. Rungs are solved at nodes at most
 `node_ratio` apart, refined around zeros of the carrier and first-sideband
-elements (dark Fock states), and interpolated between; `node_ratio = 1` solves
-every rung. `heating_rate` adds ``n \\dot n_\\mathrm{heat}`` to both rates.
+elements (dark Fock states), and interpolated between (the net rate per
+quantum linearly in ``\\ln n``, the slower rate per quantum in logs);
+`node_ratio = 1` solves every rung. `heating_rate` adds ``n \\dot
+n_\\mathrm{heat}`` to both rates.
 
 As independent steps between neighbouring Fock states, this cannot represent
 sub-Poissonian statistics or the bypassing of a dark Fock state through a second
-sideband, and it loses accuracy where the net rate changes sign along the ladder.
-Modes are independent: their competition for the same scattering events is not
-captured. Requires an internal model without beat harmonics. A heated mode
-accumulates at the truncation, where `steady_value` depends on `num_fock`.
+sideband, next to which the ladder also understates the diffusion. Around a
+reach of one, both sources of the ratio are off by tens of percent, which
+affects the width of the distribution but neither its mean nor a cold steady
+occupation. Modes are independent: their competition for the same scattering
+events is not captured. Requires an internal model without beat harmonics. A
+heated mode accumulates at the truncation, where `steady_value` depends on
+`num_fock`.
 
 [`steady_value`](@ref), [`fock_populations`](@ref),
 [`integral_relaxation_time`](@ref), [`cooling_curve`](@ref) and
@@ -122,16 +131,23 @@ function PhononRateEquation(
     rungs = 1:(num_fock-1)
     nodes = rung_nodes(ladder, last(rungs), node_ratio)
     rates = [rung_rates(ladder, n) for n in nodes]
-    # The rates grow ∝ n without saturation, hence interpolation of the rate per
-    # quantum, and in logs as they span decades across a dark Fock state.
-    function on_all_rungs(node_rates)
-        nodes == rungs && return node_rates
-        rate_per_quantum = linear_interpolation(log.(nodes), log.(node_rates ./ nodes))
-        rungs .* exp.(rate_per_quantum.(log.(rungs)))
+    lowering, raising = first.(rates), last.(rates)
+    # The rates grow ∝ n without saturation, hence interpolation of the rates per
+    # quantum. The net rate is the physical quantity and nearly cancels at high n,
+    # so it is interpolated as such, and the slower rate in logs, as it spans decades
+    # across a dark Fock state. This keeps both rates positive.
+    if nodes != rungs
+        net = linear_interpolation(log.(nodes), (raising .- lowering) ./ nodes)
+        slower =
+            linear_interpolation(log.(nodes), log.(min.(lowering, raising) ./ nodes))
+        net_rates = rungs .* net.(log.(rungs))
+        slower_rates = rungs .* exp.(slower.(log.(rungs)))
+        lowering = slower_rates .+ max.(.-net_rates, 0)
+        raising = slower_rates .+ max.(net_rates, 0)
     end
     PhononRateEquation(
-        (on_all_rungs(first.(rates)) .+ rungs .* heating) .* time_unit^-1,
-        (on_all_rungs(last.(rates)) .+ rungs .* heating) .* time_unit^-1,
+        (lowering .+ rungs .* heating) .* time_unit^-1,
+        (raising .+ rungs .* heating) .* time_unit^-1,
         time_unit,
     )
 end
@@ -275,30 +291,64 @@ function recoil_fraction(ladder::RungLadder, n, jump)
     dot(ladder.recoil_weights[jump], kicks)
 end
 
-# Returns the rates (Γ↓, Γ↑) of rung n in inverse time units.
+# Returns the rates (Γ↓, Γ↑) of rung n in inverse time units: the nearest-neighbour
+# steps with the net rate and the diffusion of the ladder, Γ↑/Γ↓ = (B + D)/(B - D).
+# The window of four Fock states gives the ratio directly instead, to a few percent,
+# which is the better source while the steps are directional (Γ↑/Γ↓ ≲ 0.8, i.e. B ≲
+# 10|D|: the diffusion gives a small ratio as a small difference with ~1 % errors,
+# which the steady occupation amplifies) and the window resolves the steps (a sideband
+# reach 2|η|√n below one, the argument of the Bessel functions the displacement
+# elements tend to). Nearer balance, the few percent in the window's ratio are the
+# larger error, and the diffusion's ratio is exact at the balance point. Sub-Poissonian
+# steps (a diffusion below the net rate) have no nearest-neighbour representation and
+# take the window's ratio regardless. A window that disagrees with the ladder on the
+# direction (close to where both change sign along the ladder) defers to the diffusion.
 function rung_rates(ladder::RungLadder, n)
-    net_rate = ladder_net_rate(ladder, n)
-    window = fock_window(ladder, n)
-    ratio = stationary_rung_ratio(window)
-    # The net rate and ratio fix the total, unless they disagree on the direction
-    # (close to where both change sign along the ladder).
-    implied_total = net_rate * (ratio + 1) / (ratio - 1)
-    total = implied_total > 0 ? implied_total : upper_state_relaxation_rate(window)
+    (; net_rate, diffusion) = ladder_cumulants(ladder, n)
+    total = diffusion
+    directional = diffusion <= 10 * abs(net_rate)
+    if diffusion < abs(net_rate) || (directional && sideband_reach(ladder, n) <= 1)
+        ratio = stationary_rung_ratio(fock_window(ladder, n))
+        if (ratio - 1) * net_rate > 0
+            total = abs(net_rate) * (ratio + 1) / abs(ratio - 1)
+        end
+    end
     total = max(total, (1 + 1e-9) * abs(net_rate))
     ((total - net_rate) / 2, (total + net_rate) / 2)
 end
 
-# Γ↑ - Γ↓ from a ladder with the couplings of rung n throughout. The sums over the
-# Fock ladder ρ⁽ᵈ⁾ = ∑_m ⟨m + d|ρ|m⟩ then close among themselves, for coherence orders
-# d = -K … K. The net rate is the phonon-number current through the sidebands.
-function ladder_net_rate(ladder::RungLadder, n)
+# The sideband reach 2|η|√n of rung n, for the largest Lamb–Dicke factor of a beam or
+# of a two-photon transition between two beams (whose sidebands reach as far).
+function sideband_reach(ladder::RungLadder, n)
+    η = ladder.lamb_dicke_factors
+    largest = maximum(abs, η; init=0.0)
+    for i in eachindex(η), j in (i+1):lastindex(η)
+        largest = max(largest, abs(η[i] - η[j]))
+    end
+    2 * largest * sqrt(n)
+end
+
+ladder_net_rate(ladder::RungLadder, n) = ladder_cumulants(ladder, n).net_rate
+
+# The first two cumulant rates of the phonon-number current of a ladder with the
+# couplings of rung n throughout: `net_rate` Γ↑ - Γ↓ and `diffusion` Γ↑ + Γ↓. The
+# sums over the Fock ladder ρ⁽ᵈ⁾ = ∑_m ⟨m + d|ρ|m⟩ close among themselves, for
+# coherence orders d = -K … K. Counting the phonon number tilts the generator by
+# e^{iχs} per term, with s the change of m + d/2 it causes, L(χ) = L + iχ C₁ -
+# χ² C₂/2 + …, so that with the stationary ρ and the traceless x solving L x = -(C₁
+# - D) ρ, the cumulants are D = tr C₁ρ and B = tr C₂ρ + 2 tr C₁x. The first-order
+# ladder carries the recoil as the jumps c ⊗ η₀√n(E₊ + E₋), counted likewise; the
+# full-order ladder does not, and the recoil adds its diffusion 2n ∑ m₂ R per jump.
+function ladder_cumulants(ladder::RungLadder, n)
     hamiltonians = ladder_hamiltonians(ladder, n)
     num_states = ladder.num_states
     K = ladder.bandwidth
     num_orders = 2K + 1
     vector_size = num_states^2
     same_order = sparse(1.0I, num_orders, num_orders)
-    order_shift(k) = spdiagm(k => ones(num_orders - k), -k => ones(num_orders - k))
+    from_above(k) = spdiagm(k => ones(num_orders - k))   # ρ⁽ᵈ⁾ from ρ⁽ᵈ⁺ᵏ⁾
+    from_below(k) = spdiagm(-k => ones(num_orders - k))  # ρ⁽ᵈ⁾ from ρ⁽ᵈ⁻ᵏ⁾
+    state_identity = sparse(ComplexF64(1) * I, num_states, num_states)
     L =
         kron(
             same_order,
@@ -307,16 +357,62 @@ function ladder_net_rate(ladder::RungLadder, n)
             spdiagm(0 => -im * ladder.mode_frequency .* ((-K):K)),
             sparse(I, vector_size, vector_size),
         )
+    C1 = spzeros(ComplexF64, size(L)...)
+    C2 = spzeros(ComplexF64, size(L)...)
     for k in 1:K
-        L += kron(order_shift(k), -im * commutator_superoperator(hamiltonians[k+1]))
+        H = sparse(hamiltonians[k+1])
+        left = -im * kron(state_identity, H)                     # -i H_k ρ
+        right = im * kron(sparse(transpose(H)), state_identity)  # +i ρ H_k
+        L += kron(from_above(k) + from_below(k), left + right)
+        # E₋ᵏ on the ket or E₊ᵏ on the bra come from order d + k and lower the
+        # counted number by k/2; their mirror images raise it.
+        C1 +=
+            (k / 2) *
+            (kron(from_above(k), right - left) + kron(from_below(k), left - right))
+        C2 += (k^2 / 4) * kron(from_above(k) + from_below(k), left + right)
     end
     if ladder.first_order
-        L += n * kron(2 * same_order + order_shift(2), ladder.recoil_dissipator)
+        shift = from_above(2) + from_below(2)
+        L += n * kron(2 * same_order + shift, ladder.recoil_dissipator)
+        # The kicks c ρ c† move both indices by ±1 (counted ±1, same order) or
+        # opposite ways (uncounted, order ± 2); the decay terms with E₊² or E₋² on
+        # one side count ±1 and change the order by 2.
+        kicks = sum(
+            m2 * kron(conj(c), c) for
+            (c, m2) in zip(ladder.jump_operators, ladder.recoil_second_moments)
+        )
+        decay = sum(
+            m2 * c' * c for
+            (c, m2) in zip(ladder.jump_operators, ladder.recoil_second_moments)
+        )
+        decay_left = kron(state_identity, decay)
+        decay_right = kron(sparse(transpose(decay)), state_identity)
+        C1 -= (n / 2) * kron(from_below(2) - from_above(2), decay_left - decay_right)
+        C2 +=
+            n *
+            (2 * kron(same_order, kicks) - kron(shift, decay_left + decay_right) / 2)
     end
     order_range(d) = (1:vector_size) .+ (d + K) * vector_size
-    ρ = stationary_vector(L, collect(order_range(0)[1:(num_states+1):end]))
-    coherence(d) = reshape(ρ[order_range(d)], num_states, num_states)
-    -2 * sum(k * imag(tr(coherence(k) * hamiltonians[k+1])) for k in 1:K)
+    diagonal = collect(order_range(0)[1:(num_states+1):end])
+    (; F, row) = trace_row_system(L, diagonal)
+    unit_trace = zeros(ComplexF64, size(L, 1))
+    unit_trace[row] = 1
+    ρ = F \ unit_trace
+    trace(v) = sum(v[diagonal])
+    net_rate = real(trace(C1 * ρ))
+    traceless = -(C1 * ρ .- net_rate .* ρ)
+    traceless[row] = 0
+    x = F \ traceless
+    finalize(F)
+    diffusion = real(trace(C2 * ρ) + 2 * trace(C1 * x))
+    if !ladder.first_order
+        ρ0 = reshape(ρ[order_range(0)], num_states, num_states)
+        diffusion += sum(
+            real(tr(c' * c * ρ0)) * 2n * m2 for
+            (c, m2) in zip(ladder.jump_operators, ladder.recoil_second_moments)
+        )
+    end
+    (; net_rate, diffusion)
 end
 
 # The null vector of the generator L whose entries `diagonal` sum to one.
@@ -378,19 +474,6 @@ function stationary_rung_ratio(window)
     steady = stationary_vector(bl.L, [bl.index[r, r] for r in 1:full_dimension(bl)])
     populations = fock_populations(bl, steady, 1)
     populations[window.upper_position] / populations[window.upper_position-1]
-end
-
-# The integral relaxation rate of the population of the upper state of the rung.
-function upper_state_relaxation_rate(window)
-    bl = window.liouvillian
-    occupied = zeros(bl.num_fock[1])
-    occupied[window.upper_position] = 1
-    upper_projector = kron(Diagonal(ones(bl.num_states)), Diagonal(occupied))
-    solver = IntegratedTransientSolver(bl, upper_projector)
-    from_upper =
-        upper_projector * steady_density_matrix(solver) * upper_projector /
-        steady_value(solver)
-    1 / ustrip(bl.time_unit, integral_relaxation_time(solver, from_upper))
 end
 
 phonon_numbers(r::PhononRateEquation) = 0:length(r.lowering_rates)
