@@ -1,5 +1,5 @@
 # Tests for the Eigenstructure: construction and validation, the accessor
-# interface, the basis identities of the "Bases and representations" page, the
+# interface, the basis identities of the "Conventions" page, the
 # zero-field limit and eigenvector gauge, partial and reordered bases, the
 # adiabatic labelling across hyperfine-constant signs and I/J orderings, and the
 # energy references.

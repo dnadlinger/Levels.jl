@@ -61,7 +61,7 @@ from [`Levels.hyperfine_reduction`](@ref).
 The structure form rotates the complete-manifold tensor component into the
 field eigenbases before selecting the labelled states, including their ``F``
 mixing. Any state of `coupled_basis(s)` may be named. Signs follow the
-structure's eigenvector gauge; [Bases and representations](@ref bases)
+structure's eigenvector gauge; [Conventions](@ref conventions)
 describes its zero-field limit and possible sign jumps in field sweeps.
 """
 function transition_amplitude(

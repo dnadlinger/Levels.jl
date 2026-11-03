@@ -23,7 +23,7 @@ The solver-independent [`BandLiouvillian`](@ref) restricts motional
 coherences for numerical calculations. [`IntegratedTransientSolver`](@ref)
 uses a sparse linear solve for steady states and integral relaxation times.
 Hamiltonians use angular-frequency units and jump operators square-root rate
-units; see [Conventions and examples](@ref conventions).
+units; see [Conventions](@ref conventions).
 """
 module OpticalBloch
 

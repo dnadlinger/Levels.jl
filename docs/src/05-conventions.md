@@ -1,192 +1,207 @@
-# [Conventions and examples](@id conventions)
+# [Conventions](@id conventions)
 
 ## [Frequencies, rates and energies](@id units)
 
-| Quantity | Convention |
-| --- | --- |
-| Optical and trap frequencies, Rabi frequencies and detunings | Angular frequency, returned in `rad µs⁻¹` (`u"rad/µs"`) |
-| Einstein A, population decay, cooling and heating rates | Events or quanta per time; no factor of 2π |
-| Laser linewidth | Lorentzian FWHM in angular-frequency units |
-| Hyperfine constants `a`, `b` | Energies: multiply a quoted cyclic frequency by `h` |
-| Hamiltonian matrices | `H/ħ`, in angular-frequency units |
-| Jump operators | Square root of a rate |
-| Electric-dipole components | Coulomb metres (`dipole_components`) |
+All frequencies, including Rabi frequencies, detunings and linewidths, are angular
+frequencies, returned in `u"rad/µs"`; Hamiltonian matrices represent ``H/ħ`` in the same
+units. For an excited state of lifetime ``τ`` decaying to a stable lower state, the
+natural Lorentzian linewidth (FWHM) in angular units is numerically equal to the decay
+rate ``τ^{-1}``.
 
-Angular frequencies carry Unitful's `rad` as a marker. The marker is
-dimensionless and therefore soft: Unitful identifies Hz, s⁻¹ and rad s⁻¹ with
-each other and cannot detect a missing factor of 2π, and a sum of a `rad µs⁻¹`
-and a plain `µs⁻¹` quantity silently drops the marker. Use `angular(50u"MHz")`
-for a stated cyclic frequency, and `cyclic(ω)` to display an angular result in
-Hz. Do not apply either conversion to an Einstein A or a heating rate, which
-stay plain inverse times. These conversions change the physical convention;
+Angular frequencies carry Unitful's `rad` as a marker. The marker is dimensionless and
+therefore soft: Unitful identifies Hz, s⁻¹ and rad s⁻¹ with each other and cannot detect
+a missing factor of 2π, and a sum of a `rad µs⁻¹` and a plain `µs⁻¹` quantity silently
+drops the marker. Use `angular(50u"MHz")` for a stated cyclic frequency, and `cyclic(ω)`
+to display an angular result in Hz. These conversions change the physical convention;
 `uconvert` only changes the units.
 
-`level_energy(species, level)` and `state_energy(s, state)` return energies in
-joules relative to the species' energy reference. `state_offset(s, state)` and
-`offsets(s)` return angular-frequency offsets from each fine-structure
-centroid. Use `transition_frequency(s, lower => upper)` for an interval: it
-keeps the centroid and offset terms separate, preserving small splittings
-within a manifold.
+`level_energy(species, level)` and `state_energy(s, state)` return energies in joules
+relative to the species' energy reference. `state_offset(s, state)` and `offsets(s)`
+return angular-frequency offsets from each fine-structure centroid. Use
+`transition_frequency(s, lower => upper)` for an interval: it keeps the centroid and
+offset terms separate, preserving small splittings within a manifold.
 
-`saturation_intensity(species, lower => upper)` returns `I_0 = ħω³/(6πc²τ)`,
-with `τ` the total lifetime of the upper level. For a fine-structure E1 pair,
-a component driven at unit geometric amplitude then has `|Ω|² = C² A/τ`, with
-`C` its Clebsch–Gordan coefficient and `A` the pair's Einstein coefficient. On a closed
-stretched transition, `|Ω| = Γ = 1/τ`. This is twice the two-level `I_sat` of the
-`s = I/I_sat = 2|Ω|²/Γ²` saturation-parameter convention. The saturation
-parameter of an individual component also depends on its angular and geometric
-strength.
+`saturation_intensity(species, lower => upper)` returns ``I_0 = ħω³/(6πc²τ)``, with
+``τ`` the total upper-level lifetime. At this intensity a closed stretched E1 transition
+has ``|Ω| = Γ = 1/τ``. This is twice the two-level ``I_{\mathrm{sat}}`` defined by
+``s = I/I_{\mathrm{sat}} = 2|Ω|²/Γ²``.
 
-## States, fields and the structure
+## [States, fields and the structure](@id bases)
 
-Levels accept strings such as `"D_5/2"`; hyperfine levels include an F suffix,
-for example `"D_5/2 F=4"`. `StateSpec(level, m)` uses m_J for a fine-structure
-level and m_F for a hyperfine level. Invalid magnetic projections are rejected.
-`StateBasis(species, levels...)` expands each level into increasing-m substates;
-for a hyperfine species a fine-structure shorthand expands all its F levels.
-Explicit state lists fix any desired ordering.
+Levels accept strings such as `"D_5/2"`; hyperfine levels include an ``F`` suffix, for
+example `"D_5/2 F=4"`. `StateSpec(level, m)` uses ``m_J`` for a fine-structure level and
+``m_F`` for a hyperfine level. Invalid magnetic projections are rejected.
+`StateBasis(species, levels...)` expands each level into increasing-``m`` substates; for
+a hyperfine species a fine-structure shorthand expands all its ``F`` levels. Explicit
+state lists fix any desired ordering.
 
-Transitions use `lower => upper` pairs. The static magnetic field is specified
-in exactly one place: the constructor of an [`Eigenstructure`](@ref),
-`Eigenstructure(species, basis; B)`, with `B` a signed scalar flux density
-along the quantisation axis ẑ (zero allowed, no default). The structure solves
-every fine-structure manifold the basis touches and is the atom all further
-calculations take:
+Transitions use `lower => upper` pairs. The static magnetic field is specified in
+exactly one place: the constructor of an [`Eigenstructure`](@ref),
+`Eigenstructure(species, basis; B)`, with `B` a signed scalar flux density along the
+quantisation axis ẑ (zero allowed, no default). The structure solves every
+fine-structure manifold the basis touches:
 
 ```@example conventions
-using Levels, Unitful
+using Levels, LinearAlgebra, Unitful
 B = 0.5u"mT"
 s = Eigenstructure(ca43, "S_1/2", "D_5/2"; B)
 ```
 
-**Species forms** use zero-field states, for example
-`transition_amplitude(ca43, pair)` or `polarisability(ca43, state, ω)`.
-**Structure forms** evaluate the labelled eigenstates at `field(s)`, for
-example `transition_amplitude(s, pair)` or `polarisability(s, state, ω)`.
-Model constructors take a structure: `LightShiftCoefficients(s, laser)`,
-`DrivenTransition(s, probe; …)` and `lindblad_model(s, scheme)`.
+All Cartesian vectors use fixed laboratory axes with the quantisation axis along ẑ.
+Reversing `B` leaves these axes, the ``m`` labels and polarisation handedness unchanged;
+the same axes apply at zero field. Oscillating magnetic fields use phasors in this
+frame, with ``\vec B_{\mathrm{ac}}(t) = \mathrm{Re}[\vec b\, e^{-iΩt}]``.
 
-Operators from a species form use the supplied coupled basis; operators from a
-structure form use its field eigenbasis, indexed by `Levels.basis(s)`.
-[Bases and representations](@ref bases) explains the eigenstate labels,
-partial bases, phase conventions and construction of manual operators.
+**Species forms**, such as `transition_amplitude(ca43, pair)`, use zero-field states.
+**Structure forms**, such as `transition_amplitude(s, pair)`, evaluate the labelled
+eigenstates at `field(s)`. Operator factories and model constructors taking `s` use its
+eigenbasis, indexed by `Levels.basis(s)`; species-form operators use the supplied
+coupled basis.
 
-## Beam geometry and signs
+Vectors and operators are plain Julia arrays without basis metadata. Users must
+therefore keep their basis, field, ordering and eigenvector phases consistent: equal
+matrix sizes cannot detect a mismatch. Using one `Eigenstructure` instance throughout a
+calculation keeps the built-in factories and model inputs consistent. The accessors and
+transformations below support manually constructed operators. Treat species, bases,
+structures and models, including their arrays, as read-only; accessors return stored
+data directly.
+
+### Product, coupled and field eigenbases
+
+Hyperfine coupling and the static field relate three bases, each suited to a different
+part of the calculation:
+
+- The **product basis** ``|m_J, m_I⟩`` is used internally to construct magnetic moments
+  and polarisability operators. Electronic projection varies slowest, nuclear projection
+  fastest, both increasing.
+- The **coupled basis** ``|F, m_F⟩`` uses zero-field quantum numbers; `coupled_basis(s)`
+  contains every state of each manifold, with increasing ``F`` and then increasing
+  ``m_F``. For a species without hyperfine structure, these are the ``|J, m_J⟩`` states.
+- The **field eigenbasis**, indexed by `Levels.basis(s)`, contains the selected
+  eigenstates at `field(s)`. For a hyperfine species, ``m_F`` remains exact; ``F``
+  labels the branch connected to that zero-field level, rather than a conserved angular
+  momentum.
+
+### Transformations between bases
+
+Two matrices relate these bases and determine how manually constructed operators enter a
+structure:
+
+- `U = Levels.coupling_transform(species, level)` contains the Clebsch–Gordan
+  coefficients ``⟨J m_J; I m_I | F m_F⟩`` for one manifold. A product-basis operator
+  becomes ``X_c = U^† X_p U`` in the coupled basis.
+- `W = eigenvectors(s)` has rows indexed by `coupled_basis(s)`; column ``k`` contains
+  the components of the eigenstate `Levels.basis(s)[k]`. Thus ``v_c = W v_e`` for state
+  vectors and ``X_e = W^† X_c W`` for operators. The latter transformation is
+  [`to_eigenbasis(s, X_c)`](@ref to_eigenbasis).
+
+For a product-basis operator, embed ``U^† X_p U`` into the corresponding manifold block
+of `coupled_basis(s)` before applying `to_eigenbasis`. Without hyperfine structure, the
+field does not mix states: ``W`` only selects and orders the ``|J, m_J⟩`` states. It is
+the identity matrix when `Levels.basis(s)` contains every state in exactly the order of
+`coupled_basis(s)`.
+
+### Partial and reordered bases
+
+The eigenproblem is always solved on complete manifolds; `Levels.basis(s)` selects and
+orders the eigenstates that operator matrices address. For a partial basis, ``W`` is
+rectangular and `to_eigenbasis` projects a complete coupled-basis operator onto the
+retained eigenstates. Scalar queries can still address any state of `coupled_basis(s)`.
+
+These projected matrix elements are exact, but truncated dynamics need not be:
+projection generally does not preserve products, ``(W^† X W)(W^† Y W) ≠ W^† X Y W``. In
+particular, discarded states no longer contribute as intermediate states.
+[`iscomplete`](@ref) identifies complete manifolds and documents which models require
+them.
+
+### Checking representations
+
+The columns of ``W`` are orthonormal, ``W^† W = I``, and diagonalise the
+centroid-relative Hamiltonian returned by `coupled_hamiltonian(s)`:
+
+```math
+W^† H_c W = \operatorname{diag}(\texttt{offsets(s)}).
+```
+
+This provides a check on the transformation and units:
+
+```@example conventions
+H_c = coupled_hamiltonian(s)
+maximum(abs, ustrip.(u"rad/µs", to_eigenbasis(s, H_c) - Diagonal(offsets(s))))
+```
+
+For a whole fine-structure pair, transforming a species-form coupling gives the
+structure-form coupling. Both use the same centroid frequency and Einstein A coefficient
+to set the physical scale.
+
+### Selecting ``F`` labels
+
+An ``F`` restriction in a structure-form coupling selects the labelled eigenstates
+**after** rotating the whole fine-structure pair. Restricting the zero-field operator
+first discards components on other ``F`` levels that contribute through field-induced
+mixing. These operations differ by tens of percent for the ⁴³Ca⁺ ``F = 4 → F = 4`` E2
+block at 0.5 mT.
+
+### [Manual operators](@id manual-operators)
+
+An operator defined through zero-field quantum numbers must be constructed over
+`coupled_basis(s)`, then transformed with `to_eigenbasis`. For example:
+
+```@example conventions
+cb = coupled_basis(s)
+X = zeros(ComplexF64, length(cb), length(cb)) .* u"rad/µs"
+X[stateindex(cb, "D_5/2 F=4", 1), stateindex(cb, "S_1/2 F=4", 0)] = angular(100u"kHz")
+C = to_eigenbasis(s, X)
+abs(C[stateindex(Levels.basis(s), "D_5/2 F=4", 1), stateindex(Levels.basis(s), "S_1/2 F=4", 0)])
+```
+
+A measured coupling between labelled field eigenstates is instead entered directly over
+`Levels.basis(s)`. To preserve the relative phases from a beam geometry while setting
+one measured Rabi frequency, scale the generated matrix with [`rabi_normalised`](@ref).
+
+### Eigenvector phases
+
+Hyperfine amplitudes use Condon–Shortley phases and electron-first coupling;
+nuclear-first states differ by ``(-1)^{I+J-F}`` per state. Each field eigenvector is
+chosen with a positive component on its own zero-field label; if that component
+vanishes, its largest-magnitude component is made positive. This local choice allows
+sign jumps in a field sweep, for example near 1.29 mT for the ⁴³Ca⁺ ``D_{5/2}`` branch
+labelled ``(F, m_F) = (4, -1)``.
+
+For a diagonal phase matrix ``D``, rephasing eigenvectors as ``W → W D`` transforms
+operators as ``X_e → D^† X_e D``. Observables are unchanged when states and operators
+use the same phases. Rabi-flopping measurements determine magnitudes; coherent relative
+phases between manually entered couplings require a consistent choice of eigenvector
+phases.
+
+## Beam geometry and detunings
 
 `beam_vectors` returns `(direction, ε)`: a propagation direction and complex
-polarisation. The field convention is `E(t) = Re[ε E₀ exp(-im*ω*t)]`; a
-right-circular beam along ẑ drives Δm = +1. The complex phase of the Rabi
-frequency is retained. The coupling Hamiltonian is `(C + C')/2`, with C
-containing angular Rabi frequencies in the **upper-row, lower-column** block.
-The physical dipole operator behind the Rabi frequency, and the sign convention
-of `−d·E`, are documented at [`dipole_components`](@ref).
+polarisation. The electric field is ``\vec E(t) = \mathrm{Re}[\vec ε E_0 e^{-iωt}]``; a
+right-circular beam along ẑ drives ``Δm = +1``. Rabi frequencies retain their complex
+phases. The coupling Hamiltonian is `(C + C')/2`, with `C` containing angular Rabi
+frequencies in the **upper-row, lower-column** block. [`dipole_components`](@ref)
+documents the dipole and interaction sign conventions.
 
-Detuning is laser minus atomic frequency. `RelativeFrequency(level_pair, offset)`
-uses the zero-field level interval as its marker. The component form
-`RelativeFrequency(s, state_pair, detuning)` folds the exact component shift
-at the structure's field into that marker; it stores the frequency determined
-then and does not follow the component into a structure at another field. A
-light-shift sweep's `δ` overrides the marker offset; it is not necessarily
-detuning from a particular Zeeman component.
+Detuning is laser minus atomic frequency. `RelativeFrequency(level_pair, offset)` uses
+the zero-field level interval as its marker;
+`RelativeFrequency(s, state_pair, detuning)` sets the frequency relative to that
+component at `field(s)`. Reuse the latter across structures for a fixed laser frequency;
+rebuild it at each field for fixed detuning from the moving resonance. The marker pair
+does not restrict which components a beam drives.
 
-Spherical channels use ordinary Julia indexing: index `q + rank + 1`, hence
-`q + 2` for E1 and `q + 3` for E2. Fock occupation n starts at zero;
-`num_fock` counts retained states, so the maximum occupation is `num_fock - 1`.
+Spherical channels use index `q + rank + 1`, hence `q + 2` for E1 and `q + 3` for E2.
+Fock occupation ``n`` starts at zero; `num_fock` counts retained states, so the maximum
+occupation is `num_fock - 1`.
 
-## Periodically driven transitions
+## Zero field and degenerate branches
 
-The structure supplies the static energies; beam and field geometry supply
-the laser coupling and ac drive matrices:
+At `B = 0`, the eigenstates are the coupled states. If `Levels.basis(s)` contains every
+state in the order of `coupled_basis(s)`, ``W = I``: no rotation or reordering is
+required. For distinct zero-field ``F`` energies within each ``m_F`` block, this is also
+the limit as ``B → 0``.
 
-```@example conventions
-using Levels.PeriodicDynamics
-probe = StateSpec("S_1/2 F=4", 0) => StateSpec("D_5/2 F=4", 1)
-direction, ε = beam_vectors(π/2, π/4)
-
-# Structure-form matrices are in the field eigenbasis of s already.
-C = coupling_matrix(s, "S_1/2" => "D_5/2", 1e6u"W/m^2", ε, direction)
-drives = zeeman_drives(s, [10.0, 0.0, 0.0]u"µT")
-dt = DrivenTransition(s, probe; drive_frequency=angular(50u"MHz"), coupling=C, drives)
-nothing # hide
-```
-
-For a measured carrier Rabi frequency, use
-[`rabi_normalised`](@ref) to scale the structure's relative coupling matrix.
-For an operator written in the coupled basis, use [`to_eigenbasis`](@ref)
-before passing it to a model; see [Manual operators](@ref manual-operators).
-
-Treat species, bases, structures, schemes and models as read-only after
-construction, including their arrays: accessors return the stored data directly.
-
-## Numerical methods and physical results
-
-```@example conventions
-perturbative = sideband_rabi(dt, DressedStates(
-    harmonic_cutoff=8, num_time_samples=256); sideband=1)
-```
-
-```@example conventions
-reference = sideband_rabi(dt, Monodromy(reltol=1e-10); sideband=1)
-```
-
-Increase the harmonic cutoff and time sampling to check convergence. A cutoff K
-retains `-K:K`, or 2K+1 harmonic blocks. `Monodromy` includes the laser
-nonperturbatively within the model; its numerical accuracy is controlled by the
-ODE and avoided-crossing search. A complex perturbative coupling amplitude is
-available only from the dressed-state calculation.
-
-Quasienergy shifts under harmonic driving use the same explicit method choice,
-on the same structure. Ac Zeeman shifts are one application:
-
-```@example conventions
-drives = zeeman_drives(s, [10.0, 0.0, 0.0]u"µT")
-shift = quasienergy_shift(s, probe, angular(50u"MHz"),
-                         drives, PerturbationTheory())
-```
-
-```@example conventions
-check = quasienergy_shift(s, probe, angular(50u"MHz"), drives, Floquet())
-```
-
-The pair form returns `(; shift, lower, upper)`; the state form returns a scalar
-shift. [`quasienergy_shift_contributions`](@ref Levels.PeriodicDynamics.quasienergy_shift_contributions)
-breaks down the perturbative sum by intermediate state.
-
-Custom `HarmonicDrive`s can represent other interactions. These structure forms
-require drives at one frequency, block-diagonal in the fine-structure manifolds,
-with each probed manifold complete and contiguous in the basis. Couplings
-between manifolds raise an error; a general model may instead use the
-`quasienergy_shift(H0, H1, ω, i)` matrix form with full static energies.
-
-For magnetic fields, [`ac_zeeman_shift`](@ref Levels.PeriodicDynamics.ac_zeeman_shift)
-accepts the field phasor directly and constructs the drives:
-
-```@example conventions
-ac_zeeman_shift(s, probe, angular(50u"MHz"), [10.0, 0.0, 0.0]u"µT") == shift
-```
-
-For sideband `+1`, the dressed-state resonance minus the drive frequency is
-the difference of the two dressed levels' ac shifts. `Floquet()` evaluates
-those same shifts; `PerturbationTheory()` approximates them to second order.
-The `Monodromy` resonance also includes probe-induced light shifts:
-
-```@example conventions
-perturbative.δ_res - dt.drive_frequency
-```
-
-## Cooling calculations
-
-[`cooling_metrics`](@ref Levels.OpticalBloch.cooling_metrics) offers several
-relaxation observables. Adiabatic elimination gives a rate-equation exponential
-time constant; `SaturatedRates` and `IntegratedTransient` give an integral
-relaxation time for a specified initial state, from a rate equation and a joint
-model respectively; `LiouvillianSpectrum` gives an asymptotic relaxation
-time; `SemiclassicalRates` gives the local rate of classical motion at a given
-energy. They coincide for a single exponential and can differ for a hot ion or a
-transient with several timescales. The [Optical Bloch reference](@ref
-reference-optical-bloch) describes their assumptions and numerical controls.
-
-Solver wrappers return unitful rates and times. Plain-matrix
-`BandLiouvillian` constructors use a declared `time_unit` (µs by default);
-model-based constructors inherit the model's scale. Numerical engines use
-Float64/ComplexF64.
+Degenerate ``F`` levels within a block have no unique adiabatic continuation. Their
+finite-field eigenvectors need not approach the coupled states; labels follow a
+deterministic energy-ordering policy, with zero-field ties ordered by increasing ``F``.
+Different ``m_F`` sectors remain unmixed because they are diagonalised separately.

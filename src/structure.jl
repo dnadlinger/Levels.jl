@@ -96,7 +96,7 @@ have no unique adiabatic continuation.
 Each eigenvector's component on its own zero-field label is made positive.
 If it is exactly zero, the largest-magnitude component is made positive.
 This gives the identity limit for a resolved zero-field spectrum, but permits
-sign jumps at finite field; see [Bases and representations](@ref bases).
+sign jumps at finite field; see [Conventions](@ref conventions).
 
 Missing hyperfine constants raise an error. With `require_constants = false`,
 that manifold is instead returned degenerate at its centroid, with identity
@@ -186,7 +186,7 @@ hyperfine species these are field eigenstates labelled by their zero-field
 [`offsets`](@ref) gives their centroid-relative angular energies,
 [`eigenvectors`](@ref) their coupled-basis components, and
 [`to_eigenbasis`](@ref) transforms coupled-basis operators. See
-[Bases and representations](@ref bases) for labels, phases and partial bases.
+[Conventions](@ref conventions) for labels, phases and partial bases.
 Treat the structure and its stored arrays as read-only; accessors return them
 directly.
 """
