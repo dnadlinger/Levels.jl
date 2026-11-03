@@ -263,7 +263,8 @@ function insensitive_field(
         u"rad/µs/mT",
         zeeman_sensitivity(Eigenstructure(species, basis; B=b * u"mT"), lower => upper),
     )
-    prob = IntervalNonlinearProblem{false}(f, ustrip.(u"mT", bracket))
+    # ITP raises the bracket span to a negative power, which fails for integers.
+    prob = IntervalNonlinearProblem{false}(f, float.(ustrip.(u"mT", bracket)))
     sol = solve(prob, ITP(); abstol=ustrip(u"mT", abstol))
     if !successful_retcode(sol)
         throw(

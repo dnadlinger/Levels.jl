@@ -330,6 +330,12 @@ end
         (14.0u"mT", 15.0u"mT"),
     )
     @test abs(p1 - 14.60942u"mT") < 1e-5u"mT"
+    # Make sure "accidental" integer brackets are accepted.
+    @test insensitive_field(
+        ca43,
+        StateSpec("S_1/2 F=4", 0) => StateSpec("S_1/2 F=3", 1),
+        (14u"mT", 15u"mT"),
+    ) ≈ p1
     p2 = insensitive_field(
         ca43,
         StateSpec("S_1/2 F=4", 1) => StateSpec("S_1/2 F=3", 1),
