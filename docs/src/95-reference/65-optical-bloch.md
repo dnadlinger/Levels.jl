@@ -144,13 +144,23 @@ the breakdown of the reduced theory (Sec. V.4, Fig. 13).
 [`SaturatedRates`](@ref) keeps a rate equation for the phonon populations, but
 evaluates its rates without expanding in the sideband coupling, including the
 Franck–Condon factors of [Morigi et al. (1999)](https://doi.org/10.1103/PhysRevA.59.3797)
-at all orders in ``η``. It reduces to adiabatic elimination as ``n → 0`` and
-reproduces the saturation of the cooling rate along the Fock ladder. It therefore
-gives the non-exponential shape of a hot transient, with full distributions and no
-closure for their moments, at the cost of a few internal-state solves per
-octave in ``n``. For a hot ion its steps are the drift and diffusion of the
-phonon number, so that the spread of the distribution follows the full model to
-a few percent. [`PhononRateEquation`](@ref) has the method and its limits.
+at all orders in ``η``. It recovers adiabatic elimination for weak sideband
+coupling and models saturation through a frozen-coefficient ladder calculation.
+It propagates a full phonon distribution without a closure for its moments, at
+the cost of a few internal-state solves per octave in ``n``. The local rates
+match the ladder's drift and diffusion unless an empirical Fock-window closure
+or positivity clipping replaces the diffusion. Recoil includes the correlation
+between emission rate and motional phase. Neither local matching nor harmonic
+convergence guarantees the accuracy of the full distribution, mean trajectory
+or steady occupation; the cold and hot benchmarks cover selected regimes.
+[`PhononRateEquation`](@ref) describes the approximations and their limits.
+
+The equation's `diagnostics` records each solved node before interpolation and
+added external heating. For example, `filter(d -> d.source == :window || d.clipped,
+r.diagnostics)` selects nodes whose window closure or positivity floor may
+change the calculated diffusion. Each [`Levels.OpticalBloch.RungRateDiagnostics`](@ref)
+also contains the raw cumulants, selected total rate and the status of any
+attempted window ratio, including rejected ratios.
 
 [`semiclassical_cooling_rates`](@ref) goes further from the quantum motion: it replaces
 it by a classical trajectory at fixed energy and averages the laser power
@@ -237,6 +247,7 @@ AdiabaticElimination
 ```@docs
 SaturatedRates
 PhononRateEquation
+Levels.OpticalBloch.RungRateDiagnostics
 time_to_nbar
 ```
 

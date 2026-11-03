@@ -1,5 +1,5 @@
-# Nearest-neighbour phonon rate equations that stay valid for saturated sidebands:
-# their rates are evaluated non-perturbatively in the sideband coupling, rung by
+# Nearest-neighbour phonon rate equations with saturation-aware local closures.
+# Their rates are evaluated non-perturbatively in the sideband coupling, rung by
 # rung. Rung n joins the Fock states n - 1 and n.
 
 """
@@ -51,7 +51,35 @@ function validate_rate_settings(lamb_dicke_order, bandwidth, node_ratio)
 end
 
 """
+    RungRateDiagnostics
+
+Records the closure of one solved rung of a [`PhononRateEquation`](@ref).
+`n` labels the bond between Fock states `n - 1` and `n`. `net_rate` and
+`diffusion` are the frozen ladder's first two counting-cumulant rates;
+`total_rate` is the sum of the chosen up/down rates before added external
+heating. All three carry inverse-time units.
+
+`source` is `:diffusion` or `:window`. `window_ratio` is `nothing` when no
+window was solved; `window_status` is `:not_requested`, `:accepted`,
+`:incompatible` (the ratio and drift cannot give positive matching rates),
+or `:invalid` (a negative or non-finite ratio). `clipped` records whether
+the chosen total was raised to the positivity floor. A window closure or
+clipping generally changes the diffusion represented by the rate equation.
+"""
+struct RungRateDiagnostics{R<:Quantity}
+    n::Int
+    net_rate::R
+    diffusion::R
+    total_rate::R
+    source::Symbol
+    window_ratio::Union{Nothing,Float64}
+    window_status::Symbol
+    clipped::Bool
+end
+
+"""
     PhononRateEquation(model::LindbladModel, mc::MotionalCoupling; num_fock, lamb_dicke_order = Inf, bandwidth = 2, node_ratio = 2, heating_rate = 0u"s^-1", time_unit = u"µs")
+    PhononRateEquation(lowering_rates, raising_rates, time_unit)
 
 The nearest-neighbour rate equations ``\\dot p_n = Γ^↑_n p_{n-1} + Γ^↓_{n+1}
 p_{n+1} - (Γ^↓_n + Γ^↑_{n+1}) p_n`` of the phonon populations of one mode, with
@@ -66,20 +94,23 @@ Phys. Rev. A **59**, 3797 (1999), Eq. (15), and saturated sideband transfer in
 a two-state model that of Phatak et al., Phys. Rev. A **110**, 043116 (2024),
 Eqs. (66)–(68). Here, each rung is solved for arbitrary internal structure and
 drive, from the steady state of a ladder with the couplings of rung ``n`` on
-every rung: a Floquet problem with `bandwidth` harmonics, equivalent to the
-power absorbed from an oscillation of amplitude ``∝\\sqrt{n}``. The bare
-population of a Fock state would not do: on a saturated sideband, it is
-coherently shared with its neighbour. The net rate ``Γ^↑_n - Γ^↓_n`` is the
-mean phonon-number current of the ladder, and the total ``Γ^↑_n + Γ^↓_n`` its
-phonon-number diffusion: the second cumulant of its counting statistics, with
-the recoil of the emissions. Where the steps are directional (``Γ^↑_n/Γ^↓_n ≲
-0.8``, as they are where a cold steady occupation is decided) and the sideband
-reach ``2|η|\\sqrt{n}`` stays below one, the ratio ``Γ^↑_n/Γ^↓_n`` follows
-instead from the steady state of the closed internal ⊗ Fock system of the
-states ``n-2 … n+1``, which gives it directly rather than as the small
-difference of two rates; so it does wherever the ladder's steps are
-sub-Poissonian (a diffusion below the net rate, on a saturated sideband),
-which nearest-neighbour steps cannot be.
+every rung: a Floquet problem with `bandwidth` harmonics, approaching the
+classical power absorbed from an oscillation of amplitude ``∝\\sqrt{n}`` at
+large occupation. The bare population of a Fock state would not do: on a
+saturated sideband, it is coherently shared with its neighbour. The net rate
+``Γ^↑_n - Γ^↓_n`` is the mean phonon-number current of the ladder. By default the total
+``Γ^↑_n + Γ^↓_n`` matches its diffusion, the second counting-cumulant rate,
+including emission recoil at frozen amplitude with its motional-phase
+dependence. The closure instead attempts a ratio ``Γ^↑_n/Γ^↓_n`` from the
+closed internal ⊗ Fock window ``n-2 … n+1`` when ``B ≤ 10|D|`` and the
+sideband reach ``2|η|\\sqrt{n} ≤ 1``, or whenever ``B < |D|``. Here ``D``
+and ``B`` are the ladder's drift and diffusion; the reach includes
+two-photon differences of the beams' projected Lamb–Dicke factors. These
+switches are empirical. The window avoids subtracting nearly equal numbers
+to infer a small rate, but has no general convergence guarantee. It is used
+only when its ratio and the drift give positive matching rates. A positivity
+floor enforces ``Γ^↑_n + Γ^↓_n ≥ (1 + 10^{-9})|D|``; window matching or
+clipping generally abandons the ladder's diffusion.
 
 For weak sidebands, the rates are ``Γ^↓_n = nA_-`` and ``Γ^↑_n = nA_+``.
 `lamb_dicke_order = Inf` uses the full
@@ -93,12 +124,18 @@ quantum linearly in ``\\ln n``, the slower rate per quantum in logs);
 `node_ratio = 1` solves every rung. `heating_rate` adds ``n \\dot
 n_\\mathrm{heat}`` to both rates.
 
+`diagnostics` contains a [`RungRateDiagnostics`](@ref) for each solved node,
+before interpolation and added external heating. It exposes the raw drift
+and diffusion, selected total, closure source, attempted window ratio and
+positivity clipping. The explicit-rate constructor has empty diagnostics.
+
 As independent steps between neighbouring Fock states, this cannot represent
 sub-Poissonian statistics or the bypassing of a dark Fock state through a second
-sideband, next to which the ladder also understates the diffusion. Around a
-reach of one, both sources of the ratio are off by tens of percent, which
-affects the width of the distribution but neither its mean nor a cold steady
-occupation. Modes are independent: their competition for the same scattering
+sideband, next to which the ladder can understate the diffusion. Both closures
+can be inaccurate around a reach of one. Errors can affect the spread, mean
+trajectory and steady occupation. In particular, the conditional drift at
+state ``n`` is ``Γ^↑_{n+1} - Γ^↓_n``, not the matched bond drift ``D_n``.
+Modes are independent: their competition for the same scattering
 events is not captured. Requires an internal model without beat harmonics. A
 heated mode accumulates at the truncation, where `steady_value` depends on
 `num_fock`.
@@ -111,7 +148,19 @@ struct PhononRateEquation{R<:Quantity,T<:Unitful.Units}
     lowering_rates::Vector{R}
     raising_rates::Vector{R}
     time_unit::T
+    diagnostics::Vector{RungRateDiagnostics{R}}
 end
+
+PhononRateEquation(
+    lowering_rates::Vector{R},
+    raising_rates::Vector{R},
+    time_unit::Unitful.Units,
+) where {R<:Quantity} = PhononRateEquation(
+    lowering_rates,
+    raising_rates,
+    time_unit,
+    RungRateDiagnostics{R}[],
+)
 
 function PhononRateEquation(
     model::LindbladModel,
@@ -130,8 +179,21 @@ function PhononRateEquation(
     ladder = RungLadder(model, mc; lamb_dicke_order, bandwidth, time_unit)
     rungs = 1:(num_fock-1)
     nodes = rung_nodes(ladder, last(rungs), node_ratio)
-    rates = [rung_rates(ladder, n) for n in nodes]
+    results = [rung_rate_result(ladder, n) for n in nodes]
+    rates = getproperty.(results, :rates)
     lowering, raising = first.(rates), last.(rates)
+    diagnostics = [
+        RungRateDiagnostics(
+            n,
+            result.net_rate * time_unit^-1,
+            result.diffusion * time_unit^-1,
+            result.total_rate * time_unit^-1,
+            result.source,
+            result.window_ratio,
+            result.window_status,
+            result.clipped,
+        ) for (n, result) in zip(nodes, results)
+    ]
     # The rates grow ∝ n without saturation, hence interpolation of the rates per
     # quantum. The net rate is the physical quantity and nearly cancels at high n,
     # so it is interpolated as such, and the slower rate in logs, as it spans decades
@@ -149,6 +211,7 @@ function PhononRateEquation(
         (lowering .+ rungs .* heating) .* time_unit^-1,
         (raising .+ rungs .* heating) .* time_unit^-1,
         time_unit,
+        diagnostics,
     )
 end
 
@@ -291,30 +354,53 @@ function recoil_fraction(ladder::RungLadder, n, jump)
     dot(ladder.recoil_weights[jump], kicks)
 end
 
-# Returns the rates (Γ↓, Γ↑) of rung n in inverse time units: the nearest-neighbour
-# steps with the net rate and the diffusion of the ladder, Γ↑/Γ↓ = (B + D)/(B - D).
-# The window of four Fock states gives the ratio directly instead, to a few percent,
-# which is the better source while the steps are directional (Γ↑/Γ↓ ≲ 0.8, i.e. B ≲
-# 10|D|: the diffusion gives a small ratio as a small difference with ~1 % errors,
-# which the steady occupation amplifies) and the window resolves the steps (a sideband
-# reach 2|η|√n below one, the argument of the Bessel functions the displacement
-# elements tend to). Nearer balance, the few percent in the window's ratio are the
-# larger error, and the diffusion's ratio is exact at the balance point. Sub-Poissonian
-# steps (a diffusion below the net rate) have no nearest-neighbour representation and
-# take the window's ratio regardless. A window that disagrees with the ladder on the
-# direction (close to where both change sign along the ladder) defers to the diffusion.
-function rung_rates(ladder::RungLadder, n)
+# Returns the rates (Γ↓, Γ↑) of rung n in inverse time units. Diffusion matching
+# gives Γ↑/Γ↓ = (B + D)/(B - D); the alternatives below retain only the net rate.
+# The four-state window is an empirical alternative for directional, short-reach
+# motion and for sub-Poissonian ladders. The latter have no independent-step
+# representation preserving both cumulants. Record every departure from diffusion
+# matching, including rejected window ratios and the positivity floor.
+rung_rates(ladder::RungLadder, n) = rung_rate_result(ladder, n).rates
+
+function rung_rate_result(ladder::RungLadder, n)
     (; net_rate, diffusion) = ladder_cumulants(ladder, n)
-    total = diffusion
     directional = diffusion <= 10 * abs(net_rate)
-    if diffusion < abs(net_rate) || (directional && sideband_reach(ladder, n) <= 1)
-        ratio = stationary_rung_ratio(fock_window(ladder, n))
-        if (ratio - 1) * net_rate > 0
+    use_window =
+        diffusion < abs(net_rate) || (directional && sideband_reach(ladder, n) <= 1)
+    ratio = use_window ? stationary_rung_ratio(fock_window(ladder, n)) : nothing
+    close_rung_rates(net_rate, diffusion, ratio)
+end
+
+function close_rung_rates(net_rate, diffusion, ratio=nothing)
+    isfinite(net_rate) && isfinite(diffusion) ||
+        throw(ArgumentError("The ladder's drift and diffusion must be finite"))
+    total = diffusion
+    source = :diffusion
+    window_status = :not_requested
+    if !isnothing(ratio)
+        if !isfinite(ratio) || ratio < 0
+            window_status = :invalid
+        elseif (ratio - 1) * net_rate > 0
             total = abs(net_rate) * (ratio + 1) / abs(ratio - 1)
+            source = :window
+            window_status = :accepted
+        else
+            window_status = :incompatible
         end
     end
-    total = max(total, (1 + 1e-9) * abs(net_rate))
-    ((total - net_rate) / 2, (total + net_rate) / 2)
+    floor = (1 + 1e-9) * abs(net_rate)
+    clipped = total < floor
+    total = max(total, floor)
+    (;
+        rates=((total - net_rate) / 2, (total + net_rate) / 2),
+        net_rate,
+        diffusion,
+        total_rate=total,
+        source,
+        window_ratio=ratio,
+        window_status,
+        clipped,
+    )
 end
 
 # The sideband reach 2|η|√n of rung n, for the largest Lamb–Dicke factor of a beam or
@@ -338,7 +424,8 @@ ladder_net_rate(ladder::RungLadder, n) = ladder_cumulants(ladder, n).net_rate
 # χ² C₂/2 + …, so that with the stationary ρ and the traceless x solving L x = -(C₁
 # - D) ρ, the cumulants are D = tr C₁ρ and B = tr C₂ρ + 2 tr C₁x. The first-order
 # ladder carries the recoil as the jumps c ⊗ η₀√n(E₊ + E₋), counted likewise; the
-# full-order ladder does not, and the recoil adds its diffusion 2n ∑ m₂ R per jump.
+# full-order ladder does not. Its recoil diffusion is the phase-weighted emission
+# rate 4n ∑ m₂ ⟨sin²(θ) R(θ)⟩ = 2n ∑ m₂ (R₀ - Re R₂).
 function ladder_cumulants(ladder::RungLadder, n)
     hamiltonians = ladder_hamiltonians(ladder, n)
     num_states = ladder.num_states
@@ -407,8 +494,9 @@ function ladder_cumulants(ladder::RungLadder, n)
     diffusion = real(trace(C2 * ρ) + 2 * trace(C1 * x))
     if !ladder.first_order
         ρ0 = reshape(ρ[order_range(0)], num_states, num_states)
+        ρ2 = K >= 2 ? reshape(ρ[order_range(2)], num_states, num_states) : zero(ρ0)
         diffusion += sum(
-            real(tr(c' * c * ρ0)) * 2n * m2 for
+            real(tr(c' * c * (ρ0 - ρ2))) * 2n * m2 for
             (c, m2) in zip(ladder.jump_operators, ladder.recoil_second_moments)
         )
     end
@@ -645,4 +733,5 @@ function cooling_metrics(
     end
 end
 
+public RungRateDiagnostics
 export SaturatedRates, PhononRateEquation, time_to_nbar

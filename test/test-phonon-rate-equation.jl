@@ -14,6 +14,111 @@
     @test displacement_element(1e-4, 5, 1) ≈ im * 1e-4 * sqrt(5) rtol = 1e-6
 end
 
+@testitem "Phonon rate equation: closure diagnostics" tags=[:unit, :fast] begin
+    using Levels.OpticalBloch
+    using Levels.OpticalBloch: close_rung_rates
+    using Unitful
+
+    diffusion = close_rung_rates(-1.0, 4.0)
+    @test diffusion.rates == (2.5, 1.5)
+    @test diffusion.source == :diffusion && !diffusion.clipped
+    @test diffusion.window_status == :not_requested
+    @test isnothing(diffusion.window_ratio)
+
+    window = close_rung_rates(-1.0, 4.0, 0.2)
+    @test last(window.rates) / first(window.rates) ≈ 0.2
+    @test window.source == :window && window.window_status == :accepted
+    @test !window.clipped && window.total_rate != window.diffusion
+
+    rejected = close_rung_rates(-1.0, 4.0, 2.0)
+    @test rejected.rates == diffusion.rates
+    @test rejected.source == :diffusion && rejected.window_status == :incompatible
+    @test rejected.window_ratio == 2.0
+
+    clipped = close_rung_rates(-1.0, 0.3, 2.0)
+    @test clipped.clipped && clipped.window_status == :incompatible
+    @test all(>(0), clipped.rates)
+    @test last(clipped.rates) - first(clipped.rates) ≈ clipped.net_rate
+    @test clipped.total_rate > abs(clipped.net_rate) > clipped.diffusion
+    @test close_rung_rates(-1.0, 4.0, Inf).window_status == :invalid
+    @test_throws ArgumentError close_rung_rates(NaN, 4.0)
+
+    explicit = PhononRateEquation([2.0]u"µs^-1", [1.0]u"µs^-1", u"µs")
+    @test isempty(explicit.diagnostics)
+end
+
+@testitem "Phonon rate equation: recoil diffusion retains the motional phase" tags=[
+    :integration,
+] setup=[OpticalBlochSetup] begin
+    using SparseArrays
+    using Levels.OpticalBloch:
+        RungLadder, ladder_cumulants, ladder_hamiltonians, commutator_superoperator
+
+    ω = angular(0.6u"MHz")
+    γ = 2π * 50.0u"kHz"
+    s = sideband_toy(; γ, ω, η=0.2, Ω=angular(200.0u"kHz"), δ=(-angular(25.0u"kHz")))
+    n = 40
+    K = 8
+    ladder =
+        RungLadder(s.model, s.mc; lamb_dicke_order=Inf, bandwidth=K, time_unit=u"µs")
+    hamiltonians = ladder_hamiltonians(ladder, n)
+    num_states = ladder.num_states
+    num_orders = 2K + 1
+    state_identity = sparse(ComplexF64(1) * I, num_states, num_states)
+    same_order = sparse(1.0I, num_orders, num_orders)
+    shift(k) = spdiagm(k => ones(num_orders - abs(k)))
+
+    # Independently tilt ket and bra motion by ±χ/2. The exact frozen-amplitude
+    # recoil factor per kick is exp(-4i η√n sin(χ/2) sin(θ)); symmetric emission
+    # makes it real. Its Fourier coefficients retain emission/phase correlations.
+    function tilted_generator(χ; phase_averaged=false)
+        L =
+            kron(
+                same_order,
+                ladder.dissipator - im * commutator_superoperator(first(hamiltonians)),
+            ) + kron(
+                spdiagm(0 => -im * ladder.mode_frequency .* ((-K):K)),
+                sparse(I, num_states^2, num_states^2),
+            )
+        for k in 1:K
+            H = sparse(hamiltonians[k+1])
+            left = -im * kron(state_identity, H)
+            right = im * kron(sparse(transpose(H)), state_identity)
+            L += kron(shift(k), cis(-χ * k / 2) * left + cis(χ * k / 2) * right)
+            L += kron(shift(-k), cis(χ * k / 2) * left + cis(-χ * k / 2) * right)
+        end
+        phases = 2π .* (0:127) ./ 128
+        for (c, kicks, weights) in
+            zip(ladder.jump_operators, ladder.recoil_kicks, ladder.recoil_weights)
+
+            isempty(kicks) && continue
+            factors = [
+                sum(weights .* cos.(4sqrt(n) * sin(χ / 2) * sin(θ) .* kicks)) for
+                θ in phases
+            ]
+            phase_averaged && fill!(factors, sum(factors) / length(factors))
+            for k in (-2K):2K
+                coefficient = sum(factors .* cis.(-k .* phases)) / length(phases)
+                k == 0 && (coefficient -= 1)
+                L += coefficient * kron(shift(k), kron(conj(c), c))
+            end
+        end
+        L
+    end
+    χ = 1e-3
+    function cumulants_from_eigenvalue(; kwargs...)
+        values = eigvals(Matrix(tilted_generator(χ; kwargs...)))
+        λ = values[argmin(abs.(values))]
+        (; net_rate=imag(λ) / χ, diffusion=-2real(λ) / χ^2)
+    end
+    counted = cumulants_from_eigenvalue()
+    averaged = cumulants_from_eigenvalue(; phase_averaged=true)
+    cumulants = ladder_cumulants(ladder, n)
+    @test cumulants.net_rate ≈ counted.net_rate rtol = 1e-4
+    @test cumulants.diffusion ≈ counted.diffusion rtol = 1e-4
+    @test abs(counted.diffusion - averaged.diffusion) > 0.05counted.diffusion
+end
+
 @testitem "Phonon rate equation: recovers adiabatic elimination for weak sidebands" tags=[
     :integration,
 ] setup=[OpticalBlochSetup] begin
@@ -31,6 +136,14 @@ end
         @test r.raising_rates[1] ≈ ae.A_plus rtol = 5e-3
         @test steady_value(r) ≈ ae.nbar rtol = 5e-3
         @test integral_relaxation_time(r, 1.0) ≈ ae.τ_c rtol = 5e-3
+        @test all(
+            d -> d.source == :window && d.window_status == :accepted,
+            r.diagnostics,
+        )
+        @test all(
+            d -> r.lowering_rates[d.n] + r.raising_rates[d.n] ≈ d.total_rate,
+            r.diagnostics,
+        )
         # The ladder's current and diffusion are those of Poissonian steps n A₊, n A₋.
         ladder = RungLadder(
             s.model,
@@ -178,6 +291,7 @@ end
     s = sideband_toy(; γ=2π * 50.0u"kHz", ω, η=0.2, Ω=angular(200.0u"kHz"), δ=(-ω))
     num_fock = 70
     r = PhononRateEquation(s.model, s.mc; num_fock, bandwidth=6, node_ratio=1.25)
+    @test any(d -> d.source == :diffusion && isnothing(d.window_ratio), r.diagnostics)
     moments(p) = (
         nbar=sum((0:(num_fock-1)) .* p);
         (nbar, sum((0:(num_fock-1)) .^ 2 .* p) - nbar^2)
@@ -277,9 +391,14 @@ end
     @test heated.lowering_rates ≈ result.solver.lowering_rates .+ (1:11) .* heating
     @test heated.raising_rates ≈ result.solver.raising_rates .+ (1:11) .* heating
     @test steady_value(heated) > result.nbar
+    @test getproperty.(heated.diagnostics, :total_rate) ≈
+          getproperty.(result.solver.diagnostics, :total_rate)
     in_ms = cooling_metrics(s.model, s.mc, method; time_unit=u"ms")
     @test in_ms.τ_c ≈ result.τ_c rtol = 1e-8
     @test unit(in_ms.τ_c) == u"ms"
+    @test getproperty.(in_ms.solver.diagnostics, :diffusion) ≈
+          getproperty.(result.solver.diagnostics, :diffusion)
+    @test all(d -> unit(d.diffusion) == u"ms^-1", in_ms.solver.diagnostics)
 
     # Modes are independent.
     modes = [s.mode, MotionalMode(angular(1.2u"MHz"), Z_AXIS)]
