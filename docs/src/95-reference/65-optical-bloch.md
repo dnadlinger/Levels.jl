@@ -245,6 +245,7 @@ SemiclassicalRates
 semiclassical_phonon_rates
 semiclassical_cooling_rates
 thermal_cooling_rates
+Levels.OpticalBloch.SemiclassicalEngine
 HarmonicBalance
 TimeAverage
 ```
