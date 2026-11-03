@@ -5,14 +5,28 @@ CurrentModule = Levels
 # Levels
 
 Levels computes atomic level structures, transition strengths, light shifts and
-laser-driven dynamics for trapped-ion spectroscopy. It includes atomic data for ⁸⁸Sr⁺,
-⁴⁰Ca⁺ and ⁴³Ca⁺, and accepts user-defined alkali-like species.
+laser-driven dynamics for trapped-ion spectroscopy. It includes atomic data for ⁴⁰Ca⁺,
+⁴³Ca⁺, ⁸⁸Sr⁺ and ¹³⁸Ba⁺, and accepts user-defined alkali-like species.
+
+As a quick example, consider the ⁴³Ca⁺ 729 nm transition
+``|S_{1/2}, F = 4, m_F = 4⟩ ↔ |D_{5/2}, F = 4, m_F = 3⟩``, which is first-order
+insensitive to magnetic-field noise near 0.5 mT:
 
 ```@example introduction
 using Levels, Unitful
-s = Eigenstructure(ca40, "S_1/2", "D_5/2"; B=0.5u"mT")
-clock = StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -1//2)
-cyclic(transition_frequency(s, clock)) |> x -> uconvert(u"THz", x)
+clock = StateSpec("S_1/2 F=4", 4) => StateSpec("D_5/2 F=4", 3)
+B₀ = insensitive_field(ca43, clock, (0.45u"mT", 0.55u"mT"))
+```
+
+At that field, let's calculate the Rabi frequency with which a 10 mW Gaussian beam
+focused to a 20 µm waist drives it there, propagating perpendicular to the field and
+polarised along it (for which hyperfine mixing is taken into account):
+
+```@example introduction
+s = Eigenstructure(ca43, "S_1/2", "D_5/2"; B=B₀)
+direction, ε = beam_vectors(π / 2, 0)
+Ω = rabi_frequency(s, clock, peak_intensity(10u"mW", 20u"µm"), ε, direction)
+uconvert(u"kHz", cyclic(abs(Ω)))
 ```
 
 The [`Eigenstructure`](@ref) is the atom: a species, a basis of states and the static

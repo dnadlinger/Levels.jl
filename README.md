@@ -13,10 +13,17 @@ Julia 1.12 or newer.
 
 ```julia
 using Levels, Unitful
-s = Eigenstructure(ca40, "S_1/2", "D_5/2"; B=0.5u"mT")
-clock = StateSpec("S_1/2", -1//2) => StateSpec("D_5/2", -1//2)
-cyclic(transition_frequency(s, clock))
+clock = StateSpec("S_1/2 F=4", 4) => StateSpec("D_5/2 F=4", 3)
+B₀ = insensitive_field(ca43, clock, (0.45u"mT", 0.55u"mT"))  # 0.4958 mT
+s = Eigenstructure(ca43, "S_1/2", "D_5/2"; B=B₀)
+direction, ε = beam_vectors(π / 2, 0)  # k ⟂ B, ε ∥ B
+Ω = rabi_frequency(s, clock, peak_intensity(10u"mW", 20u"µm"), ε, direction)
+cyclic(abs(Ω))  # 197.3 kHz
 ```
+
+This brief example finds the field at which a 729 nm component of ⁴³Ca⁺ is first-order
+insensitive to field noise, and the Rabi frequency with which a Gaussian beam drives it
+there (including the hyperfine mixing effects).
 
 An `Eigenstructure` is the atom — a species, a basis of states and the static magnetic
 field, solved once — on which every calculation is built. See the
