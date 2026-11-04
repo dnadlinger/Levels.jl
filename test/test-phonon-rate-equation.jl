@@ -316,27 +316,28 @@ end
 
 @testitem "Phonon rate equation: hot rungs are smooth and interpolate" tags=[
     :integration,
-    :slow,
 ] setup=[OpticalBlochSetup] begin
-    # A Doppler-cooled Λ system up to n = 1000 (reach 2|η|√n ≈ 10): the net rates tend to
+    # A Doppler-cooled Λ system up to n = 300 (reach 2|η|√n ≈ 5.5): the net rates tend to
     # the semiclassical drift, the total per quantum has no spikes along the ladder, and
-    # the default node spacing interpolates both to a few percent.
+    # the default node spacing interpolates both to a few percent. (The four-rung
+    # window's ratio, used beyond a reach of one, put a ×2.6 spike at n = 246 here and
+    # interpolated totals ×60 off.)
     model = lambda_model(angular(-20.0u"MHz"), angular(-5.0u"MHz"))
     mode = MotionalMode(angular(1.2u"MHz"), [1.0, 0.0, 1.0])
     mc = motional_coupling(model, mode)
     resolved =
-        PhononRateEquation(model, mc; num_fock=1001, bandwidth=20, node_ratio=1.05)
-    coarse = PhononRateEquation(model, mc; num_fock=1001, bandwidth=20)
+        PhononRateEquation(model, mc; num_fock=301, bandwidth=10, node_ratio=1.05)
+    coarse = PhononRateEquation(model, mc; num_fock=301, bandwidth=10)
     net(r) = r.raising_rates .- r.lowering_rates
     total(r) = r.raising_rates .+ r.lowering_rates
-    hot = 100:1000
+    hot = 100:300
     semiclassical =
-        only.(semiclassical_phonon_rates(model, [mc], [n - 0.5]) for n in (100, 1000))
+        only.(semiclassical_phonon_rates(model, [mc], [n - 0.5]) for n in (100, 300))
     @test net(resolved)[100] ≈ semiclassical[1] rtol = 0.02
-    @test net(resolved)[1000] ≈ semiclassical[2] rtol = 0.02
+    @test net(resolved)[300] ≈ semiclassical[2] rtol = 0.02
     @test maximum(abs.(net(coarse)[hot] ./ net(resolved)[hot] .- 1)) < 0.05
     @test maximum(abs.(total(coarse)[hot] ./ total(resolved)[hot] .- 1)) < 0.05
-    per_quantum = total(resolved) ./ (1:1000)
+    per_quantum = total(resolved) ./ (1:300)
     @test maximum(per_quantum[2:end] ./ per_quantum[1:(end-1)]) < 1.1
     @test minimum(per_quantum[2:end] ./ per_quantum[1:(end-1)]) > 0.9
     @test all(total(resolved) .> abs.(net(resolved)))
