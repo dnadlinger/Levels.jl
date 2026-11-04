@@ -124,6 +124,7 @@ end
 
 @testitem "Semiclassical: the Doppler gauge matches the explicit beam phases" tags=[
     :integration,
+    :slow,
 ] setup=[OpticalBlochSetup] begin
     using LinearAlgebra
     using Levels.OpticalBloch: ODEProblem, Vern7, solve
@@ -181,8 +182,15 @@ end
     R_direct = real(last(final.u)[end]) / averaging
     R = ustrip(u"µs^-1", only(semiclassical_phonon_rates(model, [mc], [n])))
     @test R ≈ R_direct rtol = 5e-4
+end
 
-    # The rates are independent of the frame reference and of a mode sign.
+@testitem "Semiclassical: the rates are independent of the frame reference and mode sign" tags=[
+    :integration,
+] setup=[OpticalBlochSetup] begin
+    model = lambda_model(angular(-20.0u"MHz"), angular(-5.0u"MHz"))
+    mode = MotionalMode(angular(1.2u"MHz"), [1.0, 0.0, 1.0])
+    mc = motional_coupling(model, mode)
+    n = 400.0
     reference =
         lambda_model(angular(-20.0u"MHz"), angular(-5.0u"MHz"); frame_reference="S_1/2")
     @test semiclassical_phonon_rates(
