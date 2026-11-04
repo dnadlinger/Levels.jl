@@ -45,6 +45,9 @@ calculations, `Levels.PeriodicDynamics` and `Levels.OpticalBloch`.
 - [Field-insensitive 729 nm transitions of ⁴³Ca⁺](@ref example-ca43-729): field
   sensitivity of the S₁/₂ ↔ D₅/₂ components, the first-order insensitive points of one
   of them and the second-order shift that remains there.
+- [Microwave qubits in the ⁴³Ca⁺ ground state](@ref example-ca43-hyperfine-qubits):
+  Breit–Rabi diagram, all field-independent hyperfine transitions below 100 mT, and
+  the magnetic-dipole couplings of a microwave field.
 
 The pages are generated from the
 [Literate.jl](https://fredrikekre.github.io/Literate.jl) scripts in `examples/`, which

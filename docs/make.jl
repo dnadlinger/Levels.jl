@@ -8,7 +8,7 @@ DocMeta.setdocmeta!(Levels, :DocTestSetup, :(using Levels); recursive=true)
 # The scripts in examples/ are rendered to (gitignored) pages here, in this order.
 const examples_dir = joinpath(@__DIR__, "src", "30-examples")
 rm(examples_dir; force=true, recursive=true)
-for (i, name) in enumerate(("ca43_729_field_sensitivity",))
+for (i, name) in enumerate(("ca43_729_field_sensitivity", "ca43_hyperfine_qubits"))
     source = joinpath(@__DIR__, "..", "examples", "$name.jl")
     Literate.markdown(source, examples_dir; name="$(lpad(i, 2, "0"))-$name")
 end
