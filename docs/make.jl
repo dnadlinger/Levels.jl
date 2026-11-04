@@ -10,7 +10,7 @@ const examples_dir = joinpath(@__DIR__, "src", "30-examples")
 rm(examples_dir; force=true, recursive=true)
 for (i, name) in enumerate(("ca43_729_field_sensitivity",))
     source = joinpath(@__DIR__, "..", "examples", "$name.jl")
-    Literate.markdown(source, examples_dir; name="$i-$name")
+    Literate.markdown(source, examples_dir; name="$(lpad(i, 2, "0"))-$name")
 end
 CairoMakie.activate!(; px_per_unit=2)
 # Documenter tries text/html first, which is over its size threshold for these figures.
