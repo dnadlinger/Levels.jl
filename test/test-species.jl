@@ -49,6 +49,7 @@ end
 
 @testitem "ba138 data" tags = [:unit, :fast] begin
     using Unitful
+    using WignerSymbols: wigner6j
 
     cyclic(pair) = uconvert(u"MHz", Levels.transition_frequency(ba138, pair) / 2π)
 
@@ -73,10 +74,26 @@ end
     d1, s1 = a("D_3/2" => "P_1/2"), a("S_1/2" => "P_1/2")
     @test d1 / (d1 + s1) ≈ 0.268167 atol = 3 * 47e-6
 
-    # The M1 branch of D_5/2 is deliberately not an entry, cf. the docstring: the E2
-    # rate is the physical one, and the lifetime longer than the measured 30.14(40) s.
-    @test length(keys(ba138.einstein_as)) == 7
-    @test lifetime(ba138, "D_5/2") ≈ 30.14u"s" / 0.8302 rtol = 1e-12
+    # D_5/2 decays by E2 to S_1/2 and by M1 to D_3/2, at the measured total rate.
+    @test length(keys(ba138.einstein_as)) == 8
+    @test lifetime(ba138, "D_5/2") ≈ 30.14u"s" rtol = 1e-12
+    @test Levels.multipole(ba138, "D_3/2" => "D_5/2") == :M1
+    @test Levels.multipole(ba138, "D_5/2" => "D_3/2") == :M1
+    @test Levels.multipole(ba138, "S_1/2" => "D_5/2") == :E2
+    @test Levels.multipole(ba138, "S_1/2" => "P_3/2") == :E1
+    # The M1 rate against its LS-coupling value: between fine-structure partners,
+    # μ = −μ_B (L + g_s S) reduces to −μ_B (g_s − 1) S, whose reduced element follows
+    # from recoupling l and s (g_l = 1 up to the reduced-mass correction).
+    l, s, j_lo, j_hi = 2, 1//2, 3//2, 5//2
+    s_reduced =
+        sqrt((2j_lo + 1) * (2j_hi + 1)) *
+        wigner6j(s, j_hi, l, j_lo, s, 1) *
+        sqrt(s * (s + 1) * (2s + 1))
+    @test s_reduced^2 ≈ 12 / 5
+    μ = (2.00231930436 - 1) * abs(s_reduced) * u"μB"
+    ω = Levels.transition_frequency(ba138, "D_3/2" => "D_5/2")
+    a_ls = Levels.einstein_a_from_magnetic_dipole(μ, ω, j_hi)
+    @test einstein_a(ba138, "D_3/2" => "D_5/2") ≈ a_ls rtol = 0.02
     @test lifetime(ba138, "D_3/2") ≈ 82.4u"s" rtol = 1e-12
 
     # Measured g-factors, including the field-independent ratio of [Knoll1996].

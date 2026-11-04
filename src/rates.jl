@@ -4,26 +4,65 @@ using Unitful
 using WignerSymbols
 
 """
-    multipole_rank(lower => upper)
+    parity_multipole(lower => upper)
 
-Returns the electric-multipole rank of the transition between the two given
-levels — 1 (E1) if the level parities differ, 2 (E2) if they are equal — as
-determined from the orbital angular momenta. Magnetic multipoles and electric
-orders beyond E2 are not considered.
+Returns the lowest electric multipole allowed by the parities of the two given
+fine-structure levels, as determined from their orbital angular momenta: `:E1` if
+the parities differ, `:E2` if they are equal.
+
+This is a selection rule, not the multipolarity of a transition: a same-parity
+pair may decay by M1 instead, which only the species data records (cf.
+[`Levels.multipole`](@ref)). It serves where electric-dipole character is the
+question, and as the default for rate entries not marked otherwise.
 """
-function multipole_rank(transition::Pair)
+function parity_multipole(transition::Pair)
     lower, upper = transition
     lo = convert(NoHyperfineNumberSpec, lower)
     hi = convert(NoHyperfineNumberSpec, upper)
-    isodd(lo.l + hi.l) ? 1 : 2
+    isodd(lo.l + hi.l) ? :E1 : :E2
 end
+
+"""
+    multipole(species, lower => upper)
+
+Returns the multipolarity of the transition between the two given levels — `:E1`,
+`:E2` or `:M1` — as recorded with the pair's Einstein A coefficient (in either
+orientation; a [`MagneticDipole`](@ref) entry is M1, any other the lowest electric
+multipole allowed by parity). A pair without a tabulated rate gets that parity
+default, [`Levels.parity_multipole`](@ref). Hyperfine levels resolve to their
+fine-structure part.
+"""
+function multipole(species::OneElectronSpecies, transition::Pair)
+    lo = fine_structure(transition.first)
+    hi = fine_structure(transition.second)
+    get(species.multipoles, lo => hi) do
+        get(() -> parity_multipole(lo => hi), species.multipoles, hi => lo)
+    end
+end
+
+"""
+    multipole_rank(multipole::Symbol)
+    multipole_rank(species, lower => upper)
+
+Returns the tensor rank ``k`` of the given multipole — 1 for `:E1` and `:M1`, 2 for
+`:E2` — or of the transition between two levels of a species, as per
+[`Levels.multipole`](@ref).
+"""
+function multipole_rank(multipole::Symbol)
+    multipole in (:E1, :M1) && return 1
+    multipole == :E2 && return 2
+    throw(ArgumentError("Unknown multipole :$multipole; expected :E1, :E2 or :M1"))
+end
+
+multipole_rank(species::OneElectronSpecies, transition::Pair) =
+    multipole_rank(multipole(species, transition))
 
 """
     clebsch_gordan(lower::StateSpec => upper::StateSpec)
 
 Returns the bare Clebsch–Gordan coefficient ``⟨j m; R Δm | j' m'⟩`` between two
-fine-structure states, with the rank ``R`` the electric-multipole order from
-[`multipole_rank`](@ref).
+fine-structure states, with the rank ``R`` that of the lowest electric multipole
+allowed by parity ([`Levels.parity_multipole`](@ref)).
 
 This is the purely geometric coupling factor; the general transition amplitude
 relative to the reduced matrix element — species-aware, covering hyperfine
@@ -34,7 +73,7 @@ function clebsch_gordan(transition::Pair{<:StateSpec,<:StateSpec})
     lower, upper = transition
     lo = convert(NoHyperfineNumberSpec, lower.level)
     hi = convert(NoHyperfineNumberSpec, upper.level)
-    rank = multipole_rank(lo => hi)
+    rank = multipole_rank(parity_multipole(lo => hi))
     Δm = upper.m - lower.m
     abs(Δm) <= rank || return 0.0
     Float64(clebschgordan(lo.j, lower.m, rank, Δm, hi.j, upper.m))
@@ -50,8 +89,9 @@ is_triangle(a, b, c) = abs(a - b) <= c <= a + b && isinteger(a + b - c)
 
 Returns the dimensionless rank-`k` transition amplitude
 ``⟨u|T^k_q|l⟩ / (⟨J'‖T^k‖J⟩/\\sqrt{2J'+1})``, with ``q = m_u - m_l``.
-`rank` defaults to [`multipole_rank`](@ref); an explicit rank supports other
-operators, e.g. `1` for M1 within a fine-structure level.
+`rank` defaults to that of the pair's tabulated multipole
+([`Levels.multipole_rank`](@ref)); an explicit rank supports other operators,
+e.g. `1` for M1 within a fine-structure level.
 
 The species form uses zero-field states: the Clebsch–Gordan coefficient
 ``⟨J m; k q | J' m'⟩`` for fine structure, or
@@ -82,7 +122,7 @@ function zero_field_amplitude(
 )
     lo = lower.level
     hi = upper.level
-    k = something(rank, multipole_rank(lo => hi))
+    k = something(rank, multipole_rank(species, lo => hi))
     Δm = upper.m - lower.m
     (abs(Δm) <= k && is_triangle(lo.j, k, hi.j)) || return 0.0
     Float64(clebschgordan(lo.j, lower.m, k, Δm, hi.j, upper.m))
@@ -91,10 +131,7 @@ end
 function zero_field_amplitude(species::HyperfineOneElectronSpecies, lower, upper, rank)
     validate_hyperfine(species, lower.level)
     validate_hyperfine(species, upper.level)
-    k = something(
-        rank,
-        multipole_rank(fine_structure(lower.level) => fine_structure(upper.level)),
-    )
+    k = something(rank, multipole_rank(species, lower.level => upper.level))
     Δm = upper.m - lower.m
     abs(Δm) <= k || return 0.0
     β = hyperfine_reduction(species.nuclear_spin, lower.level => upper.level; rank=k)
@@ -113,7 +150,7 @@ function transition_amplitude(
         s.species,
         m_lo,
         m_hi,
-        something(rank, multipole_rank(m_lo.level => m_hi.level)),
+        something(rank, multipole_rank(s.species, m_lo.level => m_hi.level)),
     )[
         k,
         i,
@@ -205,8 +242,10 @@ fractions, and every upper hyperfine sublevel has the fine-structure decay
 rate. Species tables therefore store fine-structure Einstein A coefficients.
 For ``I = 0``, ``β = +1`` on allowed transitions.
 
-`rank` defaults to [`multipole_rank`](@ref); an explicit rank supports other
-operators such as M1.
+`rank` defaults to that of the lowest electric multipole allowed by parity
+([`Levels.parity_multipole`](@ref)), or for the species form to that of the pair's
+tabulated multipole ([`Levels.multipole_rank`](@ref)); an explicit rank supports
+other operators such as M1 within a fine-structure level.
 
 # References
 
@@ -220,7 +259,10 @@ function hyperfine_reduction(nuclear_spin, transition::Pair; rank=nothing)
     if !(lo isa HyperfineNumberSpec && hi isa HyperfineNumberSpec)
         throw(ArgumentError("Levels must specify hyperfine (F) levels"))
     end
-    k = something(rank, multipole_rank(fine_structure(lo) => fine_structure(hi)))
+    k = something(
+        rank,
+        multipole_rank(parity_multipole(fine_structure(lo) => fine_structure(hi))),
+    )
     if !is_triangle(lo.f, k, hi.f) || !is_triangle(lo.j, k, hi.j)
         return 0.0
     end
@@ -241,6 +283,9 @@ function hyperfine_reduction(
     hi = parse_level(upper)
     lo isa HyperfineNumberSpec && validate_hyperfine(species, lo)
     hi isa HyperfineNumberSpec && validate_hyperfine(species, hi)
+    if isnothing(rank) && lo isa HyperfineNumberSpec && hi isa HyperfineNumberSpec
+        rank = multipole_rank(species, lo => hi)
+    end
     hyperfine_reduction(species.nuclear_spin, lo => hi; rank)
 end
 
@@ -253,37 +298,66 @@ level_list(species::HyperfineOneElectronSpecies, level) =
     hyperfine_level_list(species, level)
 
 # Resolves a `lower => upper` level pair to the lists of levels on each side
-# and their fine-structure manifolds and multipole rank.
+# and their fine-structure manifolds, multipole and multipole rank.
 function level_pair(species, pair::Pair)
     lower_levels = level_list(species, pair.first)
     upper_levels = level_list(species, pair.second)
     fs_lo = fine_structure(first(lower_levels))
     fs_hi = fine_structure(first(upper_levels))
-    (; lower_levels, upper_levels, fs_lo, fs_hi, rank=multipole_rank(fs_lo => fs_hi))
+    m = multipole(species, fs_lo => fs_hi)
+    (; lower_levels, upper_levels, fs_lo, fs_hi, multipole=m, rank=multipole_rank(m))
 end
 
 # The absolute scale of the James formula for one fine-structure pair at the
 # given intensity: Ω = scale × amplitude × geometry, with the Einstein A
 # coefficient and the **centroid** transition frequency of the pair, so that
-# one physical normalisation serves every component of the pair.
+# one physical normalisation serves every component of the pair. M1 shares the
+# E1 prefactor: the 1/c of the wave's magnetic field cancels against the c⁻⁵ of
+# the M1 rate.
 function rabi_scale(species, fs_lo, fs_hi, intensity)
     a = einstein_a(species, fs_lo => fs_hi)
     isnothing(a) &&
         throw(ArgumentError("No known transition between '$fs_lo' and '$fs_hi'"))
     ω = transition_frequency(species, fs_lo => fs_hi)
-    prefactor = multipole_rank(fs_lo => fs_hi) == 1 ? 6.0 : 20.0
+    prefactor = multipole(species, fs_lo => fs_hi) == :E2 ? 20.0 : 6.0
     uconvert(u"rad/µs", sqrt(prefactor * π * u"c"^2 * intensity * a / (u"ħ" * ω^3)))
 end
 
-# The normalised geometric channel amplitudes of a rank-1 or rank-2 coupling,
-# indexed by q + rank + 1.
-function channel_geometry(rank, ε, direction)
+# The normalised geometric channel amplitudes of an E1, E2 or M1 coupling,
+# indexed by q + rank + 1. An M1 coupling sees the magnetic polarisation
+# n̂ × ε̂ of the wave, B = (n̂ × E)/c.
+function channel_geometry(multipole, ε, direction)
     ε_scale = sqrt(sum(abs2, ε))
     iszero(ε_scale) && throw(ArgumentError("Polarisation must be non-zero"))
-    rank == 1 && return dipole_geometry(ε ./ ε_scale)
+    ε̂ = ε ./ ε_scale
+    multipole == :E1 && return dipole_geometry(ε̂)
+    isnothing(direction) && throw(
+        ArgumentError(
+            "The beam direction is required for an $multipole coupling, which " *
+            "depends on it",
+        ),
+    )
     n_scale = sqrt(sum(abs2, direction))
     iszero(n_scale) && throw(ArgumentError("Beam direction must be non-zero"))
-    quadrupole_geometry(ε ./ ε_scale, direction ./ n_scale)
+    n̂ = direction ./ n_scale
+    multipole == :E2 && return quadrupole_geometry(ε̂, n̂)
+    multipole == :M1 ||
+        throw(ArgumentError("Unknown multipole :$multipole; expected :E1, :E2 or :M1"))
+    b̂ = SVector{3,ComplexF64}(
+        n̂[2] * ε̂[3] - n̂[3] * ε̂[2],
+        n̂[3] * ε̂[1] - n̂[1] * ε̂[3],
+        n̂[1] * ε̂[2] - n̂[2] * ε̂[1],
+    )
+    if !isapprox(sum(abs2, b̂), 1; atol=1e-9)
+        throw(
+            ArgumentError(
+                "Polarisation must be transverse to the beam direction " *
+                "(ε ⋅ direction = 0) for a magnetic-dipole coupling, whose " *
+                "magnetic polarisation direction × ε it fixes",
+            ),
+        )
+    end
+    dipole_geometry(b̂)
 end
 
 # Returns the complex coupling matrix over `basis` in the upper⟨row|lower⟩⟨col|
@@ -326,21 +400,32 @@ has excitation probability ``\\sin^2(|Ω|t/2)``.
 Following `[James1998]`,
 
 ```math
-Ω_\\mathrm{E1} = \\sqrt{\\frac{6π c^2 I A}{ħ ω^3}} \\, a_{ul} \\, d_{Δm},
+Ω_\\mathrm{E1} = \\sqrt{\\frac{6π c^2 I A}{ħ ω^3}} \\, a_{ul} \\, d_{Δm}(\\hat ε),
 \\qquad
 Ω_\\mathrm{E2} = \\sqrt{\\frac{20π c^2 I A}{ħ ω^3}} \\, a_{ul} \\, Γ_{Δm},
 ```
 
 where ``a_{ul}`` is [`transition_amplitude`](@ref), and ``d_q`` and ``Γ_q``
-come from [`dipole_geometry`](@ref) and [`quadrupole_geometry`](@ref).
-The species form uses zero-field amplitudes; the structure form includes
-field-induced ``F`` mixing. Both use the fine-structure pair's Einstein A
-coefficient and centroid frequency ``ω`` for the physical scale.
+come from [`dipole_geometry`](@ref) and [`quadrupole_geometry`](@ref). A
+magnetic-dipole (M1) pair (cf. [`Levels.multipole`](@ref)) couples to the
+wave's magnetic field ``\\vec B = \\hat n × \\vec E / c``, so that
+
+```math
+Ω_\\mathrm{M1} = \\sqrt{\\frac{6π c^2 I A}{ħ ω^3}} \\, a_{ul} \\,
+    d_{Δm}(\\hat n × \\hat ε),
+```
+
+the E1 prefactor following from ``A_\\mathrm{M1} = ω^3 |⟨J'‖μ‖J⟩|^2 /
+(3π ε_0 ħ c^5 (2J'+1))``. The species form uses zero-field amplitudes; the
+structure form includes field-induced ``F`` mixing. Both use the fine-structure
+pair's Einstein A coefficient and centroid frequency ``ω`` for the physical
+scale.
 
 `ε` and `direction` are normalised internally; `direction` enters only for
-E2. The complex phase, including the phase of `ε`, is retained so matrices
-built from these values preserve interference between components. `abs(Ω)`
-gives the magnitude. [`dipole_components`](@ref) defines the interaction sign.
+E2 and M1, and an M1 coupling requires `ε` transverse to it. The complex
+phase, including the phase of `ε`, is retained so matrices built from these
+values preserve interference between components. `abs(Ω)` gives the
+magnitude. [`dipole_components`](@ref) defines the interaction sign.
 
 # References
 
@@ -404,9 +489,10 @@ function rabi_from_amplitude(
 )
     fs_lo = fine_structure(lower.level)
     fs_hi = fine_structure(upper.level)
-    rank = multipole_rank(fs_lo => fs_hi)
+    m = multipole(species, fs_lo => fs_hi)
+    rank = multipole_rank(m)
     scale = rabi_scale(species, fs_lo, fs_hi, intensity)
-    geometry = channel_geometry(rank, ε, direction)
+    geometry = channel_geometry(m, ε, direction)
     Δm = upper.m - lower.m
     g = abs(Δm) <= rank ? geometry[Int(Δm)+rank+1] : 0.0im
     uconvert(u"rad/µs", scale * (amplitude * g))
@@ -442,7 +528,7 @@ function coupling_matrix(
         p.upper_levels,
         (lo, hi) -> zero_field_amplitude(species, lo, hi, p.rank),
         p.rank,
-        channel_geometry(p.rank, ε, direction),
+        channel_geometry(p.multipole, ε, direction),
         rabi_scale(species, p.fs_lo, p.fs_hi, intensity),
     )
 end
@@ -455,7 +541,7 @@ function coupling_matrix(s::Eigenstructure, pair::Pair, intensity, ε, direction
         p.upper_levels,
         amplitude_lookup(s, p.fs_lo, p.fs_hi, p.rank),
         p.rank,
-        channel_geometry(p.rank, ε, direction),
+        channel_geometry(p.multipole, ε, direction),
         rabi_scale(s.species, p.fs_lo, p.fs_hi, intensity),
     )
 end
@@ -464,17 +550,18 @@ end
     relative_couplings(species, basis::StateBasis, lower => upper, ε, direction)
     relative_couplings(s::Eigenstructure, lower => upper, ε, direction)
 
-Returns the dimensionless complex E1 or E2 coupling amplitudes
+Returns the dimensionless complex E1, E2 or M1 coupling amplitudes
 ``c_{m→m'} = ⟨\\mathrm{up}|T^k_q|\\mathrm{lo}⟩_\\mathrm{rel} \\, g_{Δm}`` — the
 [`transition_amplitude`](@ref) times the normalised geometric channel
 amplitude ([`dipole_geometry`](@ref) or [`quadrupole_geometry`](@ref)) — in
 the upper⟨row|lower⟩⟨col| block, zero elsewhere: [`coupling_matrix`](@ref)
-without its physical scale. The species form is the zero-field matrix in the
-coupled basis, the structure form the at-field matrix in the field eigenbasis
-of `s` indexed by `basis(s)` (rotated as a whole fine-structure pair, then
-selected, like `coupling_matrix`). The overall scale is typically fixed by
-normalising one probed component to a known carrier Rabi frequency with
-[`rabi_normalised`](@ref).
+without its physical scale (an M1 pair takes the dipole geometry of the magnetic
+polarisation `direction × ε`, cf. [`rabi_frequency`](@ref)). The species form is
+the zero-field matrix in the coupled basis, the structure form the at-field
+matrix in the field eigenbasis of `s` indexed by `basis(s)` (rotated as a whole
+fine-structure pair, then selected, like `coupling_matrix`). The overall scale
+is typically fixed by normalising one probed component to a known carrier Rabi
+frequency with [`rabi_normalised`](@ref).
 """
 function relative_couplings(
     species::OneElectronSpecies,
@@ -491,7 +578,7 @@ function relative_couplings(
         p.upper_levels,
         (lo, hi) -> zero_field_amplitude(species, lo, hi, p.rank),
         p.rank,
-        channel_geometry(p.rank, ε, direction),
+        channel_geometry(p.multipole, ε, direction),
         1.0,
     )
 end
@@ -504,7 +591,7 @@ function relative_couplings(s::Eigenstructure, pair::Pair, ε, direction)
         p.upper_levels,
         amplitude_lookup(s, p.fs_lo, p.fs_hi, p.rank),
         p.rank,
-        channel_geometry(p.rank, ε, direction),
+        channel_geometry(p.multipole, ε, direction),
         1.0,
     )
 end
@@ -575,10 +662,10 @@ end
 
 # The reduced electric-dipole matrix element per unit Clebsch–Gordan amplitude,
 # ⟨J'‖d‖J⟩/√(2J'+1) = √(3π ε₀ ħ c³ A / ω³), from the Einstein A coefficient
-# and the centroid frequency of the pair (the inverse of the ReducedDipole
+# and the centroid frequency of the pair (the inverse of the ElectricDipole
 # conversion of the species constructors).
 function reduced_dipole_scale(species, fs_lo, fs_hi)
-    multipole_rank(fs_lo => fs_hi) == 1 || throw(
+    multipole(species, fs_lo => fs_hi) == :E1 || throw(
         ArgumentError(
             "'$fs_lo' → '$fs_hi' is not an electric-dipole transition; " *
             "dipole_components covers E1 only",
@@ -598,7 +685,7 @@ end
 Returns three E1 electric-dipole operator matrices ``d_q`` in coulomb metres,
 indexed by `q + 2` for ``q = -1, 0, +1``. Entries occupy the upper-row,
 lower-column block; all others are zero. Basis and ``F``-label selection
-follow [`coupling_matrix`](@ref). An E2 pair raises an error.
+follow [`coupling_matrix`](@ref). An E2 or M1 pair raises an error.
 
 The reduced element is defined by
 
@@ -666,4 +753,9 @@ export transition_amplitude,
     intensity_for_rabi,
     relative_couplings,
     dipole_components
-public clebsch_gordan, multipole_rank, hyperfine_reduction, relative_amplitudes
+public clebsch_gordan,
+    multipole,
+    multipole_rank,
+    parity_multipole,
+    hyperfine_reduction,
+    relative_amplitudes

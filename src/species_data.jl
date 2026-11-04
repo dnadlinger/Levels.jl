@@ -73,6 +73,8 @@ const sr88 = NoHyperfineOneElectronSpecies(;
         (k, v) in [
             ("S_1/2" => "P_3/2") => 141u"µs^-1", # …(2) [Sansonetti2012]
             ("S_1/2" => "P_1/2") => 127.9u"µs^-1", # …(1.3) [Likforman2016]
+            # The M1 decay D_5/2 → D_3/2 (2.4e-4 s⁻¹ in LS coupling, a 1e-4 share)
+            # is deliberately absent, as for the Ca⁺ isotopes below.
             ("S_1/2" => "D_5/2") => 2.559u"s^-1", # …(10) [Sansonetti2012]
             ("S_1/2" => "D_3/2") => 2.299u"s^-1", # …(21) [Sansonetti2012]
             ("D_3/2" => "P_1/2") => 7.46u"µs^-1", # …(14) [Likforman2016]
@@ -85,7 +87,7 @@ const sr88 = NoHyperfineOneElectronSpecies(;
             # of α₀(4d₅/₂) — by the measured static differential
             # polarisability of the clock transition (see
             # test-polarisability.jl).
-            ("D_5/2" => "P_3/2") => ReducedDipole(4.187DIPOLE_AU),
+            ("D_5/2" => "P_3/2") => ElectricDipole(4.187DIPOLE_AU),
         ]
     ),
     lande_g_overrides=Dict(
@@ -170,7 +172,11 @@ const CA_EINSTEIN_AS = Dict(
     convert(Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec}, k) => v for
     (k, v) in [
         # τ(D_5/2) = 1.1649(44) s [Shao2017]; the E2 decay to S_1/2 is the only relevant
-        # channel (D_5/2 → D_3/2 M1 is ~µHz).
+        # channel. The M1 decay to D_3/2 (2.4e-6 s⁻¹ in LS coupling, a 3e-6 share) is
+        # deliberately absent, so that S_1/2 + D_5/2 models stay closed. Unlike the
+        # decay, the quadratic Zeeman shift that the same M1 coupling causes
+        # (≈ +26 Hz mT⁻² for D_5/2 m = ±1/2) is not negligible, but fine-structure
+        # mixing is not modelled (see the Eigenstructure reference).
         ("S_1/2" => "D_5/2") => 1 / 1.1649u"s",
         # τ(D_3/2) from the directly measured lifetime ratio τ(D_3/2)/τ(D_5/2) =
         # 1.0257(43) [Shao2018] times the [Shao2017] τ(D_5/2), i.e. 1.1948(66) s,
@@ -480,12 +486,10 @@ over τ(P₃/₂) = 6.2615(72) ns of `[Zhang2020]`, which rests on the older
 ⟨P₃/₂‖r‖S₁/₂⟩ of Woods et al. (2010), whose ratio to the P₁/₂ element disagrees with
 the direct measurement of `[Jayjong2026a]`.
 
-!!! warning
-    The 17 % M1 branch D₅/₂ → D₃/₂ is not represented: `multipole_rank` would take a
-    same-parity entry for E2, and so add wrong jump operators to any model holding
-    both D levels. `einstein_a(ba138, "S_1/2" => "D_5/2")` is the true E2 rate, for
-    correct 1762 nm couplings, so that `lifetime(ba138, "D_5/2")` returns ≈ 36.3 s
-    instead of the measured 30.14(40) s `[Zhang2020]`.
+D₅/₂ decays to S₁/₂ by E2 and, with a 17 % branch, to D₃/₂ by M1 (a
+[`MagneticDipole`](@ref) entry). Its lifetime is thus the measured 30.14(40) s
+`[Zhang2020]`, and a model holding D₅/₂ must also hold D₃/₂, or drop that channel
+explicitly (`open_channels = :drop`).
 
 The 4f levels are not included, as the sources give neither their energies nor
 dipoles. Their contribution to α(D₅/₂) is lumped into the static remainder, which is
@@ -569,14 +573,19 @@ const ba138 = NoHyperfineOneElectronSpecies(;
         (k, v) in [
             # Measured ⟨P_1/2‖r‖S_1/2⟩; the others follow from it through the measured
             # ratio to ⟨P_3/2‖r‖S_1/2⟩ [Jayjong2026a] and the branching fractions.
-            ("S_1/2" => "P_1/2") => ReducedDipole(3.3227DIPOLE_AU), # …(12) [Jayjong2026b]
-            ("D_3/2" => "P_1/2") => ReducedDipole(3.0390DIPOLE_AU), # …(12) [Jayjong2026b]
-            ("S_1/2" => "P_3/2") => ReducedDipole(4.6910DIPOLE_AU), # …(17) [Jayjong2026b]
-            ("D_5/2" => "P_3/2") => ReducedDipole(4.0934DIPOLE_AU), # …(17) [Jayjong2026b]
-            ("D_3/2" => "P_3/2") => ReducedDipole(1.32896DIPOLE_AU), # …(76) [Jayjong2026b]
-            # The E2 branch alone (see the docstring): the theory fraction 0.8302(9)
-            # [Cserveny2025] of the decay rate from the τ = 30.14(40) s of [Zhang2020].
+            ("S_1/2" => "P_1/2") => ElectricDipole(3.3227DIPOLE_AU), # …(12) [Jayjong2026b]
+            ("D_3/2" => "P_1/2") => ElectricDipole(3.0390DIPOLE_AU), # …(12) [Jayjong2026b]
+            ("S_1/2" => "P_3/2") => ElectricDipole(4.6910DIPOLE_AU), # …(17) [Jayjong2026b]
+            ("D_5/2" => "P_3/2") => ElectricDipole(4.0934DIPOLE_AU), # …(17) [Jayjong2026b]
+            ("D_3/2" => "P_3/2") => ElectricDipole(1.32896DIPOLE_AU), # …(76) [Jayjong2026b]
+            # The E2 branch: the theory fraction 0.8302(9) [Cserveny2025] of the
+            # decay rate from the τ = 30.14(40) s of [Zhang2020].
             ("S_1/2" => "D_5/2") => 0.8302 / 30.14u"s",
+            # The remaining D_5/2 → D_3/2 branch of the same rate, as M1 (its E2
+            # part, smaller by orders of magnitude, lumped in). The LS-coupling
+            # value, from |⟨D_3/2‖L + g_s S‖D_5/2⟩|² = (g_s − 1)² 12/5 μ_B², is
+            # 1.1% lower.
+            ("D_3/2" => "D_5/2") => MagneticDipole((1 - 0.8302) / 30.14u"s"),
             # Theory, five times more precise than the measured 79.8(4.6) s (Yu et al.
             # 1997, as quoted by [Cserveny2025]), with which it is consistent at 0.6σ.
             ("S_1/2" => "D_3/2") => 1 / 82.4u"s", # …(10) [Cserveny2025]

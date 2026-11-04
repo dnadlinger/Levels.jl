@@ -64,6 +64,7 @@ using ..Levels:
     lifetime,
     fine_structure,
     hyperfine_shift,
+    multipole,
     multipole_rank,
     offsets,
     parse_level,

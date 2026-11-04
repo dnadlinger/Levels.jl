@@ -1,8 +1,13 @@
 @testitem "Clebsch–Gordan factors" tags=[:unit, :fast] begin
-    # E1 vs E2 from the level parities.
-    @test Levels.multipole_rank("S_1/2" => "P_3/2") == 1
-    @test Levels.multipole_rank("D_3/2" => "P_1/2") == 1
-    @test Levels.multipole_rank("S_1/2" => "D_5/2") == 2
+    # E1 vs E2 from the level parities; the ranks of the multipoles.
+    @test Levels.parity_multipole("S_1/2" => "P_3/2") == :E1
+    @test Levels.parity_multipole("D_3/2" => "P_1/2") == :E1
+    @test Levels.parity_multipole("S_1/2" => "D_5/2") == :E2
+    @test Levels.multipole_rank.((:E1, :E2, :M1)) == (1, 2, 1)
+    @test_throws ArgumentError Levels.multipole_rank(:E3)
+    # Species data: an untabulated pair takes the parity default.
+    @test Levels.multipole(sr88, "D_3/2" => "D_5/2") == :E2
+    @test Levels.multipole_rank(ca40, "S_1/2" => "D_3/2") == 2
 
     # Stretch transitions carry unit Clebsch–Gordan factors.
     @test Levels.clebsch_gordan(StateSpec("S_1/2", 1//2) => StateSpec("P_3/2", 3//2)) ≈
@@ -746,4 +751,157 @@ end
         end
         @test maxdev < 1e-12
     end
+end
+
+@testitem "M1 strengths and Rabi frequencies" tags=[:unit, :fast] begin
+    using Unitful
+
+    # A fine-structure pair whose M1 strength is given as a reduced moment.
+    μ = 1.55u"μB"
+    toy = NoHyperfineOneElectronSpecies(;
+        mass=40u"u",
+        energies=Dict("D_3/2" => 0u"J", "D_5/2" => u"h" * 2u"THz"),
+        einstein_as=Dict(("D_3/2" => "D_5/2") => MagneticDipole(μ)),
+    )
+    @test Levels.multipole(toy, "D_3/2" => "D_5/2") == :M1
+    @test Levels.multipole_rank(toy, "D_5/2" => "D_3/2") == 1
+    # A = μ₀ ω³ |⟨J′‖μ‖J⟩|² / (3π ħ c³ (2J′ + 1)), and the same strength as a rate.
+    ω = Levels.transition_frequency(toy, "D_3/2" => "D_5/2")
+    a = einstein_a(toy, "D_3/2" => "D_5/2")
+    @test a ≈ uconvert(u"µs^-1", u"μ0" * ω^3 * μ^2 / (3π * u"ħ" * u"c"^3 * 6)) rtol =
+        1e-9
+    @test lifetime(toy, "D_5/2") ≈ 1 / a
+    from_rate = NoHyperfineOneElectronSpecies(;
+        mass=40u"u",
+        energies=toy.energies,
+        einstein_as=Dict(("D_3/2" => "D_5/2") => MagneticDipole(a)),
+    )
+    @test einstein_a(from_rate, "D_3/2" => "D_5/2") ≈ a rtol = 1e-12
+
+    # Rank-1 selection rules: no |Δm| = 2 amplitude by default.
+    lo(m) = StateSpec("D_3/2", m)
+    hi(m) = StateSpec("D_5/2", m)
+    @test transition_amplitude(toy, lo(3//2) => hi(5//2)) ≈ 1
+    @test transition_amplitude(toy, lo(1//2) => hi(5//2)) == 0
+
+    # Absolute Rabi frequency: the wave's magnetic field B₀ = √(2I/(ε₀c))/c drives the
+    # stretched component through ⟨5/2 5/2|μ₊₁|3/2 3/2⟩ = μ/√6. A σ⁺ beam along ẑ has a
+    # σ⁺ magnetic polarisation, so it drives Δm = +1 only.
+    intensity = 1e8u"W/m^2"
+    B0 = sqrt(2 * intensity / (u"ε0" * u"c")) / u"c"
+    n, ε = beam_vectors(0.0, π / 4, π / 2)
+    Ω = rabi_frequency(toy, lo(3//2) => hi(5//2), intensity, ε, n)
+    @test abs(Ω) ≈ uconvert(u"rad/µs", B0 * μ / (sqrt(6) * u"ħ")) rtol = 1e-9
+    @test abs(rabi_frequency(toy, lo(1//2) => hi(1//2), intensity, ε, n)) <=
+          1e-12 * abs(Ω)
+    @test abs(rabi_frequency(toy, lo(3//2) => hi(1//2), intensity, ε, n)) <=
+          1e-12 * abs(Ω)
+
+    # A beam along x̂ polarised along ŷ has its magnetic field along ẑ: π only, with
+    # the Clebsch–Gordan factors of a rank-1 operator. (For E1 the same beam would
+    # drive σ±.)
+    nx, εy = [1.0, 0, 0], [0, 1.0, 0]
+    for m in (-3//2, -1//2, 1//2, 3//2)
+        @test abs(rabi_frequency(toy, lo(m) => hi(m), intensity, εy, nx)) ≈
+              abs(Ω) * abs(transition_amplitude(toy, lo(m) => hi(m))) rtol = 1e-9
+    end
+    @test abs(rabi_frequency(toy, lo(1//2) => hi(3//2), intensity, εy, nx)) <=
+          1e-12 * abs(Ω)
+
+    # The magnetic polarisation needs a beam direction and a transverse ε.
+    @test_throws ArgumentError rabi_frequency(
+        toy,
+        lo(1//2) => hi(1//2),
+        intensity,
+        [1.0, 0, 0],
+        nx,
+    )
+    @test_throws ArgumentError rabi_frequency(
+        toy,
+        lo(1//2) => hi(1//2),
+        intensity,
+        εy,
+        nothing,
+    )
+
+    # The coupling matrices share this geometry, in species and structure forms.
+    basis = StateBasis("D_3/2", "D_5/2")
+    s = Eigenstructure(toy, basis; B=0.1u"mT")
+    C = coupling_matrix(toy, basis, "D_3/2" => "D_5/2", intensity, ε, n)
+    Cs = coupling_matrix(s, "D_3/2" => "D_5/2", intensity, ε, n)
+    R = relative_couplings(toy, basis, "D_3/2" => "D_5/2", ε, n)
+    for (i, l) in enumerate(basis), (k, u) in enumerate(basis)
+        (l.level == lo(1//2).level && u.level == hi(1//2).level) || continue
+        @test C[k, i] ≈ rabi_frequency(toy, l => u, intensity, ε, n) atol =
+            1e-12 * abs(Ω)
+        @test Cs[k, i] ≈ rabi_frequency(s, l => u, intensity, ε, n) atol =
+            1e-12 * abs(Ω)
+        @test C[k, i] ≈ abs(Ω) * R[k, i] atol = 1e-12 * abs(Ω)
+    end
+end
+
+@testitem "MagneticDipole validation" tags=[:unit, :fast] begin
+    using Unitful
+
+    @test_throws ArgumentError MagneticDipole(1u"m")
+    @test_throws ArgumentError MagneticDipole(-1u"s^-1")
+    @test_throws ArgumentError MagneticDipole(NaN * u"μB")
+    species(energies, rates) =
+        NoHyperfineOneElectronSpecies(; mass=40u"u", energies, einstein_as=rates)
+    sp = Dict("S_1/2" => 0u"J", "P_1/2" => 3u"eV")
+    sd = Dict("S_1/2" => 0u"J", "D_5/2" => 2u"eV")
+    dd = Dict("D_3/2" => 0u"J", "D_5/2" => 0.1u"eV")
+    # M1 needs equal parity and |ΔJ| ≤ 1.
+    @test_throws ArgumentError species(
+        sp,
+        Dict(("S_1/2" => "P_1/2") => MagneticDipole(1u"s^-1")),
+    )
+    @test_throws ArgumentError species(
+        sd,
+        Dict(("S_1/2" => "D_5/2") => MagneticDipole(1u"s^-1")),
+    )
+    # A plain rate between fine-structure partners would be taken as E2, so it is
+    # refused; an electric-dipole matrix element cannot stand for M1 either.
+    @test_throws ArgumentError species(dd, Dict(("D_3/2" => "D_5/2") => 1u"s^-1"))
+    @test_throws ArgumentError species(
+        dd,
+        Dict(("D_3/2" => "D_5/2") => ElectricDipole(1 * Levels.DIPOLE_AU)),
+    )
+    # A plain same-parity rate between different l stays E2.
+    @test Levels.multipole(
+        species(sd, Dict(("S_1/2" => "D_5/2") => 1u"s^-1")),
+        "S_1/2" => "D_5/2",
+    ) == :E2
+end
+
+@testitem "ElectricDipole validation" tags=[:unit, :fast] begin
+    using Unitful
+
+    @test_throws ArgumentError ElectricDipole(1u"m")
+    @test_throws ArgumentError ElectricDipole(1u"μB")
+    @test_throws ArgumentError ElectricDipole(-1u"s^-1")
+    @test_throws ArgumentError ElectricDipole(Inf * Levels.DIPOLE_AU)
+    @test_throws ArgumentError ElectricDipole((1 + 1im) * Levels.DIPOLE_AU)
+    # Either form is stored in its canonical unit, as a Float64 quantity.
+    @test ElectricDipole(2u"s^-1").strength isa typeof(1.0u"µs^-1")
+    @test ElectricDipole(2u"s^-1").strength ≈ 2u"s^-1"
+    @test ElectricDipole(1.0f0u"C*m").strength isa typeof(1.0u"C*m")
+
+    species(rates) = NoHyperfineOneElectronSpecies(;
+        mass=40u"u",
+        energies=Dict("S_1/2" => 0u"J", "P_1/2" => 3u"eV"),
+        einstein_as=rates,
+    )
+    # A rate is the same entry as a plain one, and a matrix element round-trips
+    # through the conversion pair.
+    a = 1.4e8u"s^-1"
+    explicit = species(Dict(("S_1/2" => "P_1/2") => ElectricDipole(a)))
+    @test einstein_a(explicit, "S_1/2" => "P_1/2") ≈
+          einstein_a(species(Dict(("S_1/2" => "P_1/2") => a)), "S_1/2" => "P_1/2")
+    @test Levels.multipole(explicit, "S_1/2" => "P_1/2") == :E1
+    ω = Levels.transition_frequency(explicit, "S_1/2" => "P_1/2")
+    d = Levels.electric_dipole_from_einstein_a(a, ω, 1//2)
+    from_dipole = species(Dict(("S_1/2" => "P_1/2") => ElectricDipole(d)))
+    @test einstein_a(from_dipole, "S_1/2" => "P_1/2") ≈ a rtol = 1e-12
+    @test Levels.einstein_a_from_electric_dipole(d, ω, 1//2) ≈ a rtol = 1e-12
 end

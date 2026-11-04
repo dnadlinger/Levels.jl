@@ -3,7 +3,7 @@
     toy = NoHyperfineOneElectronSpecies(;
         mass=40u"u",
         energies=Dict("S_1/2" => 0u"J", "P_1/2" => 3u"eV"),
-        einstein_as=Dict(("S_1/2", "P_1/2") => ReducedDipole(3 * Levels.DIPOLE_AU)),
+        einstein_as=Dict(("S_1/2", "P_1/2") => ElectricDipole(3 * Levels.DIPOLE_AU)),
     )
     @test einstein_a(toy, "S_1/2" => "P_1/2") > 0u"s^-1"
     @test ca43.nuclear_g * ca43.nuclear_spin ≈ -1.315350

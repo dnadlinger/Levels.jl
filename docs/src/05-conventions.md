@@ -190,7 +190,10 @@ component at `field(s)`. Reuse the latter across structures for a fixed laser fr
 rebuild it at each field for fixed detuning from the moving resonance. The marker pair
 does not restrict which components a beam drives.
 
-Spherical channels use index `q + rank + 1`, hence `q + 2` for E1 and `q + 3` for E2.
+Spherical channels use index `q + rank + 1`, hence `q + 2` for E1 and M1 and `q + 3`
+for E2. The multipole of a transition is that of its Einstein A entry
+([`Levels.multipole`](@ref)), never inferred from parity alone; an M1 transition couples
+to the beam's magnetic polarisation ``\hat n × \vec ε``.
 Fock occupation ``n`` starts at zero; `num_fock` counts retained states, so the maximum
 occupation is `num_fock - 1`.
 
@@ -205,3 +208,35 @@ Degenerate ``F`` levels within a block have no unique adiabatic continuation. Th
 finite-field eigenvectors need not approach the coupled states; labels follow a
 deterministic energy-ordering policy, with zero-field ties ordered by increasing ``F``.
 Different ``m_F`` sectors remain unmixed because they are diagonalised separately.
+
+## [Fine-structure mixing](@id fine-structure-mixing)
+
+Levels.jl currently neglects fine-structure mixing; calculations are done manifold by
+manifold, each spanning a single fine-structure level ``J``. A given static magnetic
+field mixes the ``F`` levels within each manifold, but the magnetic dipole coupling
+between fine-structure partners such as D₃/₂ and D₅/₂ is not considered, even though we
+do model M1 decays (see [`MagneticDipole`](@ref)). The quadratic Zeeman shift that this
+mixing causes is therefore absent. For the doublet of orbital angular momentum ``l``, it
+is in LS coupling
+
+```math
+Δf = \frac{(g_s - 1)^2 (μ_B B/h)^2}{Δf_\mathrm{FS}}
+    \, \frac{(l + 1/2)^2 - m^2}{(2l + 1)^2},
+```
+
+raising the upper level and lowering the lower one by the same amount, with stretched
+states unshifted. For D₅/₂ and the ``m = ±1/2`` states, where it is largest:
+
+| ion | ``Δf_\mathrm{FS}`` / THz | ``(Δf / B^2)`` / Hz mT⁻² |
+|:----|----:|----:|
+| ⁴⁰Ca⁺ | 1.82 | +26 |
+| ⁸⁸Sr⁺ | 8.40 | +5.6 |
+| ¹³⁸Ba⁺ | 24.0 | +2.0 |
+
+The same terms are missing from [`zeeman_sensitivity`](@ref) and
+[`insensitive_field`](@ref), and from the ac Zeeman shifts that rf magnetic fields cause
+in `Levels.PeriodicDynamics`. For hyperfine isotopes, the curvature from ``F`` mixing is
+larger by orders of magnitude, so field-insensitive points barely move, but transition
+frequencies still acquire these Hz-level offsets. At rf-trap fields the mixing is not
+usually of significance, of relative order ``μ_B B / hΔν_\mathrm{FS} ≲ 10^{-5}``; but in
+Penning traps it often is (0.035 for the Ca⁺ 3D doublet at 4.5 T).

@@ -664,7 +664,7 @@ end
             Levels.transition_frequency(CA40_NONREL_G, label.lower => label.upper) /
             u"c"
         @test mc.recoil_lamb_dicke[k] ≈ uconvert(NoUnits, k_photon * x0) rtol = 1e-9
-        rank = Levels.multipole_rank(label.lower => label.upper)
+        rank = Levels.multipole_rank(label.multipole)
         @test mc.recoil_moments[k] == recoil_moment(rank, label.q, mode_z.direction)
         @test mc.recoil_operators[k] ≈
               (sqrt(mc.recoil_moments[k]) * mc.recoil_lamb_dicke[k]) .* L
@@ -955,4 +955,64 @@ end
           gauss_intensity(1.0u"mW", 50.0u"µm", 422u"nm")
     @test uconvert(u"W/m^2", peak_intensity(1.0u"mW", 50.0u"µm")) ≈ 254647.9u"W/m^2" rtol =
         1e-6
+end
+
+@testitem "M1 decay in Lindblad models" tags=[:unit] begin
+    using Levels.OpticalBloch
+    using Unitful
+    using LinearAlgebra
+
+    no_beams = LaserScheme(LaserBeam[])
+    state_rates(L) = ustrip.(u"s^-1", real.(diag(L' * L)))
+    in_level(basis, level) = findall(
+        st -> Levels.fine_structure(st.level) == Levels.parse_level(level),
+        basis,
+    )
+
+    # ¹³⁸Ba⁺: D_5/2 decays by E2 to S_1/2 and by M1 to D_3/2.
+    s = Eigenstructure(ba138, "S_1/2", "D_3/2", "D_5/2"; B=0.5u"mT")
+    ops, labels = decay_operators(lindblad_model(s, no_beams))
+    m1 = findall(l -> l.multipole == :M1, labels)
+    @test sort([labels[k].q for k in m1]) == [-1, 0, 1]
+    @test all(l -> (string(l.lower), string(l.upper)) == ("D_3/2", "D_5/2"), labels[m1])
+    @test all(l -> l.multipole == :E2, labels[setdiff(eachindex(labels), m1)])
+    d5 = in_level(collect(Levels.basis(s)), "D_5/2")
+    @test sum(state_rates, ops)[d5] ≈ fill(1 / 30.14, 6) rtol = 1e-10
+    a_m1 = ustrip(u"s^-1", einstein_a(ba138, "D_3/2" => "D_5/2"))
+    @test sum(state_rates, ops[m1])[d5] ≈ fill(a_m1, 6) rtol = 1e-10
+
+    # Without D_3/2 the M1 channel leaves the basis: an error, or dropped on request.
+    s_clock = Eigenstructure(ba138, "S_1/2", "D_5/2"; B=0.5u"mT")
+    @test_throws ArgumentError lindblad_model(s_clock, no_beams)
+    dropped = lindblad_model(s_clock, no_beams; open_channels=:drop)
+    @test all(l -> l.multipole == :E2, decay_operators(dropped)[2])
+
+    # M1 photons follow the E1 radiation patterns.
+    mode = MotionalMode(angular(1u"MHz"), [0.3, -0.4, 0.5])
+    for k in m1
+        @test Levels.OpticalBloch.decay_recoil_moment(:exact, labels[k], mode) ==
+              recoil_moment(1, labels[k].q, mode.direction)
+    end
+
+    # Hyperfine structure: ⁴³Ca⁺ given an (artificially strong) M1 branch. Every
+    # sublevel of D_5/2 decays at the fine-structure M1 rate, as Σ_F β⁽¹⁾² = 1.
+    a_hf = 0.1u"s^-1"
+    rates = Dict{Any,Any}(ca43.einstein_as)
+    rates["D_3/2"=>"D_5/2"] = MagneticDipole(a_hf)
+    ca43_m1 = HyperfineOneElectronSpecies(;
+        mass=ca43.mass,
+        nuclear_spin=ca43.nuclear_spin,
+        nuclear_g=ca43.nuclear_g,
+        energies=ca43.energies,
+        hyperfine=ca43.hyperfine,
+        einstein_as=rates,
+        lande_g_overrides=ca43.lande_g_overrides,
+    )
+    @test 1 / lifetime(ca43_m1, "D_5/2 F=4") ≈ 1 / lifetime(ca43, "D_5/2") + a_hf
+    s_hf = Eigenstructure(ca43_m1, "S_1/2", "D_3/2", "D_5/2"; B=0.5u"mT")
+    ops_hf, labels_hf = decay_operators(lindblad_model(s_hf, no_beams))
+    m1_hf = findall(l -> l.multipole == :M1, labels_hf)
+    d5_hf = in_level(collect(Levels.basis(s_hf)), "D_5/2")
+    @test sum(state_rates, ops_hf[m1_hf])[d5_hf] ≈
+          fill(ustrip(u"s^-1", a_hf), length(d5_hf)) rtol = 1e-10
 end

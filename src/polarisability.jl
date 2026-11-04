@@ -309,7 +309,7 @@ function quadrupole_pairs(species, levels)
     pairs = Tuple{NoHyperfineNumberSpec,NoHyperfineNumberSpec}[]
     for lo in levels, hi in levels
         species.energies[lo] < species.energies[hi] || continue
-        multipole_rank(lo => hi) == 2 || continue
+        multipole(species, lo => hi) == :E2 || continue
         abs(lo.j - hi.j) <= 2 <= lo.j + hi.j || continue
         isnothing(einstein_a(species, lo => hi)) && continue
         push!(pairs, (lo, hi))
@@ -327,18 +327,21 @@ end
 
 """
 Validates that the reference pair of a [`RelativeFrequency`](@ref) laser is a
-transition the channel machinery can describe, returning its ordered
-fine-structure levels and multipole rank.
+transition the channel machinery can describe — an E1 or E2 one; near-resonant M1
+channels are not supported — returning its ordered fine-structure levels and
+multipole rank.
 """
 function validate_reference(species, laser::RelativeFrequency)
     lo = fine_structure(laser.lower)
     hi = fine_structure(laser.upper)
-    rank = multipole_rank(lo => hi)
+    m = multipole(species, lo => hi)
+    m == :M1 && throw_m1_channel(lo, hi)
+    rank = multipole_rank(m)
     if !(abs(lo.j - hi.j) <= rank <= lo.j + hi.j)
         throw(
             ArgumentError(
                 "'$(laser.lower)' and '$(laser.upper)' are not connected by an " *
-                "E$rank transition",
+                "$m transition",
             ),
         )
     end
@@ -361,12 +364,20 @@ function validate_reference(species, laser::RelativeFrequency)
     lo, hi, rank
 end
 
+# Near-resonant light-shift channels cover E1 and E2 pairs only.
+throw_m1_channel(lo, hi) = throw(
+    ArgumentError(
+        "'$lo' → '$hi' is a magnetic-dipole transition; near-resonant M1 " *
+        "light-shift channels are not supported",
+    ),
+)
+
 # Maps each E1 reference level to the partner excluded from its background.
-function exclusion_partner(laser)
+function exclusion_partner(species, laser)
     laser isa RelativeFrequency || return Returns(nothing)
     lo = fine_structure(laser.lower)
     hi = fine_structure(laser.upper)
-    multipole_rank(lo => hi) == 1 || return Returns(nothing)
+    multipole(species, lo => hi) == :E1 || return Returns(nothing)
     function (level)
         fs = fine_structure(parse_level(level))
         fs == lo ? hi : fs == hi ? lo : nothing
@@ -403,7 +414,7 @@ function resonant_channels(s::Eigenstructure, laser, cache)
     for (lo, hi) in pairs
         validate_channel_manifold(species, lo)
         validate_channel_manifold(species, hi)
-        rank = multipole_rank(lo => hi)
+        rank = multipole_rank(species, lo => hi)
         scale = channel_scale(species, lo, hi, rank)
         γ = uconvert(u"µs^-1", 1 / lifetime(species, hi))
         m_lo = get!(cache, lo) do
@@ -563,7 +574,9 @@ detuning evaluations.
 The E1 background uses [`LevelPolarisability`](@ref) data; rows without data
 are stored as `NaN` and raise an error if evaluated. Near-resonant channels
 use Einstein A coefficients and are built for E2 pairs among the structure's
-manifolds and for the `RelativeFrequency` pair (E1 or E2).
+manifolds and for the `RelativeFrequency` pair (E1 or E2). Neither part includes
+magnetic-dipole (M1) couplings to the beam's magnetic field; an M1 reference pair
+raises an error.
 
 For an E1 reference pair, its co-rotating term is moved from each available
 background into the channel sum; the partner must be explicit in that
@@ -590,7 +603,7 @@ function LightShiftCoefficients(s::Eigenstructure, laser)
         validate_reference(species, laser)
     end
     ħω = photon_energy(species, laser)
-    exclude = exclusion_partner(laser)
+    exclude = exclusion_partner(species, laser)
     validate_background_detunings(species, unique(basis.levels), ħω, exclude)
     cache = manifold_cache(s)
     rows = polarisability_rows(s, ħω, exclude, cache)
@@ -763,9 +776,7 @@ function light_shift(
     resonant = if isnothing(other)
         0.0u"rad/µs"
     else
-        rank = multipole_rank(
-            fine_structure(c.laser.lower) => fine_structure(c.laser.upper),
-        )
+        rank = multipole_rank(c.structure.species, c.laser.lower => c.laser.upper)
         w_quad = nothing
         if rank == 2
             isnothing(direction) && throw(
@@ -799,11 +810,13 @@ function throw_undriveable(c, lower, upper)
     species = c.structure.species
     fs_lo = fine_structure(lower.level)
     fs_hi = fine_structure(upper.level)
-    rank = multipole_rank(fs_lo => fs_hi)
+    m = multipole(species, fs_lo => fs_hi)
+    rank = multipole_rank(m)
     connected =
         abs(fs_lo.j - fs_hi.j) <= rank <= fs_lo.j + fs_hi.j &&
         !isnothing(einstein_a(species, fs_lo => fs_hi))
     if connected
+        m == :M1 && throw_m1_channel(fs_lo, fs_hi)
         named =
             !isnothing(c.laser) &&
             (fine_structure(c.laser.lower), fine_structure(c.laser.upper)) ==
@@ -822,7 +835,7 @@ function throw_undriveable(c, lower, upper)
         if abs(Δm) > rank
             throw(
                 ArgumentError(
-                    "The Δm = $Δm component '$lower' => '$upper' of an E$rank " *
+                    "The Δm = $Δm component '$lower' => '$upper' of an $m " *
                     "transition cannot be driven (|Δm| ≤ $rank), so there is no " *
                     "resonance whose shift could be observed",
                 ),

@@ -145,7 +145,7 @@ end
         s = Eigenstructure(species, lo, hi; B)
         m_lo = Levels.manifold_solution(s, lo)
         m_hi = Levels.manifold_solution(s, hi)
-        rank = Levels.multipole_rank(lo => hi)
+        rank = Levels.multipole_rank(species, lo => hi)
         amplitudes = Levels.relative_amplitudes(species, m_lo, m_hi, rank)
         for (i, st) in enumerate(m_lo.basis), (k, t) in enumerate(m_hi.basis)
             expected =

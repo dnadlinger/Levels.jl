@@ -138,6 +138,11 @@ diff_curvature(s, (lower, upper)) = curvature(s, upper) - curvature(s, lower)
 diff_quadratic_coeff(B) = to_cyclic(diff_curvature(structure(B), clock)) / 2
 round.(u"kHz/Gauss^2", (diff_quadratic_coeff(B₁), diff_quadratic_coeff(B₀)); digits=2)
 
+# This curvature comes from the mixing within each fine-structure manifold only. The
+# field also mixes D₅/₂ with D₃/₂, which Levels.jl omits (see [Fine-structure
+# mixing](@ref fine-structure-mixing)); it would add at most 0.26 Hz/G² to the quadratic
+# coefficient, 2 × 10⁻⁵ of it.
+#
 # Around these points, the corresponding parabolas are a good approximation of the exact
 # [`transition_frequency`](@ref) (for which we freshly diagonalise the Hamiltonian at
 # every point):

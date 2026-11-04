@@ -33,7 +33,7 @@ function normalise_rate_table(entries, energies)
         end
         energies[lo] < energies[hi] ||
             throw(ArgumentError("Rate keys must be lower => upper"))
-        if !(rate isa ReducedDipole)
+        if !(rate isa Union{ElectricDipole,MagneticDipole})
             (
                 rate isa Unitful.Frequency &&
                 isreal(rate) &&
@@ -41,6 +41,15 @@ function normalise_rate_table(entries, energies)
                 rate >= zero(rate)
             ) || throw(
                 ArgumentError("An Einstein A must be a non-negative, finite rate"),
+            )
+            # A bare rate is taken as the lowest electric multipole allowed by
+            # parity, i.e. E2 here, whereas fine-structure partners decay by M1.
+            lo.l == hi.l && throw(
+                ArgumentError(
+                    "A plain rate between the fine-structure levels '$lo' and " *
+                    "'$hi' would be taken as electric-quadrupole; give their " *
+                    "magnetic-dipole decay as a MagneticDipole",
+                ),
             )
         end
         haskey(result, lo => hi) &&
@@ -129,51 +138,131 @@ function LevelPolarisability(
 end
 
 """
-Returns the Einstein A coefficient of the electric-dipole transition with
+Returns the Einstein A coefficient of the electric-dipole (E1) transition with
 (angular) frequency `ω`, upper-level angular momentum `j_upper` and absolute
 reduced dipole matrix element `d`,
 ``A = ω^3 d^2 / (3 π ε_0 ħ c^3 (2 j_\\mathrm{upper} + 1))``.
 """
-einstein_a_from_dipole(d, ω, j_upper) =
+einstein_a_from_electric_dipole(d, ω, j_upper) =
     uconvert(u"µs^-1", ω^3 * d^2 / (3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1)))
 
 """
 Returns the absolute reduced dipole matrix element implied by the Einstein A
-coefficient `a` (the inverse of [`Levels.einstein_a_from_dipole`](@ref)).
+coefficient `a` (the inverse of [`Levels.einstein_a_from_electric_dipole`](@ref)).
 """
-dipole_from_einstein_a(a, ω, j_upper) =
+electric_dipole_from_einstein_a(a, ω, j_upper) =
     uconvert(u"C*m", sqrt(3π * u"ε0" * u"ħ" * u"c"^3 * (2 * j_upper + 1) * a / ω^3))
 
-"""
-The strength of an electric-dipole transition, specified through the absolute
-reduced dipole matrix element ``|⟨\\mathrm{upper}‖d‖\\mathrm{lower}⟩|`` rather
-than the Einstein A coefficient itself.
-
-Accepted as a value in the `einstein_as` table by the species keyword
-constructors, which convert it to the equivalent Einstein A coefficient
-([`Levels.einstein_a_from_dipole`](@ref), with the frequency from the level
-energies) — for pairs whose best-determined literature quantity is the matrix
-element (typically from a many-body calculation) rather than a directly
-measured rate. Downstream, only the converted rate exists; there is one
-strength per transition, however it was specified.
-"""
-struct ReducedDipole
-    "The absolute reduced dipole matrix element."
-    d::typeof(1.0u"C*m")
+# Validates the argument of a multipole strength specification (`type_name`) and
+# converts it to the stored units: µs⁻¹ for an Einstein A coefficient, or
+# `moment_unit` for a reduced matrix element (described as `moment_description`).
+function multipole_strength(type_name, strength, moment_unit, moment_description)
+    if !(isreal(strength) && isfinite(strength) && strength >= zero(strength))
+        throw(
+            ArgumentError(
+                "A $type_name strength must be non-negative and finite, got $strength",
+            ),
+        )
+    end
+    dimension(strength) == dimension(u"s^-1") &&
+        return convert(typeof(1.0u"µs^-1"), strength)
+    dimension(strength) == dimension(moment_unit) &&
+        return convert(typeof(1.0 * moment_unit), strength)
+    throw(
+        ArgumentError(
+            "A $type_name strength must be an Einstein A coefficient (an inverse " *
+            "time) or a $moment_description, got $strength",
+        ),
+    )
 end
 
 """
-    ReducedDipole(d)
+The strength of an electric-dipole (E1) transition, specified either as its
+Einstein A coefficient or through the absolute reduced dipole matrix element
+``|⟨\\mathrm{upper}‖d‖\\mathrm{lower}⟩|``.
 
-Creates the strength specification from a matrix element in any dipole-moment
-units, so literature values can be written as e.g.
-`ReducedDipole(4.187 * Levels.DIPOLE_AU)`.
+Accepted as a value in the `einstein_as` table by the species keyword
+constructors. A matrix element is converted to the equivalent rate
+([`Levels.einstein_a_from_electric_dipole`](@ref), with the frequency from the
+level energies): the form for pairs whose best-determined literature quantity is
+the matrix element (typically from a many-body calculation) rather than a directly
+measured rate. A rate is equivalent to a plain `einstein_as` entry, which parity
+already marks as E1, but states the multipole explicitly. Downstream only the rate
+exists; there is one strength per transition, however it was specified.
 """
-ReducedDipole(d::Quantity) = ReducedDipole(uconvert(u"C*m", d))
+struct ElectricDipole
+    "The Einstein A coefficient, or the absolute reduced matrix element."
+    strength::Union{typeof(1.0u"µs^-1"),typeof(1.0u"C*m")}
+
+    ElectricDipole(strength::Quantity) = new(
+        multipole_strength(
+            "ElectricDipole",
+            strength,
+            u"C*m",
+            "reduced dipole matrix element (e.g. in Levels.DIPOLE_AU)",
+        ),
+    )
+end
+
+@doc """
+    ElectricDipole(strength)
+
+Creates the E1 strength specification from an Einstein A coefficient (an inverse
+time, e.g. `1.4e8u"s^-1"`) or a reduced matrix element in any dipole-moment units
+(e.g. `4.187 * Levels.DIPOLE_AU`).
+""" ElectricDipole(::Quantity)
+
+"""
+Returns the Einstein A coefficient of the magnetic-dipole (M1) transition with
+(angular) frequency `ω`, upper-level angular momentum `j_upper` and absolute
+reduced magnetic-moment matrix element `μ`,
+``A = ω^3 μ^2 / (3 π ε_0 ħ c^5 (2 j_\\mathrm{upper} + 1))`` — the electric-dipole
+expression of [`Levels.einstein_a_from_electric_dipole`](@ref) with ``d → μ/c``.
+"""
+einstein_a_from_magnetic_dipole(μ, ω, j_upper) =
+    uconvert(u"µs^-1", ω^3 * μ^2 / (3π * u"ε0" * u"ħ" * u"c"^5 * (2 * j_upper + 1)))
+
+"""
+The strength of a magnetic-dipole (M1) transition, specified either as its
+Einstein A coefficient or through the absolute reduced matrix element
+``|⟨\\mathrm{upper}‖μ‖\\mathrm{lower}⟩|`` of the magnetic moment.
+
+Accepted as a value in the `einstein_as` table by the species keyword
+constructors, which record the pair as M1 (cf. [`Levels.multipole`](@ref)): a
+same-parity pair is otherwise taken as an electric-quadrupole transition. The
+typical use is the decay between fine-structure partners, such as
+D``_{5/2}`` → D``_{3/2}``, for which a plain rate is refused as ambiguous. A matrix
+element is converted to the equivalent rate
+([`Levels.einstein_a_from_magnetic_dipole`](@ref), with the frequency from the
+level energies). Downstream only that rate exists, and it fixes the decay
+(lifetimes, jump operators) and the coherent coupling ([`rabi_frequency`](@ref))
+of the pair alike.
+"""
+struct MagneticDipole
+    "The Einstein A coefficient, or the absolute reduced matrix element."
+    strength::Union{typeof(1.0u"µs^-1"),typeof(1.0u"J/T")}
+
+    MagneticDipole(strength::Quantity) = new(
+        multipole_strength(
+            "MagneticDipole",
+            strength,
+            u"J/T",
+            "reduced magnetic-moment matrix element (e.g. in μB)",
+        ),
+    )
+end
+
+@doc """
+    MagneticDipole(strength)
+
+Creates the M1 strength specification from an Einstein A coefficient (an inverse
+time, e.g. `5.6e-3u"s^-1"`) or a reduced matrix element in magnetic-moment units
+(e.g. `1.55u"μB"`).
+""" MagneticDipole(::Quantity)
 
 resolve_rate(rate, pair, energies) = rate
 
-function resolve_rate(spec::ReducedDipole, (lower, upper)::Pair, energies)
+function resolve_rate(spec::ElectricDipole, (lower, upper)::Pair, energies)
     Δ = energies[upper] - energies[lower]
     if Δ <= zero(Δ)
         throw(
@@ -183,21 +272,36 @@ function resolve_rate(spec::ReducedDipole, (lower, upper)::Pair, energies)
             ),
         )
     end
-    if multipole_rank(lower => upper) != 1 || abs(upper.j - lower.j) > 1
+    if parity_multipole(lower => upper) != :E1 || abs(upper.j - lower.j) > 1
         throw(
             ArgumentError(
-                "A ReducedDipole strength applies only to electric-dipole " *
-                "pairs, which '$lower' → '$upper' is not",
+                "An ElectricDipole strength applies only to electric-dipole " *
+                "pairs (opposite parity, |ΔJ| ≤ 1), which '$lower' → '$upper' is not",
             ),
         )
     end
-    einstein_a_from_dipole(spec.d, Δ / u"ħ", upper.j)
+    spec.strength isa Unitful.Frequency && return spec.strength
+    einstein_a_from_electric_dipole(spec.strength, Δ / u"ħ", upper.j)
+end
+
+function resolve_rate(spec::MagneticDipole, (lower, upper)::Pair, energies)
+    if parity_multipole(lower => upper) != :E2 || !is_triangle(lower.j, 1, upper.j)
+        throw(
+            ArgumentError(
+                "A MagneticDipole strength applies only to magnetic-dipole " *
+                "pairs (equal parity, |ΔJ| ≤ 1), which '$lower' → '$upper' is not",
+            ),
+        )
+    end
+    spec.strength isa Unitful.Frequency && return spec.strength
+    Δ = energies[upper] - energies[lower]
+    einstein_a_from_magnetic_dipole(spec.strength, Δ / u"ħ", upper.j)
 end
 
 """
-Resolves any [`ReducedDipole`](@ref) entries in an `einstein_as` table into
-the equivalent Einstein A coefficients, passing rate entries through
-unchanged.
+Resolves any [`ElectricDipole`](@ref) or [`MagneticDipole`](@ref) entries in an
+`einstein_as` table into the equivalent Einstein A coefficients, passing rate
+entries through unchanged.
 """
 function resolve_einstein_as(einstein_as, energies)
     isempty(einstein_as) && return Dict{
@@ -209,6 +313,17 @@ function resolve_einstein_as(einstein_as, energies)
         (pair, rate) in einstein_as
     )
 end
+
+"""
+Returns the multipolarity of each entry of a normalised `einstein_as` table: M1 for
+a [`MagneticDipole`](@ref), otherwise the lowest electric multipole allowed by
+parity ([`Levels.parity_multipole`](@ref)).
+"""
+tabulate_multipoles(einstein_as) =
+    Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Symbol}(
+        pair => (rate isa MagneticDipole ? :M1 : parity_multipole(pair)) for
+        (pair, rate) in einstein_as
+    )
 
 """
 E1 channels and **total** static polarisabilities for one fine-structure level.
@@ -308,7 +423,7 @@ function resolve_polarisability(
                 ),
             )
         end
-        if multipole_rank(level => channel) != 1 || abs(channel.j - j) > 1
+        if parity_multipole(level => channel) != :E1 || abs(channel.j - j) > 1
             throw(
                 ArgumentError(
                     "'$level' → '$channel' is not an electric-dipole pair, so " *
@@ -330,7 +445,7 @@ function resolve_polarisability(
                     ),
                 )
             end
-            dipole_from_einstein_a(a, abs(Δ) / u"ħ", pair[2].j)
+            electric_dipole_from_einstein_a(a, abs(Δ) / u"ħ", pair[2].j)
         else
             if haskey(einstein_as, pair)
                 throw(
@@ -426,6 +541,12 @@ struct NoHyperfineOneElectronSpecies{M<:Quantity,E<:Quantity,A<:Quantity} <:
     einstein_as::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
     """
+    Multipolarity (`:E1`, `:E2` or `:M1`) of each `einstein_as` entry, under the
+    same keys (cf. [`Levels.multipole`](@ref)).
+    """
+    multipoles::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Symbol}
+
+    """
     Measured electronic g-factors overriding the LS-coupling Landé formula in
     [`lande_g`](@ref), where available.
     """
@@ -446,8 +567,11 @@ end
 
 Creates the species from its level data.
 
-`einstein_as` entries may be given as [`ReducedDipole`](@ref) matrix elements,
-and `polarisabilities` may mix [`LevelPolarisability`](@ref) values with
+`einstein_as` entries may be plain Einstein A coefficients, taken as the lowest
+electric multipole parity allows, or [`ElectricDipole`](@ref) and
+[`MagneticDipole`](@ref) strengths, each a rate or a reduced matrix element; a
+magnetic-dipole transition must be given as a `MagneticDipole`. `polarisabilities`
+may mix [`LevelPolarisability`](@ref) values with
 [`ImplicitPolarisability`](@ref) specifications; both are resolved against the
 level energies (and, for the latter, the resolved A coefficients) here.
 """
@@ -470,6 +594,7 @@ function NoHyperfineOneElectronSpecies(;
         mass,
         energies,
         resolved_as,
+        tabulate_multipoles(einstein_as),
         lande_g_overrides,
         resolve_polarisabilities(polarisabilities, energies, resolved_as),
     )
@@ -568,6 +693,12 @@ struct HyperfineOneElectronSpecies{
     einstein_as::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},A}
 
     """
+    Multipolarity (`:E1`, `:E2` or `:M1`) of each `einstein_as` entry, under the
+    same keys (cf. [`Levels.multipole`](@ref)).
+    """
+    multipoles::Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Symbol}
+
+    """
     Measured electronic g-factors overriding the LS-coupling Landé formula in
     [`lande_g`](@ref), where available.
     """
@@ -589,9 +720,9 @@ end
 Creates the species from its level data.
 
 As for [`NoHyperfineOneElectronSpecies`](@ref), `einstein_as` entries may be
-given as [`ReducedDipole`](@ref) matrix elements, and `polarisabilities` may
-mix [`LevelPolarisability`](@ref) values with [`ImplicitPolarisability`](@ref)
-specifications; both are resolved here.
+plain rates or [`ElectricDipole`](@ref) and [`MagneticDipole`](@ref) strengths,
+and `polarisabilities` may mix [`LevelPolarisability`](@ref) values with
+[`ImplicitPolarisability`](@ref) specifications; both are resolved here.
 """
 function HyperfineOneElectronSpecies(;
     mass,
@@ -623,6 +754,7 @@ function HyperfineOneElectronSpecies(;
         energies,
         hyperfine,
         resolved_as,
+        tabulate_multipoles(einstein_as),
         lande_g_overrides,
         resolve_polarisabilities(polarisabilities, energies, resolved_as),
     )
@@ -876,7 +1008,8 @@ export Species,
     HyperfineConstants,
     LevelPolarisability,
     ImplicitPolarisability,
-    ReducedDipole,
+    ElectricDipole,
+    MagneticDipole,
     einstein_a,
     lifetime,
     level_polarisability,

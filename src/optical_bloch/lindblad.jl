@@ -3,14 +3,16 @@
 # operators, all assembled from the atomic data.
 
 """
-Label of a spontaneous-emission jump operator: the fine-structure level pair,
-the spherical component ``q = m_\\mathrm{upper} - m_\\mathrm{lower}`` of the emitted
-photon and, for component-resolved operators, the single `lower => upper` state
-pair it connects (`nothing` for the polarisation-grouped form).
+Label of a spontaneous-emission jump operator: the fine-structure level pair, its
+multipolarity (`:E1`, `:E2` or `:M1`, cf. [`Levels.multipole`](@ref)), the spherical
+component ``q = m_\\mathrm{upper} - m_\\mathrm{lower}`` of the emitted photon and, for
+component-resolved operators, the single `lower => upper` state pair it connects
+(`nothing` for the polarisation-grouped form).
 """
 struct DecayLabel
     lower::NoHyperfineNumberSpec
     upper::NoHyperfineNumberSpec
+    multipole::Symbol
     q::Int
     component::Union{Nothing,Pair{StateSpec,StateSpec}}
 end
@@ -105,7 +107,8 @@ its time-independent components, as harmonic terms for those with a beat
 note.
 
 **Spontaneous emission.** For every pair of basis levels with an Einstein A
-coefficient (rank ``k`` from [`multipole_rank`](@ref)), one jump operator per
+coefficient (rank ``k`` of its tabulated multipole, [`Levels.multipole_rank`](@ref):
+1 for E1 and M1, 2 for E2), one jump operator per
 emitted spherical component ``q = -k…k``,
 ``L_q = \\sqrt{A} \\sum_{m' - m = q} ⟨\\mathrm{up}|T^k_q|\\mathrm{lo}⟩_\\mathrm{rel} \\,
 |\\mathrm{lo}⟩⟨\\mathrm{up}|`` with the relative amplitudes of
@@ -185,7 +188,8 @@ function lindblad_model(
         )
     end
     for (lo, hi) in pairs
-        rank = multipole_rank(lo => hi)
+        m = multipole(species, lo => hi)
+        rank = multipole_rank(m)
         a = einstein_a(species, lo => hi)
         amplitude = amplitude_lookup(s, lo, hi, rank)
         for q in (-rank):rank
@@ -203,7 +207,7 @@ function lindblad_model(
                         Lc = zeros(J, num_states, num_states)
                         Lc[i, k] = value
                         push!(jump_operators, Lc)
-                        push!(jump_labels, DecayLabel(lo, hi, q, s_lo => s_hi))
+                        push!(jump_labels, DecayLabel(lo, hi, m, q, s_lo => s_hi))
                     else
                         L[i, k] = value
                         push!(components, (i, k))
@@ -225,7 +229,7 @@ function lindblad_model(
                     )
                 end
                 push!(jump_operators, L)
-                push!(jump_labels, DecayLabel(lo, hi, q, nothing))
+                push!(jump_labels, DecayLabel(lo, hi, m, q, nothing))
             end
         end
     end

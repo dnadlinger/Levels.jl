@@ -76,11 +76,13 @@ function lamb_dicke(species, mode::MotionalMode, beam::LaserBeam; projected::Boo
     lamb_dicke(species, mode, k .* beam.direction; projected)
 end
 
-# Angular radiation patterns of the electric multipole components, as
-# polynomial coefficients in c = cos θ (θ from the quantisation axis), up to a
-# constant: E1 q = 0: sin²θ, |q| = 1: (1 + cos²θ)/2; E2 q = 0: sin²θ cos²θ,
-# |q| = 1: 1 − 3 cos²θ + 4 cos⁴θ, |q| = 2: 1 − cos⁴θ (Jackson, Classical
-# Electrodynamics, Sec. 9.7). Rank 0 stands for isotropic emission.
+# Angular radiation patterns of the multipole components, as polynomial
+# coefficients in c = cos θ (θ from the quantisation axis), up to a constant:
+# E1 q = 0: sin²θ, |q| = 1: (1 + cos²θ)/2; E2 q = 0: sin²θ cos²θ, |q| = 1:
+# 1 − 3 cos²θ + 4 cos⁴θ, |q| = 2: 1 − cos⁴θ (Jackson, Classical
+# Electrodynamics, Sec. 9.7). Magnetic multipoles radiate the patterns of the
+# electric ones of equal rank (E and B exchange roles), so M1 uses rank 1.
+# Rank 0 stands for isotropic emission.
 function radiation_pattern(rank, q)
     if rank == 0
         (1.0,)
@@ -118,8 +120,9 @@ end
     recoil_moment(rank, q, direction)
 
 Returns the second moment ``α = ⟨(\\hat{k} ⋅ \\vec{e}_m)^2⟩`` of the direction of a
-photon emitted in the spherical component `q` of an electric multipole
-transition of the given `rank`, projected onto the unit mode `direction`
+photon emitted in the spherical component `q` of a multipole transition of the
+given `rank` (electric or magnetic, whose patterns coincide; 1 for E1 and M1),
+projected onto the unit mode `direction`
 (quantisation axis along ẑ): the fraction of the squared recoil that a
 spontaneous emission imparts, on average, to that mode.
 
@@ -147,11 +150,7 @@ end
 # isotropic 1/3, or a constant.
 function decay_recoil_moment(setting::Symbol, label::DecayLabel, mode::MotionalMode)
     if setting === :exact
-        recoil_moment(
-            multipole_rank(label.lower => label.upper),
-            label.q,
-            mode.direction,
-        )
+        recoil_moment(multipole_rank(label.multipole), label.q, mode.direction)
     elseif setting === :isotropic
         recoil_moment(0, 0, mode.direction)
     else
@@ -390,8 +389,9 @@ end
 
 Returns a quadrature rule — nodes `h` and weights `w` with ``\\sum_j w_j = 1`` —
 for the distribution of the projection ``h = \\hat{k} ⋅ \\vec{e}_m`` of the
-direction of a photon emitted in the spherical component `q` of an electric
-multipole transition of the given `rank` (`rank = 0`: isotropic emission) onto
+direction of a photon emitted in the spherical component `q` of a multipole
+transition of the given `rank` (electric or magnetic, whose patterns coincide;
+`rank = 0`: isotropic emission) onto
 the unit mode `direction`, quantisation axis along ẑ:
 ``∫ K(h) f(h) \\, dh ≈ \\sum_j w_j f(h_j)``. Its second moment is
 [`recoil_moment`](@ref); the rule is what the recoil kicks ``e^{-i η_0 h (a +

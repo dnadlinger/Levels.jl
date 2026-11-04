@@ -218,17 +218,17 @@ end
     )
 end
 
-@testitem "ReducedDipole resolution" tags=[:unit, :fast] begin
+@testitem "ElectricDipole resolution" tags=[:unit, :fast] begin
     using Unitful
 
-    # An einstein_as entry given as a ReducedDipole matrix element resolves to
+    # An einstein_as entry given as an ElectricDipole matrix element resolves to
     # the Einstein A coefficient A = ω³ d² / (3π ε₀ ħ c³ (2j'+1)) at species
     # construction, with ω from the level energies.
     d = 4.0Levels.DIPOLE_AU
     replaced =
         Dict{Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},Any}(sr88.einstein_as)
     key = NoHyperfineNumberSpec("D_5/2") => NoHyperfineNumberSpec("P_3/2")
-    replaced[key] = ReducedDipole(d)
+    replaced[key] = ElectricDipole(d)
     toy = NoHyperfineOneElectronSpecies(;
         mass=sr88.mass,
         energies=sr88.energies,
@@ -250,7 +250,7 @@ end
         broken[convert(
             Pair{NoHyperfineNumberSpec,NoHyperfineNumberSpec},
             bad[1] => bad[2],
-        )] = ReducedDipole(d)
+        )] = ElectricDipole(d)
         @test_throws ArgumentError NoHyperfineOneElectronSpecies(;
             mass=sr88.mass,
             energies=sr88.energies,
@@ -1348,7 +1348,7 @@ end
     @test dipole("S_1/2", "P_3/2") ≈ 4.351 rtol = 3e-3
 
     # The D₅/₂ → P₃/₂ strength is instead sourced from the [Jiang2009] matrix
-    # element (a ReducedDipole einstein_as entry), so the background dipole
+    # element (an ElectricDipole einstein_as entry), so the background dipole
     # round-trips to it exactly, and the implied Einstein A coefficient of
     # 8.06 µs⁻¹ must stay consistent with the far less precise directly
     # compiled 8.7(15) µs⁻¹ of [Sansonetti2012].
@@ -1677,4 +1677,30 @@ end
     @test abs(differential(459.1614u"THz")) < 2.5
     @test abs(differential(623.60313u"THz")) < 4.5
     @test differential(459.1614u"THz") < 0 < differential(460.0u"THz")
+end
+
+@testitem "M1 pairs have no light-shift channels" tags = [:unit, :fast] begin
+    using Unitful
+
+    # ¹³⁸Ba⁺ with both D levels: their M1 pair must not enter as an E2 channel.
+    s = Eigenstructure(ba138, "S_1/2", "D_3/2", "D_5/2"; B=0.5u"mT")
+    c = LightShiftCoefficients(s, RelativeFrequency("S_1/2" => "D_5/2", 0.0u"rad/µs"))
+    S = Levels.parse_level("S_1/2")
+    for (i, st) in enumerate(Levels.basis(s))
+        Levels.fine_structure(st.level) == S && continue
+        @test all(ch -> Levels.fine_structure(ch.partner.level) == S, c.channels[i])
+    end
+    # Near-resonant M1 channels are unsupported: as a reference, or driven.
+    @test_throws ArgumentError LightShiftCoefficients(
+        s,
+        RelativeFrequency("D_3/2" => "D_5/2", 0.0u"rad/µs"),
+    )
+    @test_throws ArgumentError driven_light_shift(
+        c,
+        StateSpec("D_3/2", 1//2) => StateSpec("D_5/2", 1//2),
+        1u"W/m^2",
+        [1.0, 0, 0];
+        direction=[0, 0, 1.0],
+        parts=:resonant,
+    )
 end

@@ -260,7 +260,7 @@ function RungLadder(model, mc; lamb_dicke_order, bandwidth, time_unit)
         if !first_order
             label = model.jump_labels[k]
             isotropic = mc.emission == :isotropic
-            rank = isotropic ? 0 : multipole_rank(label.lower => label.upper)
+            rank = isotropic ? 0 : multipole_rank(label.multipole)
             q = isotropic ? 0 : label.q
             projections, recoil_weights[k] = emission_rule(rank, q, mc.mode.direction)
             recoil_kicks[k] = η0 .* projections

@@ -432,9 +432,7 @@ function OpticalBloch.motional_model(
                 push!(labels, RecoilLabel(label, m, 0))
             end
         else
-            rank =
-                emission == :isotropic ? 0 :
-                Levels.multipole_rank(label.lower => label.upper)
+            rank = emission == :isotropic ? 0 : Levels.multipole_rank(label.multipole)
             q = emission == :isotropic ? 0 : label.q
             hs, ws = emission_rule(
                 rank,
