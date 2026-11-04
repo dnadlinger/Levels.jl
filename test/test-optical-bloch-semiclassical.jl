@@ -213,7 +213,7 @@ end
     end
 end
 
-@testitem "Semiclassical: thermal sampling" tags=[:unit, :fast] setup=[
+@testitem "Semiclassical: thermal sampling" tags=[:integration, :slow] setup=[
     OpticalBlochSetup,
 ] begin
     using Levels.OpticalBloch: gausslegendre

@@ -316,6 +316,7 @@ end
 
 @testitem "Phonon rate equation: hot rungs are smooth and interpolate" tags=[
     :integration,
+    :slow,
 ] setup=[OpticalBlochSetup] begin
     # A Doppler-cooled Λ system up to n = 1000 (reach 2|η|√n ≈ 10): the net rates tend to
     # the semiclassical drift, the total per quantum has no spikes along the ladder, and

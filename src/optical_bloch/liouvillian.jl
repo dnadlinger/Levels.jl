@@ -312,9 +312,14 @@ function trace_row_system(L::SparseMatrixCSC, diagonal)
         num_entries,
         num_entries,
     )
+    (; M, F=lu(M; control=strict_pivoting_control()), row, diagonal)
+end
+
+# UMFPACK settings for strict partial pivoting (cf. trace_row_system).
+function strict_pivoting_control()
     control = SparseArrays.UMFPACK.get_umfpack_control(ComplexF64, Int)
     control[SparseArrays.UMFPACK.JL_UMFPACK_PIVOT_TOLERANCE] = 1.0
-    (; M, F=lu(M; control), row, diagonal)
+    control
 end
 
 trace_row_system(bl::BandLiouvillian) =

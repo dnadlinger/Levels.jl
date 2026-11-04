@@ -179,7 +179,12 @@ function PhononRateEquation(
     ladder = RungLadder(model, mc; lamb_dicke_order, bandwidth, time_unit)
     rungs = 1:(num_fock-1)
     nodes = rung_nodes(ladder, last(rungs), node_ratio)
-    results = [rung_rate_result(ladder, n) for n in nodes]
+    factorisation = RungFactorisation()
+    results = try
+        [rung_rate_result(ladder, n, factorisation) for n in nodes]
+    finally
+        release!(factorisation)
+    end
     rates = getproperty.(results, :rates)
     lowering, raising = first.(rates), last.(rates)
     diagnostics = [
@@ -298,6 +303,121 @@ function dissipator_superoperator(c)
     (kron(state_identity, decay) + kron(sparse(transpose(decay)), state_identity)) / 2
 end
 
+# The entries (i, j) at which some beam couples the states, in either direction: the
+# pattern of every ladder Hamiltonian H_k, k ≥ 1, at any rung.
+function coupling_pattern(ladder::RungLadder)
+    N = ladder.num_states
+    [
+        (i, j) for j in 1:N for i in 1:N if
+        any(C -> !iszero(C[i, j]) || !iszero(C[j, i]), ladder.beam_couplings)
+    ]
+end
+
+# The superoperators -i H ρ and +i ρ H on column-stacked density matrices, storing
+# every entry of `pattern` whatever the value of H there, so that a rung's generator
+# has the same sparsity pattern as any other rung's.
+function multiplication_superoperators(H, pattern)
+    N = size(H, 1)
+    values = [H[i, j] for (i, j) in pattern]
+    left = sparse(
+        [(c - 1) * N + i for c in 1:N for (i, _) in pattern],
+        [(c - 1) * N + j for c in 1:N for (_, j) in pattern],
+        repeat(-im .* values, N),
+        N^2,
+        N^2,
+    )
+    right = sparse(
+        [(c - 1) * N + r for (_, c) in pattern for r in 1:N],
+        [(j - 1) * N + r for (j, _) in pattern for r in 1:N],
+        repeat(im .* values; inner=N),
+        N^2,
+        N^2,
+    )
+    left, right
+end
+
+# A block-banded superoperator on the coherence orders d = -K … K: each term
+# `offset => X` places X at the blocks (d, d + offset), through which ρ⁽ᵈ⁺ᵒᶠᶠˢᵉᵗ⁾
+# enters the equation of ρ⁽ᵈ⁾.
+const BandTerms = Vector{Pair{Int,SparseMatrixCSC{ComplexF64,Int}}}
+
+# The (one-based) orders d with a block (d, d + offset) within the band.
+band_rows(offset, num_orders) = max(1, 1-offset):min(num_orders, num_orders-offset)
+
+function band_product(terms::BandTerms, v, num_orders)
+    block = length(v) ÷ num_orders
+    w = zeros(ComplexF64, length(v))
+    for (offset, X) in terms, d in band_rows(offset, num_orders)
+        rows = (d-1)*block .+ (1:block)
+        mul!(view(w, rows), X, view(v, rows .+ offset * block), true, true)
+    end
+    w
+end
+
+# The trace-row matrix (cf. trace_row_system) of the generator given by `terms` plus
+# `shifts[d]` on the diagonal of order d, assembled in one pass. Every stored entry of
+# the terms is kept, zero or not, so the pattern follows from theirs alone.
+function band_trace_row_matrix(terms::BandTerms, shifts, row, diagonal)
+    num_orders = length(shifts)
+    block = size(last(first(terms)), 1)
+    rows, cols, values = Int[], Int[], ComplexF64[]
+    for (offset, X) in terms
+        r, c, v = findnz(X)
+        for d in band_rows(offset, num_orders)
+            append!(rows, r .+ (d - 1) * block)
+            append!(cols, c .+ (d + offset - 1) * block)
+            append!(values, v)
+        end
+    end
+    for (d, shift) in enumerate(shifts)
+        indices = (d-1)*block .+ (1:block)
+        append!(rows, indices)
+        append!(cols, indices)
+        append!(values, fill(shift, block))
+    end
+    keep = rows .!= row
+    dimension = num_orders * block
+    sparse(
+        [rows[keep]; fill(row, length(diagonal))],
+        [cols[keep]; diagonal],
+        [values[keep]; ones(ComplexF64, length(diagonal))],
+        dimension,
+        dimension,
+    )
+end
+
+# A sparse LU reused across the rungs of a ladder. The generators of all rungs that
+# couple the same number of orders share one sparsity pattern, so each refactorises
+# numerically on the symbolic analysis of the first. Every replaced factorisation is
+# freed at once, as the garbage collector does not see UMFPACK's memory.
+mutable struct RungFactorisation
+    num_coupled::Int
+    lu::Union{Nothing,SparseArrays.UMFPACK.UmfpackLU{ComplexF64,Int}}
+end
+
+RungFactorisation() = RungFactorisation(0, nothing)
+
+function factorise!(f::RungFactorisation, M, num_coupled)
+    if !isnothing(f.lu) && f.num_coupled == num_coupled
+        finalize(f.lu.numeric)
+        lu!(f.lu, M)
+    else
+        release!(f)
+        f.lu = lu(M; control=strict_pivoting_control())
+        f.num_coupled = num_coupled
+    end
+    f.lu
+end
+
+function release!(f::RungFactorisation)
+    if !isnothing(f.lu)
+        finalize(f.lu.numeric)
+        finalize(f.lu.symbolic)
+        f.lu = nothing
+    end
+    f
+end
+
 # Nodes spaced by at most `node_ratio`, refined where a Fock coupling changes sign.
 function rung_nodes(ladder::RungLadder, top_rung, node_ratio)
     nodes = [1]
@@ -362,8 +482,8 @@ end
 # matching, including rejected window ratios and the positivity floor.
 rung_rates(ladder::RungLadder, n) = rung_rate_result(ladder, n).rates
 
-function rung_rate_result(ladder::RungLadder, n)
-    (; net_rate, diffusion) = ladder_cumulants(ladder, n)
+function rung_rate_result(ladder::RungLadder, n, factorisation=nothing)
+    (; net_rate, diffusion) = ladder_cumulants(ladder, n, factorisation)
     directional = diffusion <= 10 * abs(net_rate)
     use_window =
         diffusion < abs(net_rate) || (directional && sideband_reach(ladder, n) <= 1)
@@ -426,41 +546,46 @@ ladder_net_rate(ladder::RungLadder, n) = ladder_cumulants(ladder, n).net_rate
 # ladder carries the recoil as the jumps c ⊗ η₀√n(E₊ + E₋), counted likewise; the
 # full-order ladder does not. Its recoil diffusion is the phase-weighted emission
 # rate 4n ∑ m₂ ⟨sin²(θ) R(θ)⟩ = 2n ∑ m₂ (R₀ - Re R₂).
-function ladder_cumulants(ladder::RungLadder, n)
+#
+# A `factorisation` shared across rungs reuses the symbolic analysis of the sparse LU;
+# without one, the factorisation is freed before returning.
+function ladder_cumulants(ladder::RungLadder, n, ::Nothing=nothing)
+    factorisation = RungFactorisation()
+    try
+        ladder_cumulants(ladder, n, factorisation)
+    finally
+        release!(factorisation)
+    end
+end
+
+function ladder_cumulants(ladder::RungLadder, n, factorisation::RungFactorisation)
     hamiltonians = ladder_hamiltonians(ladder, n)
     num_states = ladder.num_states
     K = ladder.bandwidth
     num_orders = 2K + 1
     vector_size = num_states^2
-    same_order = sparse(1.0I, num_orders, num_orders)
-    from_above(k) = spdiagm(k => ones(num_orders - k))   # ρ⁽ᵈ⁾ from ρ⁽ᵈ⁺ᵏ⁾
-    from_below(k) = spdiagm(-k => ones(num_orders - k))  # ρ⁽ᵈ⁾ from ρ⁽ᵈ⁻ᵏ⁾
     state_identity = sparse(ComplexF64(1) * I, num_states, num_states)
-    L =
-        kron(
-            same_order,
-            ladder.dissipator - im * commutator_superoperator(hamiltonians[1]),
-        ) + kron(
-            spdiagm(0 => -im * ladder.mode_frequency .* ((-K):K)),
-            sparse(I, vector_size, vector_size),
-        )
-    C1 = spzeros(ComplexF64, size(L)...)
-    C2 = spzeros(ComplexF64, size(L)...)
-    for k in 1:K
-        H = sparse(hamiltonians[k+1])
-        left = -im * kron(state_identity, H)                     # -i H_k ρ
-        right = im * kron(sparse(transpose(H)), state_identity)  # +i ρ H_k
-        L += kron(from_above(k) + from_below(k), left + right)
+    # H_k vanishes identically beyond the rung (k > n), and at first order beyond k = 1.
+    num_coupled = min(K, n, ladder.first_order ? 1 : K)
+    pattern = coupling_pattern(ladder)
+    left, right = multiplication_superoperators(
+        hamiltonians[1],
+        union(pattern, [(i, i) for i in 1:num_states]),
+    )
+    generator = BandTerms([0 => ladder.dissipator, 0 => left, 0 => right])
+    C1 = BandTerms()
+    C2 = BandTerms()
+    for k in 1:num_coupled
+        left, right = multiplication_superoperators(hamiltonians[k+1], pattern)
+        append!(generator, [k => left, k => right, -k => left, -k => right])
         # E₋ᵏ on the ket or E₊ᵏ on the bra come from order d + k and lower the
         # counted number by k/2; their mirror images raise it.
-        C1 +=
-            (k / 2) *
-            (kron(from_above(k), right - left) + kron(from_below(k), left - right))
-        C2 += (k^2 / 4) * kron(from_above(k) + from_below(k), left + right)
+        append!(C1, [k => (k / 2) * (right - left), -k => (k / 2) * (left - right)])
+        append!(C2, [k => (k^2 / 4) * (left + right), -k => (k^2 / 4) * (left + right)])
     end
     if ladder.first_order
-        shift = from_above(2) + from_below(2)
-        L += n * kron(2 * same_order + shift, ladder.recoil_dissipator)
+        recoil = ladder.recoil_dissipator
+        append!(generator, [0 => 2n * recoil, 2 => n * recoil, -2 => n * recoil])
         # The kicks c ρ c† move both indices by ±1 (counted ±1, same order) or
         # opposite ways (uncounted, order ± 2); the decay terms with E₊² or E₋² on
         # one side count ±1 and change the order by 2.
@@ -474,24 +599,33 @@ function ladder_cumulants(ladder::RungLadder, n)
         )
         decay_left = kron(state_identity, decay)
         decay_right = kron(sparse(transpose(decay)), state_identity)
-        C1 -= (n / 2) * kron(from_below(2) - from_above(2), decay_left - decay_right)
-        C2 +=
-            n *
-            (2 * kron(same_order, kicks) - kron(shift, decay_left + decay_right) / 2)
+        counted = (n / 2) * (decay_left - decay_right)
+        append!(C1, [2 => counted, -2 => -counted])
+        spread = (n / 2) * (decay_left + decay_right)
+        append!(C2, [0 => 2n * kicks, 2 => -spread, -2 => -spread])
     end
     order_range(d) = (1:vector_size) .+ (d + K) * vector_size
     diagonal = collect(order_range(0)[1:(num_states+1):end])
-    (; F, row) = trace_row_system(L, diagonal)
-    unit_trace = zeros(ComplexF64, size(L, 1))
+    row = first(diagonal)
+    shifts = -im * ladder.mode_frequency .* ((-K):K)
+    F = factorise!(
+        factorisation,
+        band_trace_row_matrix(generator, shifts, row, diagonal),
+        num_coupled,
+    )
+    unit_trace = zeros(ComplexF64, num_orders * vector_size)
     unit_trace[row] = 1
     ρ = F \ unit_trace
     trace(v) = sum(v[diagonal])
-    net_rate = real(trace(C1 * ρ))
-    traceless = -(C1 * ρ .- net_rate .* ρ)
+    C1ρ = band_product(C1, ρ, num_orders)
+    net_rate = real(trace(C1ρ))
+    traceless = -(C1ρ .- net_rate .* ρ)
     traceless[row] = 0
     x = F \ traceless
-    finalize(F)
-    diffusion = real(trace(C2 * ρ) + 2 * trace(C1 * x))
+    diffusion = real(
+        trace(band_product(C2, ρ, num_orders)) +
+        2 * trace(band_product(C1, x, num_orders)),
+    )
     if !ladder.first_order
         ρ0 = reshape(ρ[order_range(0)], num_states, num_states)
         ρ2 = K >= 2 ? reshape(ρ[order_range(2)], num_states, num_states) : zero(ρ0)
