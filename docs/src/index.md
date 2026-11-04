@@ -48,6 +48,9 @@ calculations, `Levels.PeriodicDynamics` and `Levels.OpticalBloch`.
 - [Microwave qubits in the ⁴³Ca⁺ ground state](@ref example-ca43-hyperfine-qubits):
   Breit–Rabi diagram, all field-independent hyperfine transitions below 100 mT, and
   the magnetic-dipole couplings of a microwave field.
+- [Beam geometry on the ⁴⁰Ca⁺ 729 nm transition](@ref
+  example-ca40-729-geometry): geometric factors over all beam orientations, and the
+  Rabi frequencies of the Zeeman components for a given beam.
 
 The pages are generated from the
 [Literate.jl](https://fredrikekre.github.io/Literate.jl) scripts in `examples/`, which
