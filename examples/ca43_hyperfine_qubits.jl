@@ -7,7 +7,7 @@
 # static magnetic field is increased, the Zeeman energy becomes comparable to the
 # hyperfine splitting, and some of these transitions become independent of the field to
 # first order. One of these "clock qubits", at 14.6 mT, was used by
-# [Harty et al. (2014)](https://doi.org/10.1103/PhysRevLett.113.220501) for a
+# [Harty2014](@citet) for a
 # long-lived memory with high-fidelity operations.
 #
 # In this example, we trace the ground-state structure into the intermediate-field
@@ -75,7 +75,7 @@ pretty_table(
 )
 
 # The first and third rows are the clock qubits at 146.0942 G and 287.7827 G
-# discussed by Harty et al. Below 100 mT, there are nine field-independent
+# discussed by [Harty2014](@citet). Below 100 mT, there are nine field-independent
 # transitions in all, and the ``Δm = ±1`` ones come in near-coincident pairs:
 # ``|4, m⟩ ↔ |3, m + 1⟩`` and ``|4, m + 1⟩ ↔ |3, m⟩`` differ in frequency only by the
 # small nuclear Zeeman term, as ``g_F`` is very nearly opposite in the two levels.

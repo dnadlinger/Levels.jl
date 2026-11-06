@@ -1,6 +1,6 @@
 # Semiclassical cooling rates: the internal master equation under the Doppler shifts
 # of classical coherent-state motion, with the rate of energy change from the
-# time-averaged laser force (the "PACMAN" method of Bartolotta et al.).
+# time-averaged laser force (the "PACMAN" method of [Bartolotta2024]).
 
 """
 A numerical engine of the semiclassical cooling rates:
@@ -446,13 +446,13 @@ end
     semiclassical_phonon_rates(model::LindbladModel, mcs::AbstractVector{<:MotionalCoupling}, occupations; engine = nothing, rng = default_rng(), time_unit = u"µs")
 
 Returns the mean rates of change ``R_μ = ⟨\\dot n_μ⟩`` (inverse `time_unit`) of the
-occupations of the given coherent-state motion: ``⟨\\hat a_μ⟩ = \\sqrt{n_μ}
-e^{-i(ω_μ t + θ_μ)}``, held at fixed energy, with the secular phases ``θ_μ`` averaged
-out. This is the semiclassical method of Bartolotta et al.,
-[arXiv:2411.18818](https://arxiv.org/abs/2411.18818) (PACMAN). Replacing the motion by
-its expectation value turns each beam's displacement operator into the phase
-``φ_b(t) = ∑_μ 2η_{bμ}\\sqrt{n_μ} \\cos(ω_μ t + θ_μ)``, and a transformation with
-the beams' traversals of the rotating-frame tree moves those phases into Doppler shifts,
+occupations of the given coherent-state motion:
+``⟨\\hat a_μ⟩ = \\sqrt{n_μ} e^{-i(ω_μ t + θ_μ)}``, held at fixed energy, with the
+secular phases ``θ_μ`` averaged out. This is the semiclassical method of
+[Bartolotta2024](@citet) (PACMAN). Replacing the motion by its expectation value turns
+each beam's displacement operator into the phase
+``φ_b(t) = ∑_μ 2η_{bμ}\\sqrt{n_μ} \\cos(ω_μ t + θ_μ)``, and a transformation with the
+beams' traversals of the rotating-frame tree moves those phases into Doppler shifts,
 
 ```math
 H(t) = H - ∑_μ 2\\sqrt{n_μ} ω_μ \\sin(ω_μ t + θ_μ) K_μ,
@@ -510,12 +510,12 @@ Returns the cooling rates ``W_{\\mathrm{th},μ} = -⟨R_μ⟩/\\bar n_μ`` of a 
 thermal states of the mean occupations `nbars` per mode (inverse `time_unit`), and the
 standard errors of this Monte Carlo estimate from `num_samples` draws of the coherent
 occupations, whose distribution is the Glauber–Sudarshan ``P`` function: independent
-exponentials of means `nbars` (Bartolotta et al., Eqs. (31)–(34)). The estimate is the
-ratio of the sample means of ``R_μ`` and ``n_μ``, which removes the noise of the drawn
-occupations where ``R_μ ∝ n_μ``, with a bias of order 1/`num_samples`. `engine` defaults
-to [`HarmonicBalance`](@ref) for one mode and [`TimeAverage`](@ref) otherwise. Every
-random number is drawn from `rng` before the threaded evaluation, so results do not
-depend on the number of threads.
+exponentials of means `nbars` [Bartolotta2024; Eqs. (31)–(34)](@cite). The estimate is
+the ratio of the sample means of ``R_μ`` and ``n_μ``, which removes the noise of the
+drawn occupations where ``R_μ ∝ n_μ``, with a bias of order 1/`num_samples`. `engine`
+defaults to [`HarmonicBalance`](@ref) for one mode and [`TimeAverage`](@ref) otherwise.
+Every random number is drawn from `rng` before the threaded evaluation, so results do
+not depend on the number of threads.
 """
 function thermal_cooling_rates(
     model::LindbladModel,

@@ -117,21 +117,21 @@ W = A_- - A_+, \qquad
 ```
 
 so all three methods give the time constant ``1/W`` in this regime
-([Eschner et al. (2003)](https://doi.org/10.1364/JOSAB.20.001003), Eqs. (6)–(8)).
+[Eschner2003; Eqs. (6)–(8)](@cite).
 
 The reduction requires Lamb–Dicke confinement and internal relaxation much faster than
 motional evolution. The sideband coupling must remain weak enough to avoid saturating
 the internal resonance it addresses. In EIT cooling, the narrow dressed-state linewidth
 can set this scale, so ``ηΩ/ω_m`` alone is not a general validity test
-([Morigi (2003)](https://doi.org/10.1103/PhysRevA.67.033402), discussion after Eq. (33)
-and comparison with quantum Monte Carlo in Fig. 3). Sideband matrix elements grow as
-``\sqrt{n}``, making the initial occupation relevant to validity. The Lamb–Dicke
-expansion and adiabatic elimination are separate approximations: a first-order joint
-model (`lamb_dicke_order = 1`) still retains coherent, saturated sideband dynamics.
+([Morigi2003](@citet), discussion after Eq. (33) and comparison with quantum Monte Carlo
+in Fig. 3). Sideband matrix elements grow as ``\sqrt{n}``, making the initial occupation
+relevant to validity. The Lamb–Dicke expansion and adiabatic elimination are separate
+approximations: a first-order joint model (`lamb_dicke_order = 1`) still retains
+coherent, saturated sideband dynamics.
 
 Outside the rate-equation regime, cooling can be non-exponential and the motional state
 need not remain thermal.
-[Scharnhorst et al. (2018)](https://doi.org/10.1103/PhysRevA.98.023424) demonstrate this
+[Scharnhorst2018](@citet) demonstrate this
 for EIT cooling: strong spin–motion coupling disrupts the dark state and slows the
 initial cooling (Sec. IV.B.2, Fig. 7). Their comparison of analytical rates,
 master-equation simulations and experiment illustrates the breakdown of the reduced
@@ -139,7 +139,7 @@ theory (Sec. V.4, Fig. 13).
 
 [`SaturatedRates`](@ref) keeps a rate equation for the phonon populations, but evaluates
 its rates without expanding in the sideband coupling, including the Franck–Condon
-factors of [Morigi et al. (1999)](https://doi.org/10.1103/PhysRevA.59.3797) at all
+factors of [Morigi1999](@citet) at all
 orders in ``η``. It recovers adiabatic elimination for weak sideband coupling and models
 saturation through a frozen-coefficient ladder calculation. It propagates a full phonon
 distribution without a closure for its moments, at the cost of a few internal-state
@@ -160,7 +160,7 @@ ratios.
 
 [`semiclassical_cooling_rates`](@ref) goes further from the quantum motion: it replaces
 it by a classical trajectory at fixed energy and averages the laser power
-([Bartolotta et al. (2024)](https://arxiv.org/abs/2411.18818), "PACMAN"). This gives
+[Bartolotta2024](@cite) ("PACMAN"). This gives
 only the drift ``W_\mathrm{SC}(\vec n)``, without recoil, ``A_+`` or a steady
 occupation, but the rate of each mode then depends on the energy in all others, which
 the independent modes of the rate equations cannot capture, at a cost independent of the
@@ -182,10 +182,10 @@ where the sum runs over decaying modes and the coefficients ``a_j`` depend on bo
 initial state and the phonon-number operator. [`IntegratedTransient`](@ref) returns
 ``τ_\mathrm{int}``, an effective cooling time for that preparation. This avoids choosing
 a fit window for an exponential, but retains the dependence on initial occupation
-([Kulosa et al. (2023)](https://doi.org/10.1088/1367-2630/acd13b), Eqs. (10)–(14), Fig.
-2(c) and Fig. C1). [`LiouvillianSpectrum`](@ref) returns ``-1/\mathrm{Re}\,λ`` for a
-selected mode with appreciable phonon-number weight. The selection is independent of the
-preparation; the mode's contribution to an actual transient is not. A weak tail can set
+[Kulosa2023; Eqs. (10)–(14), Fig. 2(c) and Fig. C1](@cite).
+[`LiouvillianSpectrum`](@ref) returns ``-1/\mathrm{Re}\,λ`` for a selected mode with
+appreciable phonon-number weight. The selection is independent of the preparation; the
+mode's contribution to an actual transient is not. A weak tail can set
 the late-time exponent while contributing little to the integral. Since the ``a_j`` can
 be negative or complex, the integral is not generally an average of modal times with
 positive weights.

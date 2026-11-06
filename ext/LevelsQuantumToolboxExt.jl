@@ -510,7 +510,7 @@ function OpticalBloch.mean_phonon_number(
             # distribution, as p_{n+1}/p_n = r for every n. The rate-equation
             # steady state stays thermal under truncation, as that of any
             # truncated reversible Markov chain is the renormalised original one
-            # (Kelly, Reversibility and Stochastic Networks (1979), Sec. 1.6).
+            # ([Kelly1979], Sec. 1.6).
             r = sum(p[2:end]) / sum(p[1:(end-1)])
             r < 1 ? r / (1 - r) : Inf
         end

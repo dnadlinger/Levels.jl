@@ -1,6 +1,7 @@
 using Levels
 using CairoMakie
 using Documenter
+using DocumenterCitations
 using Literate
 
 DocMeta.setdocmeta!(Levels, :DocTestSetup, :(using Levels); recursive=true)
@@ -25,6 +26,7 @@ const titles = Dict(
     "30-examples" => "Examples",
     "91-developer.md" => "Developer docs",
     "95-reference" => "API reference",
+    "97-bibliography.md" => "Bibliography",
 )
 
 function recursively_list_pages(folder; path_prefix="")
@@ -76,13 +78,20 @@ function list_pages()
     return ["index.md"; pages_list]
 end
 
+# Literature cited as [Key](@cite) in docstrings, pages and examples.
+const bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"); style=:alpha)
+
 makedocs(;
     modules=[Levels],
     authors="David Nadlinger <code@klickverbot.at>",
     repo="https://github.com/dnadlinger/Levels.jl/blob/{commit}{path}#{line}",
     sitename="Levels.jl",
-    format=Documenter.HTML(; canonical="https://dnadlinger.github.io/Levels.jl"),
+    format=Documenter.HTML(;
+        canonical="https://dnadlinger.github.io/Levels.jl",
+        assets=String["assets/citations.css"],
+    ),
     pages=list_pages(),
+    plugins=[bib],
 )
 
 deploydocs(; repo="github.com/dnadlinger/Levels.jl")

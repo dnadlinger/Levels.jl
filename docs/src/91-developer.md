@@ -94,6 +94,37 @@ needed. The pages under "Examples" are rendered from the Literate.jl scripts in
 `examples/`. Repository scaffolding comes from BestieTemplate/Copier; `copier update`
 may overwrite changes to generated files.
 
+### Literature references
+
+Literature is cited through
+[DocumenterCitations.jl](https://github.com/JuliaDocs/DocumenterCitations.jl) in its
+`:alpha` style. Every cited work has an entry in `docs/src/refs.bib`, and the
+[Bibliography](97-bibliography.md) page lists all of them. To cite a new work:
+
+1. Add a BibTeX entry to `docs/src/refs.bib`, sorted by key. Keys are `AuthorYear`,
+   with an `a`/`b` suffix for clashes and an established name, such as `AME2020` or
+   `CODATA2022`, for standard compilations. Give the complete author list, as the alpha
+   labels and "et al." are generated from it, as well as the DOI. Enter arXiv preprints
+   as `@misc` with `eprint` and `archiveprefix = {arXiv}`. Plain Unicode in titles, such
+   as ⁴³Ca⁺, renders as is.
+2. In docstrings, Markdown pages and the example scripts, cite the key in link syntax:
+
+   | Markdown                          | Rendered as                       |
+   | :-------------------------------- | :-------------------------------- |
+   | `[Benhelm2007](@cite)`            | [BKR+07a]                         |
+   | `[Benhelm2007; Eq. (3)](@cite)`   | [BKR+07a, Eq. (3)]                |
+   | `[Arbes1994, Benhelm2007](@cite)` | [ABG+94, BKR+07a]                 |
+   | `[Benhelm2007](@citet)`           | Benhelm *et al.* [BKR+07a]        |
+
+   Use `@citet` where the authors are part of the sentence ("as discussed by …").
+   Put equation, section and table numbers in the citation, after a semicolon.
+3. In code comments, such as those giving the source of each value in
+   `src/species_data.jl`, write the bare key, `[Benhelm2007]`. These keys must also be
+   in `refs.bib`, which serves as the reference list for the comments.
+
+The documentation build fails on a key that is missing from `refs.bib`. The REPL help
+shows citations by key only; the Bibliography page resolves them.
+
 ## Releases
 
 1. Create a `release-x.y.z` branch and update `version` in `Project.toml`.

@@ -944,7 +944,7 @@ end
     saturation_intensity(species::OneElectronSpecies, lower => upper)
 
 Returns the saturation intensity in the Oxford ion-trap group's convention
-(`[SATSUM]`):
+[SATSUM](@cite):
 
 ```math
 I_0 = \\frac{ħ ω^3}{6π c^2 τ} = \\frac{4π^2 ħ c}{3λ^3 τ},
@@ -959,16 +959,8 @@ For a fine-structure E1 pair at unit geometric amplitude,
 ``|Ω|^2 = C^2 (I/I_0) A/τ``, with ``C`` the Clebsch–Gordan coefficient.
 On a closed stretched transition, ``I = I_0`` gives ``|Ω| = Γ = 1/τ``.
 Thus ``I_0 = 2 I_\\mathrm{sat}`` for the two-level convention
-``s = I/I_\\mathrm{sat} = 2|Ω|^2/Γ^2`` of `[Foot2005]`.
-
-# References
-
-- `[SATSUM]`: A. M. Steane, "A summary of saturation intensities, or: How to find
-  scattering rates and Rabi frequencies quickly", internal Oxford ion-trap group note
-  (2001-12-03).
-- `[Foot2005]`: C. J. Foot, "Atomic Physics", Oxford University Press (2005),
-  §7.6.1; also Metcalf & van der Straten, "Laser Cooling and Trapping"
-  (1999), §2.4.
+``s = I/I_\\mathrm{sat} = 2|Ω|^2/Γ^2`` of [Foot2005; Sec. 7.6.1](@cite) and
+[Metcalf1999; Sec. 2.4](@cite).
 """
 function saturation_intensity(species::OneElectronSpecies, transition::Pair)
     lower, upper = transition

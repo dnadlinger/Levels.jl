@@ -233,7 +233,7 @@ hyperfine states to its fine-structure reduced element:
 so ``⟨F' m'|T^k_q|F m⟩ = ⟨F m; k q|F' m'⟩ β^{(k)}
 ⟨J'‖T^k‖J⟩/\\sqrt{2J'+1}``. The coupled states use electron-first
 Condon–Shortley coefficients ``⟨J m_J; I m_I | F m_F⟩``, as in
-[`Levels.coupling_transform`](@ref) and `[Campbell2026]`, Appendix E.
+[`Levels.coupling_transform`](@ref) and [Campbell2026; Appendix E](@cite).
 Nuclear-first states differ by ``(-1)^{I+J-F}`` per state; amplitudes between
 them acquire the corresponding initial- and final-state phases.
 
@@ -246,11 +246,6 @@ For ``I = 0``, ``β = +1`` on allowed transitions.
 ([`Levels.parity_multipole`](@ref)), or for the species form to that of the pair's
 tabulated multipole ([`Levels.multipole_rank`](@ref)); an explicit rank supports
 other operators such as M1 within a fine-structure level.
-
-# References
-
-- `[Campbell2026]`: W. C. Campbell, "Angular Geometry of Atomic Multipole
-  Transitions", [arXiv:2510.07451](https://arxiv.org/abs/2510.07451).
 """
 function hyperfine_reduction(nuclear_spin, transition::Pair; rank=nothing)
     lower, upper = transition
@@ -397,7 +392,7 @@ given intensity, polarisation `ε` and propagation direction. The Hamiltonian
 coupling is ``(ħ/2)(Ω |u⟩⟨l| + \\mathrm{h.c.})``; an isolated resonant pair
 has excitation probability ``\\sin^2(|Ω|t/2)``.
 
-Following `[James1998]`,
+Following [James1998; Eqs. (5.11)–(5.13) in the arXiv numbering](@cite),
 
 ```math
 Ω_\\mathrm{E1} = \\sqrt{\\frac{6π c^2 I A}{ħ ω^3}} \\, a_{ul} \\, d_{Δm}(\\hat ε),
@@ -426,14 +421,6 @@ E2 and M1, and an M1 coupling requires `ε` transverse to it. The complex
 phase, including the phase of `ε`, is retained so matrices built from these
 values preserve interference between components. `abs(Ω)` gives the
 magnitude. [`dipole_components`](@ref) defines the interaction sign.
-
-# References
-
-- `[James1998]`: D. F. V. James, "Quantum dynamics of cold trapped ions with
-  application to quantum computation", Appl. Phys. B **66**, 181 (1998),
-  [doi:10.1007/s003400050373](https://doi.org/10.1007/s003400050373); Eqs.
-  (5.11)–(5.13) in the
-  [arXiv:quant-ph/9702053](https://arxiv.org/abs/quant-ph/9702053) numbering.
 """
 function rabi_frequency(
     species::OneElectronSpecies,

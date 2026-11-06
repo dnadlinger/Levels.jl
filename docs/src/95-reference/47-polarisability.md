@@ -136,9 +136,9 @@ warnings, not the denominators; the model provides no scattering rate.
 
 For fine-structure E2 transitions, spectator detunings scale with `B`, so the resonant
 shift scales as ``I/B``. With linear polarisation, reversing both magnetic projections
-changes this part's sign; it cancels in a ``±m`` pair average (`[Lindvall2025]`, Sec.
-III F 2). Ellipticity breaks that cancellation. The E1 background generally remains in
-the pair average.
+changes this part's sign; it cancels in a ``±m`` pair average
+[Lindvall2025; Sec. III F 2](@cite). Ellipticity breaks that cancellation. The E1
+background generally remains in the pair average.
 
 Hyperfine spectators in other ``F`` levels generally prevent the resonant pair
 cancellation and the ``I/B`` scaling. For linear polarisation, the field-reversal

@@ -132,7 +132,7 @@ with ``θ_m`` the angle between mode and quantisation axis; for electric-dipole
 emission ``⟨\\hat{k}_z^2⟩ = 1/5`` (``q = 0``) and ``2/5`` (``|q| = 1``), so a mode
 along ẑ sees ``1/5`` and ``2/5``, one transverse to it ``2/5`` and ``3/10``,
 and the average over the three components is the isotropic ``1/3`` in every
-direction (cf. Javanainen & Stenholm, Appl. Phys. **21**, 35 (1980)). `rank =
+direction (cf. [Javanainen1980](@cite)). `rank =
 0` denotes isotropic emission, with ``α = 1/3`` for every direction. The full
 distribution of ``\\hat{k} ⋅ \\vec{e}_m`` behind this moment is available as a
 quadrature rule from [`emission_rule`](@ref).
@@ -290,8 +290,7 @@ space: in closed form through the generalised Laguerre polynomials,
 L_{n_<}^{(|n - m|)}(η^2)
 ```
 
-(Wineland et al., J. Res. Natl. Inst. Stand. Technol. **103**, 259 (1998);
-Kulosa et al., New J. Phys. **25**, 053008 (2023), Eq. (7)), evaluated through
+(see [Wineland1998](@cite) and [Kulosa2023; Eq. (7)](@cite)), evaluated through
 the three-term recurrence of the Laguerre polynomials; a finite-order series
 is formed in an enlarged Fock space. The red-sideband elements ``⟨n-1|D|n⟩``
 have their first sign change near ``n ≈ 3.67/η^2``; the first-order
@@ -396,18 +395,16 @@ the unit mode `direction`, quantisation axis along ẑ:
 ``∫ K(h) f(h) \\, dh ≈ \\sum_j w_j f(h_j)``. Its second moment is
 [`recoil_moment`](@ref); the rule is what the recoil kicks ``e^{-i η_0 h (a +
 a^†)}`` of [`motional_model`](@ref) are averaged with beyond first order in
-the Lamb–Dicke parameter (Kulosa et al., New J. Phys. **25**, 053008 (2023),
-Eq. (A.3)).
+the Lamb–Dicke parameter [Kulosa2023; Eq. (A.3)](@cite).
 
-For one direction the result is the Gauss rule of the measure ``K(h) \\, dh``
-with `quadrature_order` points, exact for polynomials of degree ``2 \\, \\mathtt{quadrature_order} -
-1``, obtained by the Stieltjes procedure (Lanczos with full
-reorthogonalisation) and the Golub–Welsch eigenvalue method on a fine product
-quadrature of the sphere (Gautschi, *Orthogonal Polynomials: Computation and
-Approximation*, Oxford (2004), Secs. 2.2 and 3.1). For several `directions`
-the nodes are the joint projections of a product rule on the sphere — row
-``j`` of the matrix `h` holds ``\\hat{k}_j ⋅ \\vec{e}_m`` for every direction
-``m`` — with `quadrature_order` Gauss–Legendre points in ``\\cos θ`` and twice as many
+For one direction the result is the Gauss rule of the measure ``K(h) \\, dh`` with
+`quadrature_order` points, exact for polynomials of degree
+``2 \\, \\mathtt{quadrature_order} - 1``, obtained by the Stieltjes procedure (Lanczos
+with full reorthogonalisation) and the Golub–Welsch eigenvalue method on a fine product
+quadrature of the sphere [Gautschi2004; Secs. 2.2 and 3.1](@cite). For several
+`directions` the nodes are the joint projections of a product rule on the sphere — row
+``j`` of the matrix `h` holds ``\\hat{k}_j ⋅ \\vec{e}_m`` for every direction ``m`` —
+with `quadrature_order` Gauss–Legendre points in ``\\cos θ`` and twice as many
 equidistant azimuths, exact for integrands polynomial of degree up to
 ``2 \\, \\mathtt{quadrature_order} - 5`` in the direction cosines (the pattern itself
 being of degree four).

@@ -9,42 +9,9 @@ photon energy.
 """
 ⁸⁸Sr⁺ ion.
 
-# References
-
-- `[Sansonetti2012]`: J. E. Sansonetti, "Wavelengths, Transition Probabilities, and
-  Energy Levels for the Spectra of Strontium Ions (Sr II through Sr XXXVIII)",
-  J. Phys. Chem. Ref. Data **41**, 013102 (2012),
-  [doi:10.1063/1.3659413](https://doi.org/10.1063/1.3659413).
-- `[Likforman2016]`: J.-P. Likforman, V. Tugayé, S. Guibal, and L. Guidoni,
-  "Precision measurement of the branching fractions of the 5p ²P₁/₂ state in ⁸⁸Sr⁺
-  with a single ion in a microfabricated surface trap", Phys. Rev. A **93**, 052507
-  (2016), [doi:10.1103/PhysRevA.93.052507](https://doi.org/10.1103/PhysRevA.93.052507).
-- `[AME2020]`: M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi, "The
-  AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
-  C **45**, 030003 (2021),
-  [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
-- `[Sansonetti2010]`: J. E. Sansonetti and G. Nave, "Wavelengths, Transition
-  Probabilities, and Energy Levels for the Spectrum of Neutral Strontium (Sr I)",
-  J. Phys. Chem. Ref. Data **39**, 033103 (2010),
-  [doi:10.1063/1.3449176](https://doi.org/10.1063/1.3449176).
-- `[Jiang2009]`: D. Jiang, B. Arora, M. S. Safronova, and C. W. Clark,
-  "Blackbody-radiation shift in a ⁸⁸Sr⁺ ion optical frequency standard", J. Phys. B
-  **42**, 154020 (2009),
-  [doi:10.1088/0953-4075/42/15/154020](https://doi.org/10.1088/0953-4075/42/15/154020).
-- `[Muraz2026]`: B. Muraz, M. Pepin, C. Guimard, M. Brune, B. Bakkali-Hassani,
-  and S. Gleyzes, "Measuring the Sr⁺ 5s₁/₂ Landé g-factor Using Singlet-Triplet
-  Oscillations in a Circular Rydberg State of Strontium",
-  [arXiv:2608.26784](https://arxiv.org/abs/2608.26784) (2026).
-- `[Barwood2012]`: the ⁸⁸Sr⁺ S₁/₂/D₅/₂ g-factor ratio 1.668057 reported by NPL
-  at CPEM 2012 (conference presentation; no published uncertainty).
-- `[Hoffman2013]`: M. R. Hoffman, T. W. Noel, C. Auchter, A. Jayakumar,
-  S. R. Williams, B. B. Blinov, and E. N. Fortson, "Radio frequency spectroscopy
-  measurement of the Landé g factor of the 5D₅/₂ state of Ba⁺ with a single trapped
-  ion", Phys. Rev. A **88**, 025401 (2013),
-  [doi:10.1103/PhysRevA.88.025401](https://doi.org/10.1103/PhysRevA.88.025401).
-- `[Marx1998]`: G. Marx, G. Tommaseo, and G. Werth, "Precise g_J- and g_I-factor
-  measurements of Ba⁺ isotopes", Eur. Phys. J. D **4**, 279 (1998),
-  [doi:10.1007/s100530050210](https://doi.org/10.1007/s100530050210).
+The data are taken from [Sansonetti2012, Likforman2016, AME2020, Sansonetti2010,
+Jiang2009, Muraz2026, Barwood2012, Hoffman2013, Marx1998](@cite); the comments in
+`src/species_data.jl` give the source of each value.
 """
 const sr88 = NoHyperfineOneElectronSpecies(;
     # Mass of the actual ion: the neutral-atom mass 87.905612253(6) u [AME2020]
@@ -154,10 +121,10 @@ const sr88 = NoHyperfineOneElectronSpecies(;
 
 """
 Mass of a Ca⁺ ion from the neutral-atom mass: less one electron, plus the Ca I first
-ionisation energy 49305.919611(4) cm⁻¹ [Pak2022] as its mass-equivalent binding
-correction (NB: as this is well below the [AME2020] mass uncertainties, the usefulness
-of this is questionable already, so the isotope shifts on the ionisation energy are
-especially negligible here).
+ionisation energy 49305.919611(4) cm⁻¹ [Pak2022](@cite) as its mass-equivalent binding
+correction (NB: as this is well below the [AME2020](@cite) mass uncertainties, the
+usefulness of this is questionable already, so the isotope shifts on the ionisation
+energy are especially negligible here).
 """
 ca_ion_mass(neutral_mass) = uconvert(
     u"u",
@@ -188,7 +155,7 @@ const CA_EINSTEIN_AS = Dict(
         ("S_1/2" => "P_1/2") => 0.93565 / 6.904u"ns",
         ("D_3/2" => "P_1/2") => 0.06435 / 6.904u"ns",
         # τ(P_3/2) = 6.639(42) ns [Meir2020] (in 6σ tension with the older 6.924(19) ns
-        # of Jin & Church 1993, which [Meir2020] argues to be superseded), split by the
+        # of [Jin1993], which [Meir2020] argues to be superseded), split by the
         # branching fractions 0.9347(3)/0.0587(2)/ 0.00661(4) of [Gerritsma2008].
         ("S_1/2" => "P_3/2") => 0.9347 / 6.639u"ns",
         ("D_5/2" => "P_3/2") => 0.0587 / 6.639u"ns",
@@ -265,107 +232,44 @@ const CA_POLARISABILITIES = Dict(
 )
 
 # Literature shared between the Ca⁺ isotopes, interpolated into their docstrings.
-const CA_REFERENCES = """
-- `[AME2020]`: M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi, "The
-  AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
-  C **45**, 030003 (2021),
-  [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
-- `[Pak2022]`: C. Pak, M. J. Schlitters, and S. D. Bergeson, "Improved ionization
-  potential of calcium using frequency-comb-based Rydberg spectroscopy", Phys. Rev. A
-  **106**, 062818 (2022),
-  [doi:10.1103/PhysRevA.106.062818](https://doi.org/10.1103/PhysRevA.106.062818).
-- `[Tommaseo2003]`: G. Tommaseo, T. Pfeil, G. Revalde, G. Werth, P. Indelicato,
-  and J. P. Desclaux, "The g_J-factor in the ground state of Ca⁺", Eur. Phys. J. D
-  **25**, 113 (2003), [doi:10.1140/epjd/e2003-00096-6](https://doi.org/10.1140/epjd/e2003-00096-6).
-- `[Chwalla2009]`: M. Chwalla et al., "Absolute frequency measurement of the
-  ⁴⁰Ca⁺ 4s ²S₁/₂ – 3d ²D₅/₂ clock transition", Phys. Rev. Lett. **102**, 023002
-  (2009), [doi:10.1103/PhysRevLett.102.023002](https://doi.org/10.1103/PhysRevLett.102.023002).
-- `[Ma2024]`: Z. Ma, B. Zhang, Y. Huang, R. Hu, M. Zeng, K. Gao, and H. Guan,
-  "Precision determination of the oscillating-magnetic-field-induced second-order
-  Zeeman shift of a single-⁴⁰Ca⁺-ion optical clock", Phys. Rev. A **110**, 063102
-  (2024), [doi:10.1103/PhysRevA.110.063102](https://doi.org/10.1103/PhysRevA.110.063102).
-- `[Zhang2026]`: B. Zhang et al., "Liquid-Nitrogen-Cooled ⁴⁰Ca⁺ Ion Optical Clock
-  with a Systematic Uncertainty of 4.4 × 10⁻¹⁹", Phys. Rev. Lett. **136**, 053202
-  (2026), [doi:10.1103/vngc-c1xv](https://doi.org/10.1103/vngc-c1xv).
-- `[McMahon2026]`: B. J. McMahon, V. S. Sandhu, J. M. Gray, C. D. Herold,
-  K. R. Brown, and B. C. Sawyer, "Dual-Platform Precision Measurement of the
-  3²D₅/₂ to 4²S₁/₂ g-Factor Ratio in ⁴⁰Ca⁺",
-  [arXiv:2607.07929](https://arxiv.org/abs/2607.07929) (2026).
-- `[Shao2016]`: H. Shao, Y. Huang, H. Guan, Y. Qian, and K. Gao, "Precision
-  measurement of the 3d ²D₃/₂-state lifetime in a single trapped ⁴⁰Ca⁺", Phys. Rev.
-  A **94**, 042507 (2016),
-  [doi:10.1103/PhysRevA.94.042507](https://doi.org/10.1103/PhysRevA.94.042507).
-- `[Shao2017]`: H. Shao, Y. Huang, H. Guan, C. Li, T. Shi, and K. Gao, "Precise
-  determination of the quadrupole transition matrix element of ⁴⁰Ca⁺ via
-  branching-fraction and lifetime measurements", Phys. Rev. A **95**, 053415
-  (2017), [doi:10.1103/PhysRevA.95.053415](https://doi.org/10.1103/PhysRevA.95.053415).
-- `[Shao2018]`: H. Shao, Y. Huang, H. Guan, and K. Gao, "Direct measurement of the
-  3d ²D₃/₂ to 3d ²D₅/₂ lifetime ratio in a single trapped ⁴⁰Ca⁺", J. Phys. B
-  **51**, 045002 (2018),
-  [doi:10.1088/1361-6455/aaa191](https://doi.org/10.1088/1361-6455/aaa191).
-- `[Hettrich2015]`: M. Hettrich et al., "Measurement of dipole matrix elements
-  with a single trapped ion", Phys. Rev. Lett. **115**, 143003 (2015),
-  [doi:10.1103/PhysRevLett.115.143003](https://doi.org/10.1103/PhysRevLett.115.143003).
-- `[Ramm2013]`: M. Ramm, T. Pruttivarasin, M. Kokish, I. Talukdar, and
-  H. Häffner, "Precision measurement method for branching fractions of excited
-  P₁/₂ states applied to ⁴⁰Ca⁺", Phys. Rev. Lett. **111**, 023004 (2013),
-  [doi:10.1103/PhysRevLett.111.023004](https://doi.org/10.1103/PhysRevLett.111.023004).
-- `[Gerritsma2008]`: R. Gerritsma, G. Kirchmair, F. Zähringer, J. Benhelm,
-  R. Blatt, and C. F. Roos, "Precision measurement of the branching fractions of
-  the 4p ²P₃/₂ decay of Ca II", Eur. Phys. J. D **50**, 13 (2008),
-  [doi:10.1140/epjd/e2008-00196-9](https://doi.org/10.1140/epjd/e2008-00196-9).
-- `[Meir2020]`: Z. Meir, M. Sinhal, M. S. Safronova, and S. Willitsch, "Combining
-  experiments and relativistic theory for establishing accurate radiative
-  quantities in atoms: The lifetime of the ²P₃/₂ state in ⁴⁰Ca⁺", Phys. Rev. A
-  **101**, 012509 (2020),
-  [doi:10.1103/PhysRevA.101.012509](https://doi.org/10.1103/PhysRevA.101.012509).
-- `[Kreuter2005]`: A. Kreuter et al., "Experimental and theoretical study of the
-  3d ²D-level lifetimes of ⁴⁰Ca⁺", Phys. Rev. A **71**, 032504 (2005),
-  [doi:10.1103/PhysRevA.71.032504](https://doi.org/10.1103/PhysRevA.71.032504).
-- `[YuSahoo2025]`: Y. M. Yu and B. K. Sahoo, "Application of general-order
-  relativistic coupled-cluster theory to estimate electric-field-response clock
-  properties of Ca⁺ and Yb⁺", Phys. Rev. A **111**, 032801 (2025),
-  [doi:10.1103/PhysRevA.111.032801](https://doi.org/10.1103/PhysRevA.111.032801).
-- `[Tang2013]`: Y.-B. Tang, H.-X. Qiao, T.-Y. Shi, and J. Mitroy, "Dynamic
-  polarizabilities for the low-lying states of Ca⁺", Phys. Rev. A **87**, 042517
-  (2013),
-  [doi:10.1103/PhysRevA.87.042517](https://doi.org/10.1103/PhysRevA.87.042517).
-"""
+const CA_REFERENCE_KEYS = join(
+    [
+        "AME2020",
+        "Pak2022",
+        "Tommaseo2003",
+        "Chwalla2009",
+        "Ma2024",
+        "Zhang2026",
+        "McMahon2026",
+        "Shao2016",
+        "Shao2017",
+        "Shao2018",
+        "Hettrich2015",
+        "Ramm2013",
+        "Gerritsma2008",
+        "Meir2020",
+        "Kreuter2005",
+        "YuSahoo2025",
+        "Tang2013",
+    ],
+    ", ",
+)
 
 """
 ⁴⁰Ca⁺ ion (no nuclear spin).
 
 The level energies are the directly measured ⁴⁰Ca⁺ transition frequencies from
-S``_{1/2}``: the 729 nm clock transition `[Zhang2023]`, from which D``_{3/2}`` follows
-via the frequency-comb Raman measurement of the 3d fine-structure interval
-`[Solaro2018]`, and the 397 nm `[Gebert2015]` and 393 nm `[Shi2017]` lines. As a
-consistency check, the implied 866, 850 and 854 nm intervals agree with the
-collinear-spectroscopy values of `[Muller2020]` (Table III) to within 0.2 MHz
-(1.5σ). The Einstein A coefficients and electronic g-factors measured in ⁴⁰Ca⁺,
-and the polarisability model combining measured dipoles with calculated static
-anchors, are shared with [`ca43`](@ref).
+S``_{1/2}``: the 729 nm clock transition [Zhang2023](@cite), from which D``_{3/2}``
+follows via the frequency-comb Raman measurement of the 3d fine-structure interval
+[Solaro2018](@cite), and the 397 nm [Gebert2015](@cite) and 393 nm [Shi2017](@cite)
+lines. As a consistency check, the implied 866, 850 and 854 nm intervals agree with the
+collinear-spectroscopy values of [Muller2020; Table III](@cite) to within 0.2 MHz
+(1.5σ). The Einstein A coefficients and electronic g-factors measured in ⁴⁰Ca⁺, and the
+polarisability model combining measured dipoles with calculated static anchors, are
+shared with [`ca43`](@ref).
 
-# References
-
-- `[Zhang2023]`: H. Zhang et al., "Absolute frequency measurements with a robust,
-  transportable ⁴⁰Ca⁺ optical clock", Metrologia **60**, 035004 (2023),
-  [doi:10.1088/1681-7575/acd05d](https://doi.org/10.1088/1681-7575/acd05d).
-- `[Solaro2018]`: C. Solaro, S. Meyer, K. Fisher, M. V. DePalatis, and M. Drewsen,
-  "Direct Frequency-Comb-Driven Raman Transitions in the Terahertz Range", Phys.
-  Rev. Lett. **120**, 253601 (2018),
-  [doi:10.1103/PhysRevLett.120.253601](https://doi.org/10.1103/PhysRevLett.120.253601).
-- `[Gebert2015]`: F. Gebert, Y. Wan, F. Wolf, C. N. Angstmann, J. C. Berengut, and
-  P. O. Schmidt, "Precision Isotope Shift Measurements in Calcium Ions Using Quantum
-  Logic Detection Schemes", Phys. Rev. Lett. **115**, 053003 (2015),
-  [doi:10.1103/PhysRevLett.115.053003](https://doi.org/10.1103/PhysRevLett.115.053003).
-- `[Shi2017]`: C. Shi et al., "Unexpectedly large difference of the electron density
-  at the nucleus in the 4p ²P₁/₂,₃/₂ fine-structure doublet of Ca⁺", Appl. Phys. B
-  **123**, 2 (2017), [doi:10.1007/s00340-016-6572-z](https://doi.org/10.1007/s00340-016-6572-z).
-- `[Muller2020]`: P. Müller, K. König, P. Imgram, J. Krämer, and W. Nörtershäuser,
-  "Collinear laser spectroscopy of Ca⁺: Solving the field-shift puzzle of the
-  4s ²S₁/₂ → 4p ²P₁/₂,₃/₂ transitions", Phys. Rev. Research **2**, 043351 (2020),
-  [doi:10.1103/PhysRevResearch.2.043351](https://doi.org/10.1103/PhysRevResearch.2.043351).
-$(CA_REFERENCES)
+Further sources, cited per value in the comments of `src/species_data.jl`:
+[$(CA_REFERENCE_KEYS)](@cite).
 """
 const ca40 = NoHyperfineOneElectronSpecies(;
     mass=ca_ion_mass(39.962590850u"u"), # …(22) [AME2020]
@@ -401,28 +305,12 @@ g(D``_{5/2}``), known to 5 × 10⁻⁸ in ⁴⁰Ca⁺, the leading-order reduced
 recoil corrections are unknown at that level, so will have to be measured together with
 the hyperfine constants anyway.
 
-# References
-- `[Kramida2020]`: A. Kramida, "Isotope shifts in neutral and singly-ionized
-  calcium", At. Data Nucl. Data Tables **133–134**, 101322 (2020),
-  [doi:10.1016/j.adt.2019.101322](https://doi.org/10.1016/j.adt.2019.101322).
-- `[Arbes1994]`: F. Arbes, M. Benzing, Th. Gudjons, F. Kurth, and G. Werth,
-  "Precise determination of the ground state hyperfine structure splitting of
-  ⁴³Ca II", Z. Phys. D **31**, 27 (1994),
-  [doi:10.1007/BF01426573](https://doi.org/10.1007/BF01426573).
-- `[Nortershauser1998]`: W. Nörtershäuser et al., "Isotope shifts and hyperfine
-  structure in the 3d ²D_J → 4p ²P_J transitions in calcium II", Eur. Phys. J. D
-  **2**, 33 (1998), [doi:10.1007/s100530050107](https://doi.org/10.1007/s100530050107).
-- `[Benhelm2007]`: J. Benhelm, G. Kirchmair, U. Rapol, T. Körber, C. F. Roos, and
-  R. Blatt, "Measurement of the hyperfine structure of the S₁/₂–D₅/₂ transition in
-  ⁴³Ca⁺", Phys. Rev. A **75**, 032506 (2007),
-  [doi:10.1103/PhysRevA.75.032506](https://doi.org/10.1103/PhysRevA.75.032506); the
-  signs of the D``_{5/2}`` constants per the erratum, Phys. Rev. A **75**, 049901
-  (2007), [doi:10.1103/PhysRevA.75.049901](https://doi.org/10.1103/PhysRevA.75.049901).
-- `[Hanley2021]`: R. K. Hanley, D. T. C. Allcock, T. P. Harty, M. A. Sepiol, and
-  D. M. Lucas, "Precision measurement of the ⁴³Ca⁺ nuclear magnetic moment",
-  Phys. Rev. A **104**, 052804 (2021),
-  [doi:10.1103/PhysRevA.104.052804](https://doi.org/10.1103/PhysRevA.104.052804).
-$(CA_REFERENCES)
+The level energies are the hyperfine-centroid transition frequencies of
+[Kramida2020](@cite). The hyperfine constants are from [Arbes1994,
+Nortershauser1998](@cite) and, for D``_{5/2}``, [Benhelm2007](@cite), with the signs per
+the erratum [Benhelm2007erratum](@cite); the nuclear g-factor follows from the moment of
+[Hanley2021](@cite). Further sources, cited per value in the comments of
+`src/species_data.jl`: [$(CA_REFERENCE_KEYS)](@cite).
 """
 const ca43 = HyperfineOneElectronSpecies(;
     mass=ca_ion_mass(42.958766381u"u"), # …(244) [AME2020]
@@ -431,7 +319,7 @@ const ca43 = HyperfineOneElectronSpecies(;
     # ion, i.e. *not* corrected for diamagnetic shielding — the appropriate value
     # for the Zeeman Hamiltonian [Hanley2021]. (Older work, e.g. the [Benhelm2007]
     # fit, instead used the shielding-corrected free-nucleus value −1.317643 of
-    # N. J. Stone, At. Data Nucl. Data Tables 90, 75 (2005), 0.17% away.) In the
+    # [Stone2005], 0.17% away.) In the
     # H_Z = B (g_J μ_B m_J − g_I μ_N m_I) convention used here,
     # g_I = μ_I / (I μ_N), with the conventional nuclear sign.
     nuclear_g=-1.315350 / (7 // 2),
@@ -480,74 +368,27 @@ const ca43 = HyperfineOneElectronSpecies(;
 ¹³⁸Ba⁺ ion.
 
 The P decay rates are entered as the reduced dipole matrix elements of
-`[Jayjong2026b]`, an unrefereed preprint, whose ⟨P₁/₂‖r‖S₁/₂⟩ lies 1.8σ below the
-value `[Jayjong2026a]` infers from the static S₁/₂ polarisability. They are preferred
-over τ(P₃/₂) = 6.2615(72) ns of `[Zhang2020]`, which rests on the older
-⟨P₃/₂‖r‖S₁/₂⟩ of Woods et al. (2010), whose ratio to the P₁/₂ element disagrees with
-the direct measurement of `[Jayjong2026a]`.
+[Jayjong2026b](@cite), an unrefereed preprint, whose ⟨P₁/₂‖r‖S₁/₂⟩ lies 1.8σ below the
+value [Jayjong2026a](@citet) infers from the static S₁/₂ polarisability. They are
+preferred over τ(P₃/₂) = 6.2615(72) ns of [Zhang2020](@cite), which rests on the older
+⟨P₃/₂‖r‖S₁/₂⟩ of [Woods2010](@cite), whose ratio to the P₁/₂ element disagrees with the
+direct measurement of [Jayjong2026a](@cite).
 
 D₅/₂ decays to S₁/₂ by E2 and, with a 17 % branch, to D₃/₂ by M1 (a
 [`MagneticDipole`](@ref) entry). Its lifetime is thus the measured 30.14(40) s
-`[Zhang2020]`, and a model holding D₅/₂ must also hold D₃/₂, or drop that channel
+[Zhang2020](@cite), and a model holding D₅/₂ must also hold D₃/₂, or drop that channel
 explicitly (`open_channels = :drop`).
 
-The 4f levels are not included, as the sources give neither their energies nor
-dipoles. Their contribution to α(D₅/₂) is lumped into the static remainder, which is
-a good approximation only well below their ≈ 234 nm resonances: with the ≈ 15 a.u.
-ultraviolet term of `[Jayjong2026a]` (Eq. 1), the error is ≈ 0.2 a.u. at 1762 nm,
-≈ 2 a.u. at 653 nm and ≈ 4 a.u. at 481 nm, which limits the accuracy of the
-differential polarisability near its zero crossings.
+The 4f levels are not included, as the sources give neither their energies nor dipoles.
+Their contribution to α(D₅/₂) is lumped into the static remainder, which is a good
+approximation only well below their ≈ 234 nm resonances: with the ≈ 15 a.u. ultraviolet
+term of [Jayjong2026a; Eq. (1)](@cite), the error is ≈ 0.2 a.u. at 1762 nm, ≈ 2 a.u. at
+653 nm and ≈ 4 a.u. at 481 nm, which limits the accuracy of the differential
+polarisability near its zero crossings.
 
-# References
-
-- `[Arnold2020]`: K. J. Arnold, R. Kaewuam, S. R. Chanu, T. R. Tan, Z. Zhang, and
-  M. D. Barrett, "Precision Measurements of the ¹³⁸Ba⁺ 6s ²S₁/₂–5d ²D₅/₂ Clock
-  Transition", Phys. Rev. Lett. **124**, 193001 (2020),
-  [doi:10.1103/PhysRevLett.124.193001](https://doi.org/10.1103/PhysRevLett.124.193001).
-- `[Whitford1994]`: B. G. Whitford, K. J. Siemsen, A. A. Madej, and J. D. Sankey,
-  "Absolute-frequency measurement of the narrow-linewidth 24-THz D–D transition of a
-  single laser-cooled barium ion", Opt. Lett. **19**, 356 (1994),
-  [doi:10.1364/OL.19.000356](https://doi.org/10.1364/OL.19.000356).
-- `[Imgram2019]`: P. Imgram, K. König, J. Krämer, T. Ratajczyk, R. A. Müller,
-  A. Surzhykov, and W. Nörtershäuser, "Collinear laser spectroscopy at ion-trap
-  accuracy: Transition frequencies and isotope shifts in the 6s ²S₁/₂ → 6p ²P₁/₂,₃/₂
-  transitions of Ba⁺", Phys. Rev. A **99**, 012511 (2019),
-  [doi:10.1103/PhysRevA.99.012511](https://doi.org/10.1103/PhysRevA.99.012511).
-- `[Jayjong2026a]`: N. Jayjong, M. D. K. Lee, K. J. Arnold, and M. D. Barrett, "Zero
-  crossings of the differential scalar polarizability of the Ba⁺ clock transition",
-  Phys. Rev. A **114**, 012804 (2026),
-  [doi:10.1103/wdgl-2vhf](https://doi.org/10.1103/wdgl-2vhf).
-- `[Jayjong2026b]`: N. Jayjong, M. D. K. Lee, K. J. Arnold, and M. D. Barrett,
-  "Measurement of the reduced dipole matrix element in Ba⁺",
-  [arXiv:2607.20920](https://arxiv.org/abs/2607.20920) (2026).
-- `[Zhang2020]`: Z. Zhang, K. J. Arnold, S. R. Chanu, R. Kaewuam, M. S. Safronova, and
-  M. D. Barrett, "Branching fractions for P₃/₂ decays in Ba⁺", Phys. Rev. A **101**,
-  062515 (2020),
-  [doi:10.1103/PhysRevA.101.062515](https://doi.org/10.1103/PhysRevA.101.062515).
-- `[Cserveny2025]`: R. B. Cserveny and B. M. Roberts, "Theoretical characterization of
-  the barium II and radium II ions", Phys. Rev. A **112**, 032816 (2025),
-  [doi:10.1103/1rtb-8ymc](https://doi.org/10.1103/1rtb-8ymc).
-- `[Marx1998]`: G. Marx, G. Tommaseo, and G. Werth, "Precise g_J- and g_I-factor
-  measurements of Ba⁺ isotopes", Eur. Phys. J. D **4**, 279 (1998),
-  [doi:10.1007/s100530050210](https://doi.org/10.1007/s100530050210).
-- `[Knoll1996]`: K. H. Knöll, G. Marx, K. Hübner, F. Schweikert, S. Stahl, Ch. Weber,
-  and G. Werth, "Experimental g_J factor in the metastable 5D₃/₂ level of Ba⁺", Phys.
-  Rev. A **54**, 1199 (1996),
-  [doi:10.1103/PhysRevA.54.1199](https://doi.org/10.1103/PhysRevA.54.1199).
-- `[Poulsen1976]`: O. Poulsen and P. S. Ramanujam, "Time-differential level-crossing
-  g-value measurements of the 6p ²P fine-structure levels in ¹³⁸Ba II using an
-  optical-induced orientation or alignment of a fast ionic beam", Phys. Rev. A **14**,
-  1463 (1976),
-  [doi:10.1103/PhysRevA.14.1463](https://doi.org/10.1103/PhysRevA.14.1463).
-- `[Snow2007]`: E. L. Snow and S. R. Lundeen, "Fine-structure measurements in high-L
-  n = 17 and 20 Rydberg states of barium", Phys. Rev. A **76**, 052505 (2007),
-  [doi:10.1103/PhysRevA.76.052505](https://doi.org/10.1103/PhysRevA.76.052505).
-- `[AME2020]`: M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi, "The
-  AME 2020 atomic mass evaluation (II). Tables, graphs and references", Chin. Phys.
-  C **45**, 030003 (2021),
-  [doi:10.1088/1674-1137/abddaf](https://doi.org/10.1088/1674-1137/abddaf).
-- `[NIST-ASD]`: NIST Atomic Spectra Database,
-  [Ba I ionisation energy](https://physics.nist.gov/PhysRefData/ASD/ionEnergy.html).
+Further sources, cited per value in the comments of `src/species_data.jl`: [Arnold2020,
+Whitford1994, Imgram2019, Cserveny2025, Marx1998, Knoll1996, Poulsen1976, Snow2007,
+AME2020, NIST-ASD](@cite).
 """
 const ba138 = NoHyperfineOneElectronSpecies(;
     # Mass of the actual ion: the neutral-atom mass 137.905247059(267) u [AME2020] less

@@ -876,7 +876,7 @@ frequency; both states must be in the structure's selected basis.
 background is the difference of the states' E1 shifts. The resonant part sums
 spectator channels sharing either state, with detunings relative to the
 probed component. The probed channel itself is excluded as the coherent drive.
-For E2 this is the ac Stark shift of `[Lindvall2025]`, Sec. III F 2; its
+For E2 this is the ac Stark shift of [Lindvall2025; Sec. III F 2](@cite); its
 symmetries are described in [Light shifts and polarisabilities](@ref
 reference-polarisability).
 
@@ -891,13 +891,6 @@ an error; a closed cycle without spectators is valid at zero field.
 `:background` skips the channels and does not check drivability.
 The structure form constructs coefficients with the pair's zero-field
 interval as the reference on every call.
-
-# References
-
-- `[Lindvall2025]`: T. Lindvall, A. E. Wallin, K. J. Hanhijärvi, and T. Fordell,
-  "⁸⁸Sr⁺ Optical Clock with 7.9 × 10⁻¹⁹ Systematic Uncertainty and Measurement of
-  Its Absolute Frequency", Phys. Rev. Applied **24**, 044082 (2025),
-  [doi:10.1103/cztf-bfvp](https://doi.org/10.1103/cztf-bfvp).
 """
 function driven_light_shift(
     c::LightShiftCoefficients,

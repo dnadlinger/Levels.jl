@@ -85,8 +85,8 @@ D_b = e^{i∑_m η_{b,m}(a_m+a_m^†)}.
 ``H_\\mathrm{frame}`` is the diagonal part of `model.hamiltonian`, excluding
 its beam couplings. ``C_b`` is each beam's Rabi-frequency matrix and
 ``η_{b,m}`` its projected Lamb–Dicke factor. Spontaneous emission contributes
-``L⊗e^{-i\\vec k⋅\\vec r}`` averaged over its radiation pattern (Kulosa et al.,
-New J. Phys. **25**, 053008 (2023), Eqs. (6), (7), (A.3)).
+``L⊗e^{-i\\vec k⋅\\vec r}`` averaged over its radiation pattern
+[Kulosa2023; Eqs. (6), (7), (A.3)](@cite).
 
 `lamb_dicke_order` selects the displacement approximation:
 
@@ -172,8 +172,7 @@ frequency units). Spontaneous-emission recoil adds the same diffusion term to
 both rates,
 ``D = ∑_k α_k η_{0,k}^2 \\mathrm{Tr}(L_k^†L_kρ_∞)``,
 with the decay operators, recoil factors and emission moments of
-[`MotionalCoupling`](@ref). See Cirac et al., Phys. Rev. A **46**, 2668 (1992),
-and Morigi, Phys. Rev. A **67**, 033402 (2003).
+[`MotionalCoupling`](@ref). See [Cirac1992, Morigi2003](@cite).
 
 The resolvent uses the ``e^{-iωt}`` Fourier convention, so cooling samples
 ``S(-ω_m)``. In the weak-excitation two-level limit,

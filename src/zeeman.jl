@@ -9,13 +9,12 @@ const BOHR_MAGNETON = Unitful.q * u"ħ" / (2 * Unitful.me)
 "The nuclear magneton ``μ_N = e ħ / (2 m_p)``."
 const NUCLEAR_MAGNETON = Unitful.q * u"ħ" / (2 * Unitful.mp)
 
-# Magnitude of the free-electron g-factor, 2.00231930436092(36) [CODATA2022]
-# (E. Tiesinga et al., Rev. Mod. Phys. 97, 025002 (2025), doi:10.1103/RevModPhys.97.025002).
+# Magnitude of the free-electron g-factor, 2.00231930436092(36) [CODATA2022].
 const FREE_ELECTRON_G = 2.00231930436092
 
 """
 Returns the LS-coupling Landé g-factor for a single electron (``s = 1/2``),
-using the free-electron spin g-factor (CODATA 2022) and the leading-order
+using the free-electron spin g-factor [CODATA2022](@cite) and the leading-order
 reduced-mass correction to the orbital g-factor, ``g_L = 1 - m_e/M`` with ``M``
 the ion mass (any distinction from the nuclear mass is far beyond the accuracy
 of this leading-order form).

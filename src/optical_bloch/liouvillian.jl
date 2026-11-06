@@ -349,9 +349,8 @@ Liouvillian. The transient integral satisfies
 
 For an observable ``A``, the integral relaxation time is
 ``τ_A = \\mathrm{Tr}(A\\hat τ)/[\\mathrm{Tr}(Aρ_0)-\\mathrm{Tr}(Aρ_∞)]``.
-This is the τ-matrix method of Il'enkov et al., JETP **123**, 1 (2016), and
-Kulosa et al., New J. Phys. **25**, 053008 (2023), Sec. 3, Eqs. (10)–(14);
-see also [`integral_relaxation_time`](@ref).
+This is the τ-matrix method of [Ilenkov2016](@citet) and [Kulosa2023; Sec. 3, Eqs.
+(10)–(14)](@citet); see also [`integral_relaxation_time`](@ref).
 
 One sparse LU factorisation replaces a population row by the trace constraint.
 A forward solve gives the steady state; a transposed solve per observable
@@ -444,7 +443,7 @@ Returns the integral relaxation time
 `k`-th observable from the initial density matrix `ρ0` (full matrix over the
 layout), as a unitful time — the time constant for an
 exponential relaxation, and a well-defined "area" time otherwise (for the
-phonon number: the cooling time of Kulosa et al. 2023, Eq. (13)). It is
+phonon number: the cooling time of [Kulosa2023; Eq. (13)](@citet)). It is
 undefined when the observable starts at its steady value; division by zero
 then produces `Inf` or `NaN`.
 """

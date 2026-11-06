@@ -89,28 +89,25 @@ p_{n+1} - (Γ^↓_n + Γ^↑_{n+1}) p_n`` of the phonon populations of one mode,
 sideband coupling, these saturate once ``ηΩ\\sqrt{n}`` reaches the internal
 relaxation rate.
 
-Fock-resolved rate equations are the low-saturation result of Morigi et al.,
-Phys. Rev. A **59**, 3797 (1999), Eq. (15), and saturated sideband transfer in
-a two-state model that of Phatak et al., Phys. Rev. A **110**, 043116 (2024),
-Eqs. (66)–(68). Here, each rung is solved for arbitrary internal structure and
-drive, from the steady state of a ladder with the couplings of rung ``n`` on
-every rung: a Floquet problem with `bandwidth` harmonics, approaching the
-classical power absorbed from an oscillation of amplitude ``∝\\sqrt{n}`` at
-large occupation. The bare population of a Fock state would not do: on a
-saturated sideband, it is coherently shared with its neighbour. The net rate
-``Γ^↑_n - Γ^↓_n`` is the mean phonon-number current of the ladder. By default the total
-``Γ^↑_n + Γ^↓_n`` matches its diffusion, the second counting-cumulant rate,
-including emission recoil at frozen amplitude with its motional-phase
-dependence. The closure instead attempts a ratio ``Γ^↑_n/Γ^↓_n`` from the
-closed internal ⊗ Fock window ``n-2 … n+1`` when ``B ≤ 10|D|`` and the
-sideband reach ``2|η|\\sqrt{n} ≤ 1``, or whenever ``B < |D|``. Here ``D``
-and ``B`` are the ladder's drift and diffusion; the reach includes
-two-photon differences of the beams' projected Lamb–Dicke factors. These
-switches are empirical. The window avoids subtracting nearly equal numbers
-to infer a small rate, but has no general convergence guarantee. It is used
-only when its ratio and the drift give positive matching rates. A positivity
-floor enforces ``Γ^↑_n + Γ^↓_n ≥ (1 + 10^{-9})|D|``; window matching or
-clipping generally abandons the ladder's diffusion.
+Fock-resolved rate equations are the low-saturation result of [Morigi1999; Eq.
+(15)](@citet), and saturated sideband transfer in a two-state model that of [Phatak2024;
+Eqs. (66)–(68)](@citet). Here, each rung is solved for arbitrary internal structure and
+drive, from the steady state of a ladder with the couplings of rung ``n`` on every rung:
+a Floquet problem with `bandwidth` harmonics, approaching the classical power absorbed
+from an oscillation of amplitude ``∝\\sqrt{n}`` at large occupation. The bare population
+of a Fock state would not do: on a saturated sideband, it is coherently shared with its
+neighbour. The net rate ``Γ^↑_n - Γ^↓_n`` is the mean phonon-number current of the
+ladder. By default the total ``Γ^↑_n + Γ^↓_n`` matches its diffusion, the second
+counting-cumulant rate, including emission recoil at frozen amplitude with its
+motional-phase dependence. The closure instead attempts a ratio ``Γ^↑_n/Γ^↓_n`` from the
+closed internal ⊗ Fock window ``n-2 … n+1`` when ``B ≤ 10|D|`` and the sideband reach
+``2|η|\\sqrt{n} ≤ 1``, or whenever ``B < |D|``. Here ``D`` and ``B`` are the ladder's
+drift and diffusion; the reach includes two-photon differences of the beams' projected
+Lamb–Dicke factors. These switches are empirical. The window avoids subtracting nearly
+equal numbers to infer a small rate, but has no general convergence guarantee. It is
+used only when its ratio and the drift give positive matching rates. A positivity floor
+enforces ``Γ^↑_n + Γ^↓_n ≥ (1 + 10^{-9})|D|``; window matching or clipping generally
+abandons the ladder's diffusion.
 
 For weak sidebands, the rates are ``Γ^↓_n = nA_-`` and ``Γ^↑_n = nA_+``.
 `lamb_dicke_order = Inf` uses the full

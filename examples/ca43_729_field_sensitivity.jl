@@ -6,7 +6,7 @@
 # match, a component is insensitive to field fluctuations to first order. In this
 # example, we find the two field-independent points of
 # ``|S_{1/2}, F = 4, m_F = 4⟩ ↔ |D_{5/2}, F = 4, m_F = 3⟩``, as discussed by
-# [Benhelm et al. (2007)](https://doi.org/10.1103/PhysRevA.75.032506), and the
+# [Benhelm2007](@citet), and the
 # second-order field dependence that remains there.
 #
 # The lower state is stretched: it is the product state ``|m_J = 1/2, m_I = 7/2⟩``,
@@ -90,8 +90,8 @@ B₁ = insensitive_field(ca43, clock, (0.30u"mT", 0.40u"mT"))
 B₀ = insensitive_field(ca43, clock, (0.45u"mT", 0.55u"mT"))
 round.(u"Gauss", (B₁, B₀); digits=4)
 
-# These are the 3.38 G and 4.96 G of Benhelm et al.; we pick the higher of the two for
-# the rest of this example.
+# These are the 3.38 G and 4.96 G of [Benhelm2007](@citet); we pick the higher of the
+# two for the rest of this example.
 #
 # ## Second-order field dependence
 #
@@ -132,7 +132,7 @@ curvature(structure(B₀), lower)
 # curvature, and that of the clock transition is that of its upper state alone. Taking
 # into account the factor 1/2 in front of the second derivative in the quadratic
 # ``(B - B_i)^2`` term of a Taylor series, it matches the second-order shift of
-# ±16 kHz/G² given by Benhelm et al.:
+# ±16 kHz/G² given by [Benhelm2007](@citet):
 
 diff_curvature(s, (lower, upper)) = curvature(s, upper) - curvature(s, lower)
 diff_quadratic_coeff(B) = to_cyclic(diff_curvature(structure(B), clock)) / 2

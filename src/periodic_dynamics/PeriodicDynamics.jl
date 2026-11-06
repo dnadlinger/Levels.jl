@@ -13,9 +13,7 @@ the manifolds with the periodic drive and treats the laser to first order;
 gap. [`quasienergy_shift`](@ref) evaluates laser-free shifts with
 [`PerturbationTheory`](@ref) or nonperturbative [`Floquet`](@ref) dressing.
 
-Cf. Joshi et al., "Characterization of ion-trap-induced ac magnetic fields",
-Phys. Rev. A **110**, 063101 (2024),
-[doi:10.1103/PhysRevA.110.063101](https://doi.org/10.1103/PhysRevA.110.063101).
+Cf. [Joshi2024](@citet).
 """
 module PeriodicDynamics
 

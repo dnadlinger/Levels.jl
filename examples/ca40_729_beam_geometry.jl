@@ -3,7 +3,7 @@
 # Which Zeeman components of an electric-quadrupole (E2) transition a laser drives,
 # and how strongly, depends on both the propagation direction and the polarisation of
 # the beam relative to the magnetic field
-# ([James 1998](https://doi.org/10.1007/s003400050373)). For the S``_{1/2}`` ↔
+# [James1998](@cite). For the S``_{1/2}`` ↔
 # D``_{5/2}`` transition of ⁴⁰Ca⁺ at 729 nm, we map the geometric factors out over all
 # beam orientations, and turn them into Rabi frequencies for a concrete beam.
 #
